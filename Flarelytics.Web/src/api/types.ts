@@ -5,7 +5,6 @@
 export type Store = "AppStore" | "GooglePlay";
 export type OrgRole = "Viewer" | "Admin" | "Owner";
 export type CredentialStatus = "Valid" | "Limited" | "Invalid";
-export type SubscriptionStatus = "Active" | "PastDue" | "Canceled";
 
 export interface SessionUser {
   id: string;
@@ -38,22 +37,6 @@ export interface Me {
   organizations: OrgSummary[];
 }
 
-export interface Plan {
-  code: string;
-  name: string;
-  maxProjects: number | null;
-  monthlyPriceCents: number;
-}
-
-export interface SubscriptionInfo {
-  plan: Plan;
-  status: SubscriptionStatus;
-  isActive: boolean;
-  currentPeriodEndUtc: string | null;
-  projectCount: number;
-  checkoutUrl: string | null;
-}
-
 export interface ProjectApp {
   id: string;
   store: Store;
@@ -61,6 +44,7 @@ export interface ProjectApp {
   displayName: string | null;
   credentialId: string;
   credentialLabel: string;
+  iconUrl: string | null;
 }
 
 export interface Project {
@@ -69,6 +53,8 @@ export interface Project {
   description: string | null;
   apps: ProjectApp[];
   createdAtUtc: string;
+  /** L'icona dell'App Store se c'è, altrimenti quella di Google Play. */
+  iconUrl: string | null;
 }
 
 export interface Credential {
@@ -122,27 +108,6 @@ export interface InvitationPreview {
   accountExists: boolean;
 }
 
-export interface BillingProfile {
-  companyName: string;
-  vatNumber: string | null;
-  taxCode: string | null;
-  addressLine: string;
-  city: string;
-  postalCode: string;
-  province: string | null;
-  countryCode: string;
-  billingEmail: string;
-  sdiCode: string | null;
-  pec: string | null;
-}
-
-export interface BillingOverview {
-  subscription: SubscriptionInfo;
-  memberCount: number;
-  provider: string;
-  profile: BillingProfile | null;
-}
-
 export interface StoreTotals {
   store: Store;
   downloads: number;
@@ -171,4 +136,19 @@ export interface Metrics {
   lastSyncAtUtc: string | null;
   /** Quali metriche fornisce ogni store: dove manca si mostra un trattino, non uno zero. */
   coverage: { store: Store; metrics: string[]; proceedsThrough: string | null }[];
+}
+
+export interface InstanceInfo {
+  setupRequired: boolean;
+  emailEnabled: boolean;
+  version: string;
+}
+
+export interface CreatedInvitation {
+  id: string;
+  email: string;
+  role: OrgRole;
+  expiresAtUtc: string;
+  link: string;
+  emailSent: boolean;
 }

@@ -5,7 +5,6 @@ using Flarelytics.Api.Email;
 using Flarelytics.Api.Features.Auth;
 using Flarelytics.Api.Features.Orgs;
 using Flarelytics.Core;
-using Flarelytics.Core.Billing;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using Flarelytics.Core.Secrets;
@@ -39,7 +38,9 @@ public static class ServiceRegistration
 
     public static void ConfigureAuthentication(this WebApplicationBuilder builder)
     {
-        builder.Services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.Section).ValidateDataAnnotations().ValidateOnStart();
+        builder.Services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.Section)
+            .PostConfigure(o => o.Key = string.IsNullOrWhiteSpace(o.Key) ? GeneratedJwtKey(builder.Configuration) ?? o.Key : o.Key)
+            .ValidateDataAnnotations().ValidateOnStart();
         builder.Services.AddOptions<AuthOptions>().BindConfiguration(AuthOptions.Section).ValidateDataAnnotations().ValidateOnStart();
 
         builder.Services.AddSingleton<TokenService>();
@@ -68,6 +69,32 @@ public static class ServiceRegistration
             });
 
         builder.Services.AddAuthorization();
+    }
+
+    /// <summary>
+    /// La chiave di firma dei token, quando la configurazione non la dà:
+    /// generata al primo avvio accanto alla chiave master, così chi installa
+    /// non deve inventarne una. Solo con <c>Secrets:CreateKeyIfMissing</c>.
+    /// </summary>
+    /// <remarks>
+    /// Se il file si perde, tutti dovranno rifare il login, ma non si perde
+    /// niente: per questo, a differenza della chiave master, rigenerarlo è
+    /// innocuo.
+    /// </remarks>
+    private static string? GeneratedJwtKey(IConfiguration configuration)
+    {
+        var directory = configuration["Secrets:KeysDirectory"];
+        if (string.IsNullOrWhiteSpace(directory) || !configuration.GetValue("Secrets:CreateKeyIfMissing", false)) return null;
+
+        var path = Path.Combine(directory, "jwt.key");
+        if (!File.Exists(path))
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(path, Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)));
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
+        return File.ReadAllText(path).Trim();
     }
 
     /// <summary>
@@ -108,15 +135,15 @@ public static class ServiceRegistration
     }
 
     /// <summary>
-    /// SMTP se configurato, altrimenti il log. In produzione l'SMTP è
-    /// obbligatorio: senza, nessuno riuscirebbe a confermare l'account, e lo si
-    /// scoprirebbe alla prima registrazione invece che all'avvio.
+    /// SMTP se configurato, altrimenti niente email. È facoltativo: senza, gli
+    /// inviti si mandano copiando il link dal pannello e il recupero password
+    /// non è disponibile (il pannello lo sa da <c>/instance</c>).
     /// </summary>
     public static void ConfigureEmail(this WebApplicationBuilder builder)
     {
         builder.Services.AddScoped<AccountEmails>();
 
-        if (builder.Environment.IsProduction() || builder.Configuration.GetSection(SmtpOptions.Section).Exists())
+        if (!string.IsNullOrWhiteSpace(builder.Configuration[$"{SmtpOptions.Section}:Host"]))
         {
             builder.Services.AddOptions<SmtpOptions>().BindConfiguration(SmtpOptions.Section).ValidateDataAnnotations().ValidateOnStart();
             builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
@@ -129,13 +156,12 @@ public static class ServiceRegistration
 
     public static void ConfigureSecrets(this WebApplicationBuilder builder)
     {
-        builder.Services.AddFlarelyticsSecretsAndStores(builder.Configuration, createDevelopmentKey: builder.Environment.IsDevelopment());
+        // Crea la chiave master se manca: comodo in sviluppo e al primo avvio
+        // del container, dove chi installa non deve generarla a mano. Il log
+        // all'avvio ricorda di salvarla fuori dal server.
+        builder.Services.AddFlarelyticsSecretsAndStores(builder.Configuration,
+            createDevelopmentKey: builder.Configuration.GetValue("Secrets:CreateKeyIfMissing", builder.Environment.IsDevelopment()));
         builder.Services.AddScoped<TwoFactorService>();
-    }
-
-    public static void ConfigureBilling(this WebApplicationBuilder builder)
-    {
-        builder.Services.AddSingleton<IBillingProvider, ManualBillingProvider>();
     }
 
     /// <summary>

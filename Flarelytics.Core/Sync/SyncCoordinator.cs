@@ -19,7 +19,6 @@ namespace Flarelytics.Core.Sync;
 /// nell'API, Row-Level Security compresa: un errore nel codice di
 /// sincronizzazione non può scrivere metriche nel tenant sbagliato.</para>
 ///
-/// <para>Si sincronizzano solo i tenant con l'abbonamento attivo.</para>
 /// </remarks>
 public class SyncCoordinator(IServiceScopeFactory scopes, IOptions<SyncOptions> options, ILogger<SyncCoordinator> log)
 {
@@ -59,8 +58,17 @@ public class SyncCoordinator(IServiceScopeFactory scopes, IOptions<SyncOptions> 
         services.GetRequiredService<TenantContext>().Set(tenantId);
         var db = services.GetRequiredService<FlarelyticsDbContext>();
 
-        var subscription = await db.Set<Subscription>().AsNoTracking().SingleOrDefaultAsync(ct);
-        if (subscription is null || !subscription.IsActive(nowUtc)) return;
+        // Le icone prima dei report: sono poche richieste, e il progetto
+        // appena creato ha subito la sua faccia mentre lo storico scarica.
+        try
+        {
+            await services.GetRequiredService<IconRefresher>().RefreshAsync(nowUtc, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            log.LogWarning(e, "Aggiornamento delle icone non riuscito per il tenant {Tenant}", tenantId);
+            db.ChangeTracker.Clear();
+        }
 
         var dueBefore = nowUtc - options.Value.Interval;
         var credentials = await db.Set<StoreCredential>()

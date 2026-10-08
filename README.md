@@ -1,40 +1,59 @@
 # Flarelytics
 
-App Store Connect e Google Play in un'unica dashboard.
+Le tue app su App Store e Google Play in un pannello solo: download, aggiornamenti, disinstallazioni, paesi, con iOS e Android affiancati. Self-hosted: gira sul tuo server, con le tue chiavi.
+
+## Installazione
+
+Servono Docker e Docker Compose.
+
+```bash
+git clone <repository> flarelytics && cd flarelytics
+cat > .env <<EOF
+DB_PASSWORD=una-password-lunga-e-casuale
+PUBLIC_URL=https://flarelytics.tuodominio.it
+EOF
+docker compose up -d
+```
+
+Apri `PUBLIC_URL` e **completa subito l'installazione**: il primo che apre la pagina crea l'account amministratore. Poi attiva la verifica in due passaggi dal tuo account. Gli altri utenti entrano solo su invito.
+
+### HTTPS
+Mettilo dietro un proxy con HTTPS (Caddy, Traefik, nginx…) che inoltra alla porta `8080`. Se lo usi in HTTP da un indirizzo che non è `localhost`, aggiungi `SECURE_COOKIES=false` al file `.env`, altrimenti il browser non conserva la sessione.
+
+### Email (facoltativa)
+Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero password non c'è. Per attivarla aggiungi a `.env` `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`.
+
+## Backup
+
+| Cosa | Dove | Perché |
+|---|---|---|
+| Database | volume `postgres-data` (`docker compose exec postgres pg_dump -U postgres -Fc flarelytics > flarelytics.dump`) | utenti, progetti, metriche |
+| **Chiavi** | volume `flarelytics-keys` | senza la chiave master le credenziali degli store non si decifrano più |
+| Credenziali cifrate | volume `flarelytics-data` | |
+| Report scaricati | volume `flarelytics-reports` | gli store non tengono lo storico per sempre: sono l'unica copia del passato |
+
+Salva le **chiavi in un posto diverso** dal resto: se finiscono nello stesso backup, chi lo ruba ha anche la chiave per aprirlo.
+
+### Rotazione della chiave master
+Aggiungi `v2.key` nel volume delle chiavi, imposta `Secrets__ActiveKeyVersion=v2` e riavvia; ricifra i file esistenti con `SecretVault.RewrapAsync` (il comando non c'è ancora); quando nessuna credenziale usa più `v1` (colonna `KeyVersion`), togli `v1.key`.
+
+## Aggiornamento
+
+```bash
+git pull && docker compose up -d --build
+```
+
+Le migrazioni del database si applicano da sole all'avvio.
 
 ## Sviluppo
 
 Servono .NET 10, Node 22 e Docker.
 
 ```bash
-docker compose -f compose.dev.yaml up -d
-cd Flarelytics.Api && dotnet run          # in un terminale
-cd Flarelytics.Web && npm install && npm run dev   # in un altro
-cd Flarelytics.Worker && dotnet run                # in un terzo, per scaricare i dati dagli store
+docker compose -f compose.dev.yaml up -d          # PostgreSQL su :5433
+cd Flarelytics.Api && dotnet run                  # API + sincronizzazione su :5080 (Scalar su /scalar)
+cd Flarelytics.Web && npm install && npm run dev  # pannello su :5173
+dotnet test                                       # serve Docker (Testcontainers)
 ```
 
-Il pannello è su http://localhost:5173, l'API su http://localhost:5080 (documentazione su /scalar). Le email (conferma, reset, inviti) non partono: i link si leggono nel log dell'API.
-
-Test: `dotnet test` (i test di integrazione avviano PostgreSQL con Testcontainers).
-
-## Produzione
-
-Su una macchina Linux con Docker, dalla cartella `deploy/`:
-
-1. `cp .env.example .env` e compila le variabili.
-2. **Chiave master**, una volta sola:
-   ```bash
-   mkdir -p keys && openssl rand -base64 32 > keys/v1.key
-   sudo chown -R 10001 keys && sudo chmod 500 keys && sudo chmod 400 keys/v1.key
-   ```
-   Salvane una copia **fuori dal server e separata dai backup dei dati**. Senza questa chiave le credenziali dei clienti non si decifrano più; se finisce insieme al backup, la cifratura non protegge niente.
-3. `docker compose up -d --build`
-
-### Backup
-- Database: `docker compose exec postgres pg_dump -U postgres -Fc flarelytics > flarelytics.dump`
-- Credenziali cifrate: il volume `credential-data`.
-- Report grezzi degli store: il volume `report-data`. Gli store non tengono lo storico per sempre (Apple circa un anno): questi file sono l'unica copia di quello che è più vecchio.
-- Chiave master: a parte (vedi sopra).
-
-### Rotazione della chiave master
-Aggiungi `keys/v2.key`, imposta `MASTER_KEY_VERSION=v2` e riavvia; ricifra i file esistenti con `SecretVault.RewrapAsync` (il comando arriverà con il worker); quando nessuna credenziale usa più `v1` (colonna `KeyVersion`), togli `v1.key`.
+In sviluppo le email non partono: i link si leggono nel log dell'API.

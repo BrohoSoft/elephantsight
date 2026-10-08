@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { Check, ChevronsUpDown, CreditCard, FolderKanban, KeyRound, LayoutDashboard, LogOut, Plus, Settings, UserRound, Users } from "lucide-react";
+import { Check, ChevronsUpDown, FolderKanban, KeyRound, LayoutDashboard, LogOut, Plus, Settings, UserRound, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useApiMutation, keys, useMe } from "../api/hooks";
@@ -49,7 +49,6 @@ export function AppShell() {
             <NavItem to={`/o/${navOrg.id}/credentials`} icon={<KeyRound className="size-4" />}>Chiavi degli store</NavItem>
             <p className="px-2 pt-4 pb-1 text-[11px] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
             <NavItem to={`/o/${navOrg.id}/members`} icon={<Users className="size-4" />}>Membri</NavItem>
-            <NavItem to={`/o/${navOrg.id}/billing`} icon={<CreditCard className="size-4" />}>Fatturazione</NavItem>
             <NavItem to={`/o/${navOrg.id}/settings`} icon={<Settings className="size-4" />}>Impostazioni</NavItem>
           </nav>
         )}
@@ -151,7 +150,7 @@ function CreateOrgModal({ open, onOpenChange }: { open: boolean; onOpenChange: (
       open={open}
       onOpenChange={onOpenChange}
       title="Nuova organizzazione"
-      description="Un'organizzazione ha i suoi progetti, le sue chiavi e il suo abbonamento. Serve, per esempio, se segui le app di più clienti."
+      description="Un'organizzazione ha i suoi progetti, le sue chiavi e i suoi membri. Serve, per esempio, se segui le app di più clienti."
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Annulla</Button>
@@ -236,7 +235,6 @@ function MobileBar({ me, orgId }: { me: Me; orgId?: string }) {
             ["/projects", "Progetti"],
             ["/credentials", "Chiavi"],
             ["/members", "Membri"],
-            ["/billing", "Fatturazione"],
             ["/settings", "Impostazioni"],
           ].map(([path, label]) => (
             <NavLink

@@ -1,6 +1,4 @@
-import { ArrowRight } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
 import { errorMessage } from "../api/client";
 import { canAdmin, keys, useApiMutation } from "../api/hooks";
 import { Alert, Button, Field, Input, PageHeader, Panel } from "../components/ui";
@@ -34,13 +32,6 @@ export function OrgSettingsPage() {
         </div>
       </Panel>
 
-      <Link to={`/o/${org.id}/billing`} className="flex items-center justify-between rounded-lg border border-line bg-panel px-4 py-3 hover:bg-hover/50">
-        <span>
-          <span className="block text-[13px] text-fg">Piano e fatturazione</span>
-          <span className="block text-xs text-muted">Abbonamento, utilizzo e dati per le fatture.</span>
-        </span>
-        <ArrowRight className="size-4 text-faint" />
-      </Link>
     </>
   );
 }

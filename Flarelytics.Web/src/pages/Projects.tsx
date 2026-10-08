@@ -2,8 +2,9 @@ import { FolderKanban, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { errorMessage } from "../api/client";
-import { canAdmin, keys, useApiMutation, useProjects, useSubscription } from "../api/hooks";
+import { canAdmin, keys, useApiMutation, useProjects } from "../api/hooks";
 import type { Project } from "../api/types";
+import { AppIcon } from "../components/AppIcon";
 import { StoreBadge, StoreGlyph } from "../components/StoreIcons";
 import { Alert, Button, EmptyState, Field, Input, Modal, PageHeader, PageLoader, Textarea } from "../components/ui";
 import { formatDate, useOrg } from "../components/org";
@@ -11,36 +12,25 @@ import { formatDate, useOrg } from "../components/org";
 export function ProjectsPage() {
   const org = useOrg();
   const projects = useProjects(org.id);
-  const subscription = useSubscription(org.id);
   const [creating, setCreating] = useState(false);
 
   if (projects.isPending) return <PageLoader />;
 
-  const limit = subscription.data?.plan.maxProjects;
   const count = projects.data?.length ?? 0;
-  const atLimit = limit != null && count >= limit;
 
   return (
     <>
       <PageHeader
         title="Progetti"
-        description={limit != null ? `${count} di ${limit} progetti del piano ${subscription.data!.plan.name}.` : `${count} progetti.`}
+        description={count === 1 ? "1 progetto." : `${count} progetti.`}
         actions={
           canAdmin(org.role) && (
-            <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)} disabled={atLimit}>
+            <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>
               Nuovo progetto
             </Button>
           )
         }
       />
-
-      {atLimit && canAdmin(org.role) && (
-        <div className="mb-4">
-          <Alert tone="warn" title="Hai raggiunto il limite del piano">
-            Per creare altri progetti <Link to={`/o/${org.id}/billing`} className="text-fg underline underline-offset-4">passa a un piano superiore</Link>.
-          </Alert>
-        </div>
-      )}
 
       {count === 0 ? (
         <div className="rounded-lg border border-dashed border-line-strong">
@@ -72,7 +62,10 @@ function ProjectCard({ orgId, project }: { orgId: string; project: Project }) {
       className="group flex flex-col rounded-lg border border-line bg-panel p-4 transition-colors hover:border-line-strong hover:bg-panel-2"
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="truncate text-sm font-medium text-fg">{project.name}</h3>
+        <div className="flex min-w-0 items-center gap-3">
+          <AppIcon src={project.iconUrl} name={project.name} />
+          <h3 className="truncate text-sm font-medium text-fg">{project.name}</h3>
+        </div>
         <span className="flex gap-1 text-faint">
           {(["AppStore", "GooglePlay"] as const).map((s) => (
             <StoreGlyph
@@ -102,7 +95,7 @@ function CreateProjectModal({ orgId, open, onOpenChange }: { orgId: string; open
   const [description, setDescription] = useState("");
   const create = useApiMutation<void, Project>(
     () => ({ path: `/orgs/${orgId}/projects`, body: { name, description: description || null } }),
-    [keys.projects(orgId), keys.subscription(orgId)],
+    [keys.projects(orgId)],
   );
 
   return (

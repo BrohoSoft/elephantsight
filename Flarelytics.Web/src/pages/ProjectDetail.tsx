@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { errorMessage } from "../api/client";
 import { canAdmin, keys, useApiMutation, useCredentialApps, useCredentials, useProject } from "../api/hooks";
 import type { Project, ProjectApp, Store } from "../api/types";
+import { AppIcon } from "../components/AppIcon";
 import { StoreBadge, StoreGlyph, storeName } from "../components/StoreIcons";
 import { Alert, Button, EmptyState, Field, Input, Modal, PageLoader, Select, Spinner, Textarea } from "../components/ui";
 import { useOrg } from "../components/org";
@@ -29,11 +30,14 @@ export function ProjectDetailPage() {
       </Link>
 
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl font-medium tracking-tight text-fg">{p.name}</h1>
-          {p.description && <p className="mt-1 text-[13px] text-muted">{p.description}</p>}
-          <div className="mt-2 flex gap-1.5">
-            {p.apps.map((a) => <StoreBadge key={a.id} store={a.store} />)}
+        <div className="flex min-w-0 items-center gap-4">
+          <AppIcon src={p.iconUrl} name={p.name} size="lg" />
+          <div className="min-w-0">
+            <h1 className="text-xl font-medium tracking-tight text-fg">{p.name}</h1>
+            {p.description && <p className="mt-1 text-[13px] text-muted">{p.description}</p>}
+            <div className="mt-2 flex gap-1.5">
+              {p.apps.map((a) => <StoreBadge key={a.id} store={a.store} />)}
+            </div>
           </div>
         </div>
         {admin && <Button onClick={() => setEditing(true)}>Modifica</Button>}
@@ -70,10 +74,13 @@ function StoreSlot({ orgId, project, store, admin, onLink }: { orgId: string; pr
 
       {app ? (
         <div className="mt-3 flex items-end justify-between gap-3">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <AppIcon src={app.iconUrl} name={app.displayName ?? app.externalAppId} />
+            <div className="min-w-0">
             <p className="truncate text-sm text-fg">{app.displayName ?? app.externalAppId}</p>
             <p className="mt-0.5 truncate font-mono text-xs text-faint">{app.externalAppId}</p>
             <p className="mt-1 text-xs text-muted">Con la chiave «{app.credentialLabel}»</p>
+            </div>
           </div>
           {admin && (
             <div className="flex shrink-0 gap-1.5">
@@ -240,7 +247,7 @@ function EditProjectModal({ orgId, project, open, onOpenChange }: { orgId: strin
     () => ({ path: `/orgs/${orgId}/projects/${project.id}`, method: "PUT", body: { name, description: description || null } }),
     [keys.project(orgId, project.id), keys.projects(orgId)],
   );
-  const remove = useApiMutation(() => ({ path: `/orgs/${orgId}/projects/${project.id}`, method: "DELETE" }), [keys.projects(orgId), keys.subscription(orgId)]);
+  const remove = useApiMutation(() => ({ path: `/orgs/${orgId}/projects/${project.id}`, method: "DELETE" }), [keys.projects(orgId)]);
 
   return (
     <Modal

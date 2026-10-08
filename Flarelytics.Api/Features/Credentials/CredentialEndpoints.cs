@@ -38,7 +38,7 @@ public static partial class CredentialEndpoints
         var admin = credentials.MapGroup("").RequireOrgRole(OrgRole.Admin);
         admin.MapGet("/{credentialId:guid}/apps", ListApps);
 
-        var write = admin.MapGroup("").RequireActiveSubscription();
+        var write = admin.MapGroup("");
         write.MapPost("/app-store", CreateAppStore).Validating<AppStoreCredentialRequest>();
         write.MapPost("/google-play", CreateGooglePlay).Validating<GooglePlayCredentialRequest>();
         write.MapPost("/{credentialId:guid}/verify", Verify);

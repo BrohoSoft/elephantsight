@@ -47,7 +47,7 @@ public class AppStoreConnectGateway(HttpClient http) : IStoreGateway
                     "Apple non riconosce la chiave: controlla Key ID e Issuer ID, e che la chiave non sia stata revocata."),
 
                 HttpStatusCode.Forbidden => new(VerificationOutcome.Limited,
-                    "La chiave è valida ma il suo ruolo non basta per leggere le app: generane una del team con accesso Finance."),
+                    "La chiave è valida ma il suo ruolo non basta per leggere le app: generane una del team con accesso Sales."),
 
                 _ => new(VerificationOutcome.Unreachable, $"App Store Connect ha risposto {(int)response.StatusCode}: riprova fra qualche minuto.")
             };

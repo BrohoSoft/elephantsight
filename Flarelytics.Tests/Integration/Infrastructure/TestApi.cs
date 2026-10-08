@@ -1,3 +1,6 @@
+using Flarelytics.Core.Database;
+using Flarelytics.Core.Database.Entities;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -20,24 +23,35 @@ public static partial class TestApi
         Converters = { new JsonStringEnumConverter() }
     };
 
-    /// <summary>Registrazione, conferma e accesso: ne esce un client con il bearer impostato.</summary>
+    /// <summary>
+    /// Un utente con la sua organizzazione, già dentro: ne esce un client con
+    /// il bearer impostato.
+    /// </summary>
+    /// <remarks>
+    /// Non c'è registrazione libera: il primo utente lo crea l'installer, gli
+    /// altri entrano per invito. Per i test, che hanno bisogno di tante
+    /// organizzazioni separate, l'utente si crea direttamente nel database
+    /// (come farebbe l'installer) e poi entra dall'API come chiunque.
+    /// </remarks>
     public static async Task<Account> SignUpAsync(this FlarelyticsAppFactory app, string? email = null)
     {
         email ??= $"u{Guid.NewGuid():N}@example.com";
-        var client = app.CreateClient();
+        Guid orgId;
 
-        var registered = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        using (var scope = app.Services.CreateScope())
         {
-            email, password = Password, fullName = "Mario Rossi", organizationName = "Acme " + email
-        });
-        Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
-        var body = await registered.Content.ReadFromJsonAsync<JsonElement>();
+            var db = scope.ServiceProvider.GetRequiredService<FlarelyticsDbContext>();
+            var user = User.Create(email, Password, "Mario Rossi");
+            user.ConfirmEmail(DateTime.UtcNow);
+            var org = Tenant.Create("Acme " + email);
+            db.AddRange(user, org, Membership.Create(org.Id, user.Id, OrgRole.Owner));
+            await db.SaveChangesAsync();
+            orgId = org.Id;
+        }
 
-        var confirmed = await client.PostAsJsonAsync("/api/v1/auth/confirm-email", new { token = app.ConfirmationToken(email) });
-        Assert.Equal(HttpStatusCode.NoContent, confirmed.StatusCode);
-
+        var client = app.CreateClient();
         await client.LoginAsync(email);
-        return new Account(email, body.GetProperty("organizationId").GetGuid(), client);
+        return new Account(email, orgId, client);
     }
 
     public static async Task<string> LoginAsync(this HttpClient client, string email)
@@ -49,8 +63,6 @@ public static partial class TestApi
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return token;
     }
-
-    public static string ConfirmationToken(this FlarelyticsAppFactory app, string email) => app.LinkToken(email);
 
     /// <summary>Il token del link nell'ultima email arrivata a quell'indirizzo.</summary>
     public static string LinkToken(this FlarelyticsAppFactory app, string email) =>

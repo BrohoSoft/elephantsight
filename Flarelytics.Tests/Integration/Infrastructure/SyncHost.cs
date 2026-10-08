@@ -18,6 +18,7 @@ public sealed class SyncHost : IAsyncDisposable
     public ServiceProvider Services { get; }
     public FakeAppleSalesReports Apple { get; } = new();
     public FakeGooglePlayReports Google { get; } = new();
+    public FakeAppIconSource Icons { get; } = new();
     public string ReportsDirectory { get; }
 
     public SyncHost(FlarelyticsAppFactory app, string connectionString, int backfillDays = 10)
@@ -45,6 +46,8 @@ public sealed class SyncHost : IAsyncDisposable
         services.AddSingleton<IAppleSalesReports>(Apple);
         services.RemoveAll<IGooglePlayReports>();
         services.AddSingleton<IGooglePlayReports>(Google);
+        services.RemoveAll<IAppIconSource>();
+        services.AddSingleton<IAppIconSource>(Icons);
 
         Services = services.BuildServiceProvider();
     }
@@ -118,26 +121,18 @@ public static class GoogleReports
     }
 
     public static string Name(string package, DateOnly month) => $"stats/installs/installs_{package}_{month:yyyyMM}_country.csv";
+}
 
-    /// <summary>Uno zip con dentro un CSV, come i report finanziari di Google.</summary>
-    public static byte[] Zip(string csvName, string csv)
+/// <summary>Icone finte: un PNG minuscolo per le app che si conoscono, null per le altre.</summary>
+public class FakeAppIconSource : IAppIconSource
+{
+    public static readonly byte[] Png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+    public HashSet<string> Known { get; } = [];
+    public List<(Store Store, string AppId, IReadOnlyList<string> Countries)> Calls { get; } = [];
+
+    public Task<IconImage?> FetchAsync(Store store, string appId, IReadOnlyList<string> countries, CancellationToken ct)
     {
-        using var output = new MemoryStream();
-        using (var archive = new System.IO.Compression.ZipArchive(output, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
-        {
-            using var writer = new StreamWriter(archive.CreateEntry(csvName).Open(), new System.Text.UTF8Encoding(false));
-            writer.Write(csv);
-        }
-        return output.ToArray();
+        Calls.Add((store, appId, countries));
+        return Task.FromResult(Known.Contains(appId) ? new IconImage(Png, "image/png") : null);
     }
-
-    public const string SalesHeader = "Order Number,Order Charged Date,Order Charged Timestamp,Financial Status,Device Model,Product Title,Package ID,Product Type,SKU ID,Currency of Sale,Item Price,Taxes Collected,Charged Amount,City of Buyer,State of Buyer,Postcode of Buyer,Country of Buyer";
-
-    public static string SalesRow(DateOnly date, string status, string type, string package, string currency, decimal charged, string country) =>
-        $"GPA.{Guid.NewGuid():N},{date:yyyy-MM-dd},0,{status},Pixel,Prodotto,{package},{type},sku,{currency},{charged.ToString(System.Globalization.CultureInfo.InvariantCulture)},0,{charged.ToString(System.Globalization.CultureInfo.InvariantCulture)},,,,{country}";
-
-    public const string EarningsHeader = "Description,Transaction Date,Transaction Time,Tax Type,Transaction Type,Refund Type,Product Title,Package ID,Product Type,SKU ID,Hardware,Buyer Country,Buyer State,Buyer Postcode,Buyer Currency,Amount (Buyer Currency),Currency Conversion Rate,Merchant Currency,Amount (Merchant Currency)";
-
-    public static string EarningsRow(DateOnly date, string type, string package, string country, string currency, decimal amount) =>
-        $"GPA.x,\"{date.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)}\",10:00:00 AM PDT,,{type},,Prodotto,{package},inapp,sku,Pixel,{country},,,{currency},{amount.ToString(System.Globalization.CultureInfo.InvariantCulture)},1,{currency},{amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 }

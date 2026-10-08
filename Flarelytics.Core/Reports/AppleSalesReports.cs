@@ -94,7 +94,7 @@ public class AppleSalesReports(HttpClient http) : IAppleSalesReports
                     Message: $"Apple non accetta più la chiave: probabilmente è stata revocata. ({detail})"),
 
                 HttpStatusCode.Forbidden => new(AppleFetchOutcome.Forbidden,
-                    Message: $"La chiave non può scaricare i report di vendita: serve una chiave del team con accesso Finance o Sales, e il Vendor Number giusto. Apple dice: {detail}"),
+                    Message: $"La chiave non può scaricare i report di vendita: serve una chiave del team con accesso Sales (o Finance), e il Vendor Number giusto. Apple dice: {detail}"),
 
                 HttpStatusCode.TooManyRequests => new(AppleFetchOutcome.RateLimited, Message: "Apple ha chiesto di rallentare."),
 

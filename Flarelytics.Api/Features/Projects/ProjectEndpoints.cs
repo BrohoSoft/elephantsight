@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Flarelytics.Api.Common;
+using Flarelytics.Api.Features.Icons;
 using Flarelytics.Api.Features.Orgs;
-using Flarelytics.Core.Billing;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using FluentValidation;
@@ -27,8 +27,8 @@ public static partial class ProjectEndpoints
         projects.MapGet("", List);
         projects.MapGet("/{projectId:guid}", Get);
 
-        // Le modifiche: almeno admin, e abbonamento attivo.
-        var write = projects.MapGroup("").RequireOrgRole(OrgRole.Admin).RequireActiveSubscription();
+        // Le modifiche: almeno admin.
+        var write = projects.MapGroup("").RequireOrgRole(OrgRole.Admin);
         write.MapPost("", Create).Validating<ProjectRequest>();
         write.MapPut("/{projectId:guid}", Update).Validating<ProjectRequest>();
         write.MapDelete("/{projectId:guid}", Delete);
@@ -43,24 +43,20 @@ public static partial class ProjectEndpoints
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
 
-        return Results.Ok(projects.Select(ProjectResponse.From));
+        var icons = await IconEndpoints.UrlsAsync(db, projects.SelectMany(p => p.Apps).Select(a => (a.Store, a.ExternalAppId)), ct);
+        return Results.Ok(projects.Select(p => ProjectResponse.From(p, icons)));
     }
 
-    private static async Task<IResult> Get(Guid projectId, FlarelyticsDbContext db, CancellationToken ct) =>
-        Results.Ok(ProjectResponse.From(await LoadAsync(db, projectId, ct)));
+    private static async Task<IResult> Get(Guid projectId, FlarelyticsDbContext db, CancellationToken ct)
+    {
+        var project = await LoadAsync(db, projectId, ct);
+        var icons = await IconEndpoints.UrlsAsync(db, project.Apps.Select(a => (a.Store, a.ExternalAppId)), ct);
+        return Results.Ok(ProjectResponse.From(project, icons));
+    }
 
-    /// <summary>Crea un progetto vuoto. Il limite del piano si controlla qui, ed è l'unico posto che lo fa rispettare.</summary>
+    /// <summary>Crea un progetto vuoto: le app si collegano dopo.</summary>
     private static async Task<IResult> Create(ProjectRequest req, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
-        var subscription = await db.Set<Subscription>().AsNoTracking().SingleAsync(ct);
-        var plan = Plans.Resolve(subscription.PlanCode);
-
-        if (plan.MaxProjects is { } max && await db.Set<Project>().CountAsync(ct) >= max)
-        {
-            throw ApiProblem.Conflict("plan_limit_reached",
-                $"Il piano {plan.Name} permette al massimo {max} progetti: passa a un piano superiore per crearne altri.");
-        }
-
         await EnsureNameIsFreeAsync(db, req.Name, null, ct);
 
         var project = Project.Create(org.TenantId, req.Name, req.Description);
@@ -156,16 +152,21 @@ public record ProjectRequest(string Name, string? Description);
 /// <param name="DisplayName">Il nome da mostrare; di solito quello che restituisce l'elenco delle app della credenziale.</param>
 public record LinkAppRequest(Guid CredentialId, string ExternalAppId, string? DisplayName);
 
-public record ProjectAppResponse(Guid Id, Store Store, string ExternalAppId, string? DisplayName, Guid CredentialId, string CredentialLabel);
+/// <param name="IconUrl">L'icona dello store, quando il worker l'ha già scaricata.</param>
+public record ProjectAppResponse(Guid Id, Store Store, string ExternalAppId, string? DisplayName, Guid CredentialId, string CredentialLabel, string? IconUrl);
 
-public record ProjectResponse(Guid Id, string Name, string? Description, IReadOnlyList<ProjectAppResponse> Apps, DateTime CreatedAtUtc)
+/// <param name="IconUrl">L'icona del progetto: quella dell'App Store se c'è, altrimenti quella di Google Play.</param>
+public record ProjectResponse(Guid Id, string Name, string? Description, IReadOnlyList<ProjectAppResponse> Apps, DateTime CreatedAtUtc, string? IconUrl)
 {
-    public static ProjectResponse From(Project p) => new(
-        p.Id, p.Name, p.Description,
-        p.Apps.OrderBy(a => a.Store)
-            .Select(a => new ProjectAppResponse(a.Id, a.Store, a.ExternalAppId, a.DisplayName, a.CredentialId, a.Credential.Label))
-            .ToList(),
-        p.CreatedAtUtc);
+    public static ProjectResponse From(Project p, IReadOnlyDictionary<(Store, string), string>? icons = null)
+    {
+        var apps = p.Apps.OrderBy(a => a.Store)
+            .Select(a => new ProjectAppResponse(a.Id, a.Store, a.ExternalAppId, a.DisplayName, a.CredentialId, a.Credential.Label,
+                icons?.GetValueOrDefault((a.Store, a.ExternalAppId))))
+            .ToList();
+
+        return new ProjectResponse(p.Id, p.Name, p.Description, apps, p.CreatedAtUtc, apps.Select(a => a.IconUrl).FirstOrDefault(u => u is not null));
+    }
 }
 
 public class ProjectRequestValidator : AbstractValidator<ProjectRequest>

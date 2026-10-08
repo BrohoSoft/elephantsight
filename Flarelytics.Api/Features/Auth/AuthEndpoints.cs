@@ -2,10 +2,8 @@ using Flarelytics.Api.Auth;
 using Flarelytics.Api.Common;
 using Flarelytics.Api.Email;
 using Flarelytics.Api.Features.Orgs;
-using Flarelytics.Core.Billing;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
-using Flarelytics.Core.Tenancy;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,7 +17,6 @@ public static class AuthEndpoints
 {
     public const string RateLimitPolicy = "auth";
 
-    private static readonly TimeSpan ConfirmationLifetime = TimeSpan.FromHours(24);
     private static readonly TimeSpan ResetLifetime = TimeSpan.FromHours(1);
 
     public static void MapAuth(this IEndpointRouteBuilder api)
@@ -30,8 +27,6 @@ public static class AuthEndpoints
         var auth = api.MapGroup("/auth").AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
 
         auth.MapPost("/register", Register).Validating<RegisterRequest>();
-        auth.MapPost("/confirm-email", ConfirmEmail).Validating<TokenRequest>();
-        auth.MapPost("/resend-confirmation", ResendConfirmation).Validating<EmailRequest>();
         auth.MapPost("/login", Login).Validating<LoginRequest>();
         auth.MapPost("/login/2fa", LoginSecondFactor).Validating<SecondFactorRequest>();
         auth.MapPost("/refresh", Refresh);
@@ -41,96 +36,36 @@ public static class AuthEndpoints
     }
 
     /// <summary>
-    /// Crea l'account. Senza invito crea anche l'organizzazione (di cui
-    /// l'utente è owner) e il suo abbonamento; con un invito lo fa entrare in
-    /// quella che l'ha invitato.
+    /// Crea l'account di una persona invitata e la fa entrare nell'organizzazione
+    /// che l'ha invitata. È l'unico modo di registrarsi: non c'è registrazione
+    /// libera, e il primo utente lo crea l'installer (<c>/setup</c>).
     /// </summary>
     /// <remarks>
-    /// Senza invito l'account non può entrare finché l'email non è confermata.
-    /// Con l'invito invece è già confermata: il link è arrivato a
-    /// quell'indirizzo, e averlo in mano ne prova il possesso.
-    ///
-    /// Con i pagamenti in sordina il piano risulta già attivo; con un provider
-    /// vero la risposta porterebbe un <c>checkoutUrl</c>.
+    /// L'email non va confermata: il link d'invito è arrivato a quell'indirizzo,
+    /// e averlo in mano ne prova il possesso.
     /// </remarks>
-    private static async Task<IResult> Register(
-        RegisterRequest req, FlarelyticsDbContext db, TenantContext tenant, IBillingProvider billing,
-        AccountEmails emails, CancellationToken ct)
+    private static async Task<IResult> Register(RegisterRequest req, FlarelyticsDbContext db, CancellationToken ct)
     {
         var email = User.NormalizeEmail(req.Email);
         if (await db.Set<User>().AnyAsync(u => u.Email == email, ct))
         {
-            throw ApiProblem.Conflict("email_taken", "Esiste già un account con questa email.");
+            throw ApiProblem.Conflict("email_taken", "Esiste già un account con questa email: accedi e accetta l'invito da lì.");
         }
 
         var now = DateTime.UtcNow;
+        var invitation = await Invitations.FindPendingAsync(db, req.InvitationToken, now, ct);
+        if (invitation.Email != email)
+        {
+            throw ApiProblem.Forbidden("L'invito è per un altro indirizzo email.");
+        }
+
         var user = User.Create(email, req.Password, req.FullName);
-
-        if (req.InvitationToken is { } invitationToken)
-        {
-            var invitation = await Invitations.FindPendingAsync(db, invitationToken, now, ct);
-            if (invitation.Email != email)
-            {
-                throw ApiProblem.Forbidden("L'invito è per un altro indirizzo email.");
-            }
-
-            user.ConfirmEmail(now);
-            invitation.Accept(now);
-            db.AddRange(user, Membership.Create(invitation.TenantId, user.Id, invitation.Role));
-            await db.SaveChangesAsync(ct);
-
-            return Results.Created("/api/v1/me", new RegisterResponse(user.Id, invitation.TenantId, null, EmailConfirmationRequired: false));
-        }
-
-        var plan = Plans.Find(req.Plan ?? Plans.Starter.Code)!;
-        var org = Tenant.Create(req.OrganizationName!);
-
-        // Prima di salvare: l'abbonamento è una riga del tenant, e la Row-Level
-        // Security la accetta solo se la connessione dice di essere quel tenant.
-        tenant.Set(org.Id);
-        var checkout = await billing.StartAsync(org.Id, plan, ct);
-
-        var token = SecureToken.Create();
-        db.AddRange(user, org, Membership.Create(org.Id, user.Id, OrgRole.Owner), checkout.Subscription,
-            EmailToken.Issue(user.Id, EmailTokenPurpose.ConfirmEmail, token, now, ConfirmationLifetime));
-        await db.SaveChangesAsync(ct);
-
-        await emails.SendConfirmationAsync(user.Email, user.FullName, token, ct);
-
-        return Results.Created("/api/v1/me", new RegisterResponse(user.Id, org.Id, checkout.CheckoutUrl, EmailConfirmationRequired: true));
-    }
-
-    private static async Task<IResult> ConfirmEmail(TokenRequest req, FlarelyticsDbContext db, CancellationToken ct)
-    {
-        var now = DateTime.UtcNow;
-        var token = await FindUsableTokenAsync(db, req.Token, EmailTokenPurpose.ConfirmEmail, now, ct);
-        if (token is null) throw ApiProblem.BadRequest("invalid_token", "Il link non è valido o è scaduto.");
-
-        var user = await db.Set<User>().SingleAsync(u => u.Id == token.UserId, ct);
         user.ConfirmEmail(now);
-        token.MarkUsed(now);
+        invitation.Accept(now);
+        db.AddRange(user, Membership.Create(invitation.TenantId, user.Id, invitation.Role));
         await db.SaveChangesAsync(ct);
 
-        return Results.NoContent();
-    }
-
-    /// <summary>
-    /// Sempre 202, anche se l'email non esiste o è già confermata: la risposta
-    /// non deve dire a un estraneo quali indirizzi sono registrati.
-    /// </summary>
-    private static async Task<IResult> ResendConfirmation(
-        EmailRequest req, FlarelyticsDbContext db, AccountEmails emails, CancellationToken ct)
-    {
-        var email = User.NormalizeEmail(req.Email);
-        var user = await db.Set<User>().SingleOrDefaultAsync(u => u.Email == email, ct);
-
-        if (user is { IsEmailConfirmed: false })
-        {
-            var token = await ReplaceTokenAsync(db, user, EmailTokenPurpose.ConfirmEmail, ConfirmationLifetime, ct);
-            await emails.SendConfirmationAsync(user.Email, user.FullName, token, ct);
-        }
-
-        return Results.Accepted();
+        return Results.Created("/api/v1/me", new RegisterResponse(user.Id, invitation.TenantId));
     }
 
     /// <summary>
@@ -139,10 +74,8 @@ public static class AuthEndpoints
     /// sfida, da completare su <c>/auth/login/2fa</c>.
     /// </summary>
     /// <remarks>
-    /// Email inesistente e password sbagliata danno lo stesso 401. L'email non
-    /// confermata invece ha il suo 403: lo vede solo chi conosce già la
-    /// password, quindi non rivela niente a un estraneo, e permette al frontend
-    /// di proporre il reinvio del link.
+    /// Email inesistente e password sbagliata danno lo stesso 401, per non dire
+    /// a un estraneo quali indirizzi sono registrati.
     /// </remarks>
     private static async Task<IResult> Login(
         LoginRequest req, FlarelyticsDbContext db, TokenService tokens, RefreshTokenService sessions,
@@ -154,11 +87,6 @@ public static class AuthEndpoints
         if (user is null || !user.VerifyPassword(req.Password))
         {
             throw new ApiProblem(StatusCodes.Status401Unauthorized, "invalid_credentials", "Email o password non corrette.");
-        }
-
-        if (!user.IsEmailConfirmed)
-        {
-            throw new ApiProblem(StatusCodes.Status403Forbidden, "email_not_confirmed", "Conferma l'email prima di accedere.");
         }
 
         var now = DateTime.UtcNow;
@@ -341,14 +269,10 @@ public static class AuthEndpoints
     }
 }
 
-/// <param name="OrganizationName">Obbligatorio senza invito; con l'invito si ignora.</param>
-/// <param name="Plan">Codice del piano: <c>starter</c> se assente. Con l'invito si ignora.</param>
-/// <param name="InvitationToken">Il token del link d'invito, se ci si registra per entrare in un'organizzazione esistente.</param>
-public record RegisterRequest(string Email, string Password, string FullName, string? OrganizationName, string? Plan, string? InvitationToken = null);
+/// <param name="InvitationToken">Il token del link d'invito: senza invito non ci si registra.</param>
+public record RegisterRequest(string Email, string Password, string FullName, string InvitationToken);
 
-/// <param name="CheckoutUrl">Null finché i pagamenti sono in sordina.</param>
-/// <param name="EmailConfirmationRequired">False con l'invito: si può accedere subito.</param>
-public record RegisterResponse(Guid UserId, Guid OrganizationId, string? CheckoutUrl, bool EmailConfirmationRequired);
+public record RegisterResponse(Guid UserId, Guid OrganizationId);
 
 /// <param name="ChallengeToken">Da rimandare con il codice su <c>/auth/login/2fa</c>.</param>
 public record SecondFactorChallenge(string ChallengeToken, TimeSpan ExpiresIn)
@@ -361,7 +285,6 @@ public record SecondFactorRequest(string ChallengeToken, string Code);
 
 public record LoginRequest(string Email, string Password);
 public record EmailRequest(string Email);
-public record TokenRequest(string Token);
 public record ResetPasswordRequest(string Token, string Password);
 
 /// <param name="AccessToken">Da mandare come <c>Authorization: Bearer</c>. Va tenuto in memoria, non in localStorage.</param>
@@ -385,9 +308,7 @@ public class RegisterRequestValidator : AbstractValidator<RegisterRequest>
         // senza dirlo, e due password diverse risulterebbero uguali.
         RuleFor(x => x.Password).StrongPassword();
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.OrganizationName).NotEmpty().When(x => x.InvitationToken is null).MaximumLength(100);
-        RuleFor(x => x.Plan).Must(p => p is null || Plans.Find(p) is not null).WithMessage("Piano sconosciuto.");
-        RuleFor(x => x.InvitationToken).MaximumLength(100);
+        RuleFor(x => x.InvitationToken).NotEmpty().MaximumLength(100);
     }
 }
 
@@ -412,11 +333,6 @@ public class LoginRequestValidator : AbstractValidator<LoginRequest>
 public class EmailRequestValidator : AbstractValidator<EmailRequest>
 {
     public EmailRequestValidator() => RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(255);
-}
-
-public class TokenRequestValidator : AbstractValidator<TokenRequest>
-{
-    public TokenRequestValidator() => RuleFor(x => x.Token).NotEmpty().MaximumLength(100);
 }
 
 public class ResetPasswordRequestValidator : AbstractValidator<ResetPasswordRequest>

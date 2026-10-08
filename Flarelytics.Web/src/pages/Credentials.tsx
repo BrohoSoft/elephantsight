@@ -257,7 +257,7 @@ function AddCredentialModal({ orgId, open, onOpenChange }: { orgId: string; open
           <>
             <Steps>
               <li>In App Store Connect apri <span className="text-fg">Utenti e accesso → Integrazioni → App Store Connect API</span>.</li>
-              <li>In <span className="text-fg">Chiavi del team</span> genera una chiave con accesso <span className="text-fg">Finance</span>: le chiavi individuali non leggono vendite e finanze.</li>
+              <li>In <span className="text-fg">Chiavi del team</span> genera una chiave con accesso <span className="text-fg">Sales</span>: i download Apple stanno nel report Sales and Trends. Le chiavi individuali non lo leggono.</li>
               <li>Scarica il file <Mono>AuthKey_….p8</Mono>: Apple lo fa scaricare una volta sola.</li>
               <li>Copia l'<span className="text-fg">Issuer ID</span> in cima alla pagina e il Key ID accanto alla chiave.</li>
             </Steps>
@@ -270,7 +270,7 @@ function AddCredentialModal({ orgId, open, onOpenChange }: { orgId: string; open
                 <Input className="font-mono" value={apple.issuerId} onChange={(e) => setApple({ ...apple, issuerId: e.target.value.trim() })} placeholder="69a6de7e-…" />
               </Field>
             </div>
-            <Field label="Vendor Number" hint="In Pagamenti e resoconti finanziari. Senza, le vendite non si possono scaricare.">
+            <Field label="Vendor Number" hint="In Pagamenti e resoconti finanziari, sotto il nome dell'account. Senza, i download non si possono scaricare.">
               <Input className="font-mono" value={apple.vendorNumber} onChange={(e) => setApple({ ...apple, vendorNumber: e.target.value.trim() })} placeholder="85012345" />
             </Field>
           </>

@@ -1,43 +1,9 @@
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { errorMessage, request } from "../../api/client";
 import { AuthLayout } from "../../components/AuthLayout";
-import { Alert, Button, Field, Input, PageLoader } from "../../components/ui";
-
-/** La pagina del link di conferma: manda il token appena si apre. */
-export function ConfirmEmailPage() {
-  const [params] = useSearchParams();
-  const token = params.get("token") ?? "";
-  const confirm = useMutation({ mutationFn: () => request("/auth/confirm-email", { method: "POST", body: { token }, anonymous: true }) });
-
-  // Una volta sola anche in StrictMode, che in sviluppo monta i componenti due
-  // volte: il secondo invio troverebbe il token già usato e mostrerebbe un errore.
-  const sent = useRef(false);
-  useEffect(() => {
-    if (!sent.current) {
-      sent.current = true;
-      confirm.mutate();
-    }
-  }, [confirm]);
-
-  return (
-    <AuthLayout title="Conferma dell'email">
-      {confirm.isPending || confirm.isIdle ? (
-        <PageLoader />
-      ) : confirm.isSuccess ? (
-        <div className="space-y-4">
-          <Alert tone="ok" title="Email confermata">Ora puoi accedere.</Alert>
-          <Link to="/login">
-            <Button variant="primary" className="h-9 w-full">Accedi</Button>
-          </Link>
-        </div>
-      ) : (
-        <Alert tone="bad">{errorMessage(confirm.error)}</Alert>
-      )}
-    </AuthLayout>
-  );
-}
+import { Alert, Button, Field, Input } from "../../components/ui";
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState("");

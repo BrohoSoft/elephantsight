@@ -4,10 +4,10 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useMetrics } from "../api/hooks";
 import type { Metrics, Store, StoreTotals } from "../api/types";
-import { countryName, formatDayYear, formatEur, formatInt, percentChange } from "./format";
+import { countryName, formatDayYear, formatInt, percentChange } from "./format";
 import { formatDateTime } from "./org";
 import { StoreGlyph } from "./StoreIcons";
-import { TrendChart, type ChartMetric } from "./TrendChart";
+import { TrendChart } from "./TrendChart";
 import { Alert, EmptyState, Panel, Segmented, Spinner } from "./ui";
 
 const PERIODS = [
@@ -26,7 +26,6 @@ type Period = (typeof PERIODS)[number]["value"];
  */
 export function Dashboard({ orgId, projectId, children }: { orgId: string; projectId?: string; children?: (m: Metrics) => ReactNode }) {
   const [period, setPeriod] = useState<Period>("30");
-  const [chartMetric, setChartMetric] = useState<ChartMetric>("downloads");
   const metrics = useMetrics(orgId, Number(period), projectId);
 
   if (metrics.isPending) {
@@ -65,15 +64,6 @@ export function Dashboard({ orgId, projectId, children }: { orgId: string; proje
     Object.fromEntries(m.byStore.filter((t) => covers(t.store, metric)).map((t) => [t.store, pick(t)])) as Partial<Record<Store, number>>;
   const missing = (metric: string) => m.byStore.some((t) => !covers(t.store, metric));
 
-  // I ricavi netti di Google arrivano con il report mensile: se il periodo
-  // va oltre l'ultimo mese disponibile, la card lo dice.
-  const googleThrough = m.coverage.find((c) => c.store === "GooglePlay")?.proceedsThrough;
-  const proceedsNote = missing("proceeds")
-    ? "Google Play non ancora incluso"
-    : googleThrough && m.to && googleThrough < m.to && m.byStore.some((t) => t.store === "GooglePlay")
-      ? `Google Play fino al ${formatDayYear(googleThrough)}`
-      : undefined;
-
   return (
     <div className={clsx("space-y-6", metrics.isFetching && "opacity-70 transition-opacity")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -84,34 +74,19 @@ export function Dashboard({ orgId, projectId, children }: { orgId: string; proje
         </p>
       </div>
 
-      {m.hasUnconvertedAmounts && (
-        <Alert tone="warn">Una parte dei ricavi è in valute per cui la BCE non pubblica un cambio, e non è inclusa nei totali in euro.</Alert>
-      )}
-
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Download" hint="Prime installazioni: su Google Play, utenti che installano per la prima volta" value={formatInt(total((t) => t.downloads))}
           split={split("downloads", (t) => t.downloads)} format={formatInt} change={percentChange(total((t) => t.downloads), m.previousDownloads)} days={m.days} />
-        <Kpi label="Ricavi netti" hint="Al netto di commissioni e tasse" value={formatEur(total((t) => t.proceedsEur))}
-          split={split("proceeds", (t) => t.proceedsEur)} format={formatEur} change={percentChange(total((t) => t.proceedsEur), m.previousProceedsEur)} days={m.days}
-          note={proceedsNote} />
-        <Kpi label="Acquisti in-app" value={formatInt(total((t) => t.inAppPurchases))} split={split("inAppPurchases", (t) => t.inAppPurchases)} format={formatInt}
-          note={missing("inAppPurchases") ? "Google Play non ancora incluso" : undefined} />
+        <Kpi label="Riscaricamenti" hint="Chi l'aveva già scaricata e la riscarica. Google Play non li distingue." value={formatInt(total((t) => t.redownloads))}
+          split={split("redownloads", (t) => t.redownloads)} format={formatInt} note={missing("redownloads") ? "Solo App Store" : undefined} />
+        <Kpi label="Aggiornamenti" value={formatInt(total((t) => t.updates))} split={split("updates", (t) => t.updates)} format={formatInt} />
         <Kpi label="Disinstallazioni" hint="Apple non comunica le disinstallazioni" value={formatInt(total((t) => t.uninstalls))}
           split={split("uninstalls", (t) => t.uninstalls)} format={formatInt} note={missing("uninstalls") ? "Solo Google Play" : undefined} />
       </div>
 
-      <Panel
-        title="Andamento"
-        actions={
-          <Segmented
-            value={chartMetric}
-            onChange={setChartMetric}
-            options={[{ value: "downloads", label: "Download" }, { value: "proceeds", label: "Ricavi" }]}
-          />
-        }
-      >
+      <Panel title="Download" description={m.days > 90 ? "Per settimana, App Store e Google Play impilati." : "Per giorno, App Store e Google Play impilati."}>
         <div className="p-4">
-          <TrendChart metrics={m} metric={chartMetric} unavailable={(["AppStore", "GooglePlay"] as Store[]).filter((st) => !covers(st, chartMetric))} />
+          <TrendChart metrics={m} />
         </div>
       </Panel>
 
@@ -177,7 +152,6 @@ function CountryPanel({ metrics }: { metrics: Metrics }) {
             <tr className="border-b border-line">
               <th className="px-4 py-2 text-left font-medium">Paese</th>
               <th className="px-4 py-2 text-right font-medium">Download</th>
-              <th className="px-4 py-2 text-right font-medium">Ricavi netti</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -191,7 +165,6 @@ function CountryPanel({ metrics }: { metrics: Metrics }) {
                   </span>
                 </td>
                 <td className="px-4 py-2 text-right tabular-nums">{formatInt(c.downloads)}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-muted">{formatEur(c.proceedsEur)}</td>
               </tr>
             ))}
           </tbody>

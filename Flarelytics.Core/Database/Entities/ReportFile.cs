@@ -10,20 +10,7 @@ public enum ReportKind
     /// file per app e per mese, che Google riscrive ogni giorno finché il mese
     /// non è chiuso.
     /// </summary>
-    GooglePlayInstallsMonthly = 1,
-
-    /// <summary>
-    /// Google Play, <c>sales/salesreport_aaaamm.zip</c>: un ordine per riga,
-    /// importi lordi. Aggiornato durante il mese.
-    /// </summary>
-    GooglePlaySalesMonthly = 2,
-
-    /// <summary>
-    /// Google Play, <c>earnings/earnings_aaaamm….zip</c>: ogni transazione con
-    /// commissioni e tasse, quindi i ricavi netti. Esce una volta al mese,
-    /// verso il 5 del mese dopo; per un mese possono esserci più file.
-    /// </summary>
-    GooglePlayEarningsMonthly = 3
+    GooglePlayInstallsMonthly = 1
 }
 
 public enum ReportFileStatus

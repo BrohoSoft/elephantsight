@@ -41,7 +41,7 @@ public static class MemberEndpoints
 
         var invitations = org.MapGroup("/invitations").RequireOrgRole(OrgRole.Admin);
         invitations.MapGet("", ListInvitations);
-        invitations.MapPost("", Invite).RequireActiveSubscription().Validating<InviteRequest>();
+        invitations.MapPost("", Invite).Validating<InviteRequest>();
         invitations.MapDelete("/{invitationId:guid}", RevokeInvitation);
     }
 
@@ -109,12 +109,18 @@ public static class MemberEndpoints
     }
 
     /// <summary>
-    /// Manda l'invito per email. Un invito ancora aperto per lo stesso
-    /// indirizzo viene sostituito: vale sempre e solo l'ultimo link.
+    /// Crea l'invito e, se l'email è configurata, lo manda. Un invito ancora
+    /// aperto per lo stesso indirizzo viene sostituito: vale sempre e solo
+    /// l'ultimo link.
     /// </summary>
+    /// <remarks>
+    /// Il link torna anche nella risposta, una volta sola: in un'installazione
+    /// senza SMTP è l'unico modo di farlo arrivare, e chi invita lo copia e lo
+    /// manda come preferisce.
+    /// </remarks>
     private static async Task<IResult> Invite(
         InviteRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        AccountEmails emails, CancellationToken ct)
+        AccountEmails emails, Microsoft.Extensions.Options.IOptions<Flarelytics.Api.Auth.AuthOptions> auth, CancellationToken ct)
     {
         if (req.Role == OrgRole.Owner && org.Role < OrgRole.Owner)
         {
@@ -144,10 +150,11 @@ public static class MemberEndpoints
         db.Add(invitation);
         await db.SaveChangesAsync(ct);
 
-        await emails.SendInvitationAsync(email, tenant.Name, inviter.FullName, token, ct);
+        var sent = await emails.SendInvitationAsync(email, tenant.Name, inviter.FullName, token, ct);
+        var link = $"{auth.Value.PublicAppUrl.TrimEnd('/')}/accept-invite?token={Uri.EscapeDataString(token)}";
 
         return Results.Created($"/api/v1/orgs/{org.TenantId}/invitations/{invitation.Id}",
-            new InvitationResponse(invitation.Id, invitation.Email, invitation.Role, invitation.CreatedAtUtc, invitation.ExpiresAtUtc));
+            new CreatedInvitationResponse(invitation.Id, invitation.Email, invitation.Role, invitation.ExpiresAtUtc, link, sent));
     }
 
     private static async Task<IResult> RevokeInvitation(Guid invitationId, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
@@ -240,6 +247,9 @@ public record MemberResponse(Guid UserId, string Email, string FullName, OrgRole
 public record ChangeRoleRequest(OrgRole Role);
 public record InviteRequest(string Email, OrgRole Role);
 public record InvitationResponse(Guid Id, string Email, OrgRole Role, DateTime CreatedAtUtc, DateTime ExpiresAtUtc);
+/// <param name="Link">Il link da mandare. Si vede solo adesso: a database c'è solo il suo hash.</param>
+/// <param name="EmailSent">False se l'installazione non ha l'email configurata: il link va mandato a mano.</param>
+public record CreatedInvitationResponse(Guid Id, string Email, OrgRole Role, DateTime ExpiresAtUtc, string Link, bool EmailSent);
 public record InvitationPreview(string OrganizationName, string Email, OrgRole Role, string InvitedBy, bool AccountExists);
 public record AcceptInvitationRequest(string Token);
 public record AcceptInvitationResponse(Guid OrganizationId);

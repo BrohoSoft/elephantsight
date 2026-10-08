@@ -2,5 +2,4 @@
   <Project Path="Flarelytics.Api/Flarelytics.Api.csproj" />
   <Project Path="Flarelytics.Core/Flarelytics.Core.csproj" />
   <Project Path="Flarelytics.Tests/Flarelytics.Tests.csproj" />
-  <Project Path="Flarelytics.Worker/Flarelytics.Worker.csproj" />
 </Solution>

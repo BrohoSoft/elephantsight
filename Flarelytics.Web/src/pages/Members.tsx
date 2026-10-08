@@ -3,8 +3,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { errorMessage } from "../api/client";
 import { canAdmin, keys, useApiMutation, useInvitations, useMe, useMembers } from "../api/hooks";
-import type { Member, OrgRole } from "../api/types";
-import { Alert, Badge, Button, Field, Input, Modal, PageHeader, PageLoader, Panel, Select } from "../components/ui";
+import type { CreatedInvitation, Member, OrgRole } from "../api/types";
+import { Alert, Badge, Button, CopyButton, Field, Input, Modal, PageHeader, PageLoader, Panel, Select } from "../components/ui";
 import { formatDate, useOrg } from "../components/org";
 
 const roleLabel: Record<OrgRole, string> = { Owner: "Owner", Admin: "Admin", Viewer: "Lettore" };
@@ -121,7 +121,32 @@ function InviteModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
   const org = useOrg();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrgRole>("Viewer");
-  const invite = useApiMutation(() => ({ path: `/orgs/${org.id}/invitations`, body: { email, role } }), [keys.invitations(org.id)]);
+  const [created, setCreated] = useState<CreatedInvitation | null>(null);
+  const invite = useApiMutation<void, CreatedInvitation>(() => ({ path: `/orgs/${org.id}/invitations`, body: { email, role } }), [keys.invitations(org.id)]);
+
+  // Dopo l'invio: il link si vede solo adesso. Senza email configurata è
+  // l'unico modo di farlo arrivare.
+  if (created) {
+    return (
+      <Modal
+        open={open}
+        onOpenChange={(o) => { onOpenChange(o); if (!o) { setCreated(null); setEmail(""); invite.reset(); } }}
+        title="Invito creato"
+        footer={<Button variant="primary" onClick={() => { onOpenChange(false); setCreated(null); setEmail(""); }}>Fatto</Button>}
+      >
+        <div className="space-y-4">
+          {created.emailSent
+            ? <Alert tone="ok">Abbiamo mandato il link a {created.email}. Puoi anche copiarlo e mandarlo tu.</Alert>
+            : <Alert tone="info" title="Manda tu il link">L'email non è configurata su questa installazione: copia il link e mandalo a {created.email}.</Alert>}
+          <div className="flex items-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2">
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg">{created.link}</span>
+            <CopyButton value={created.link} />
+          </div>
+          <p className="text-xs text-faint">Vale 7 giorni, solo per {created.email}.</p>
+        </div>
+      </Modal>
+    );
+  }
   const roles: OrgRole[] = org.role === "Owner" ? ["Viewer", "Admin", "Owner"] : ["Viewer", "Admin"];
 
   return (
@@ -135,11 +160,11 @@ function InviteModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
         }
       }}
       title="Invita una persona"
-      description="Riceverà un link valido 7 giorni. Se non ha un account, lo crea dal link."
+      description="Si crea un link valido 7 giorni, che apre l'account o lo collega a quello che ha già."
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Annulla</Button>
-          <Button variant="primary" loading={invite.isPending} disabled={!email.trim()} onClick={() => invite.mutate(undefined, { onSuccess: () => onOpenChange(false) })}>
+          <Button variant="primary" loading={invite.isPending} disabled={!email.trim()} onClick={() => invite.mutate(undefined, { onSuccess: setCreated })}>
             Manda l'invito
           </Button>
         </>

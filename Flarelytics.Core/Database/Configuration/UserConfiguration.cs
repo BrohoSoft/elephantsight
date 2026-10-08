@@ -100,3 +100,14 @@ public class ExchangeRateConfiguration : IEntityTypeConfiguration<ExchangeRate>
         b.Property(r => r.UnitsPerEuro).HasPrecision(18, 6);
     }
 }
+
+public class AppIconConfiguration : IEntityTypeConfiguration<AppIcon>
+{
+    public void Configure(EntityTypeBuilder<AppIcon> b)
+    {
+        b.Property(i => i.AppId).HasMaxLength(200);
+        b.Property(i => i.ContentType).HasMaxLength(50);
+        b.Property(i => i.RelativePath).HasMaxLength(300);
+        b.HasIndex(i => new { i.Store, i.AppId }).IsUnique();
+    }
+}

@@ -7,20 +7,6 @@ namespace Flarelytics.Core.Database.Configuration;
 // Le entità di questo file sono tutte ITenantOwned: ogni tabella nuova che si
 // aggiunge qui vuole anche RowLevelSecurity.Enable nella sua migration.
 
-public class SubscriptionConfiguration : IEntityTypeConfiguration<Subscription>
-{
-    public void Configure(EntityTypeBuilder<Subscription> b)
-    {
-        b.Property(s => s.PlanCode).HasMaxLength(32);
-        b.Property(s => s.Provider).HasMaxLength(32);
-        b.Property(s => s.ExternalReference).HasMaxLength(200);
-
-        // Uno per tenant: i cambi di piano aggiornano la riga, non ne creano un'altra.
-        b.HasIndex(s => s.TenantId).IsUnique();
-        b.HasOne<Tenant>().WithMany().HasForeignKey(s => s.TenantId).OnDelete(DeleteBehavior.Cascade);
-    }
-}
-
 public class StoreCredentialConfiguration : IEntityTypeConfiguration<StoreCredential>
 {
     public void Configure(EntityTypeBuilder<StoreCredential> b)
@@ -71,27 +57,6 @@ public class ProjectAppConfiguration : IEntityTypeConfiguration<ProjectApp>
         // risponde 409 con i progetti che la usano prima di arrivare qui.
         b.HasOne(a => a.Credential).WithMany().HasForeignKey(a => a.CredentialId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Tenant>().WithMany().HasForeignKey(a => a.TenantId).OnDelete(DeleteBehavior.Cascade);
-    }
-}
-
-public class BillingProfileConfiguration : IEntityTypeConfiguration<BillingProfile>
-{
-    public void Configure(EntityTypeBuilder<BillingProfile> b)
-    {
-        b.Property(p => p.CompanyName).HasMaxLength(200);
-        b.Property(p => p.VatNumber).HasMaxLength(20);
-        b.Property(p => p.TaxCode).HasMaxLength(20);
-        b.Property(p => p.AddressLine).HasMaxLength(200);
-        b.Property(p => p.City).HasMaxLength(100);
-        b.Property(p => p.PostalCode).HasMaxLength(20);
-        b.Property(p => p.Province).HasMaxLength(5);
-        b.Property(p => p.CountryCode).HasMaxLength(2);
-        b.Property(p => p.BillingEmail).HasMaxLength(255);
-        b.Property(p => p.SdiCode).HasMaxLength(7);
-        b.Property(p => p.Pec).HasMaxLength(255);
-
-        b.HasIndex(p => p.TenantId).IsUnique();
-        b.HasOne<Tenant>().WithMany().HasForeignKey(p => p.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

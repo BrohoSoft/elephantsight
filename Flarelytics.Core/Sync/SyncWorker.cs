@@ -1,7 +1,8 @@
-using Flarelytics.Core.Sync;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Flarelytics.Worker;
+namespace Flarelytics.Core.Sync;
 
 /// <summary>
 /// Il giro di sincronizzazione, ripetuto ogni <see cref="SyncOptions.PollInterval"/>.
@@ -9,8 +10,9 @@ namespace Flarelytics.Worker;
 /// <remarks>
 /// Un giro alla volta: il successivo parte dopo la fine del precedente, non a
 /// orario fisso, così un primo collegamento con un anno di storico non fa
-/// partire un secondo giro sulle stesse credenziali. Per lo stesso motivo il
-/// worker gira in una sola istanza.
+/// partire un secondo giro sulle stesse credenziali. Per lo stesso motivo deve
+/// girare in una sola istanza: lo ospita il processo dell'API, che in
+/// un'installazione self-hosted è uno solo (<c>Worker:Enabled</c>).
 /// </remarks>
 public class SyncWorker(SyncCoordinator coordinator, IOptions<SyncOptions> options, ILogger<SyncWorker> log) : BackgroundService
 {

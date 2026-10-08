@@ -56,7 +56,7 @@ public static class MetricsEndpoints
             .Where(c => credentialIds.Contains(c.Id))
             .MaxAsync(c => c.LastSyncCompletedAtUtc, ct);
 
-        IReadOnlyList<StoreCoverage> coverage = [StoreCoverage.Apple, await StoreCoverage.GoogleAsync(db, ct)];
+        var coverage = StoreCoverage.Current;
 
         var latest = await scope.MaxAsync(m => (DateOnly?)m.Date, ct);
         if (latest is null)
@@ -124,45 +124,22 @@ public static class MetricsEndpoints
 public record StoreTotals(Store Store, int Downloads, int Redownloads, int Updates, int Uninstalls, int InAppPurchases, int Refunds, decimal ProceedsEur, decimal SalesEur);
 
 /// <summary>
-/// Quali metriche uno store fornisce. Dove non c'è, il frontend mostra un
-/// trattino e non uno zero: "0 € da Google" direbbe che Google non ha
-/// incassato niente, non che il dato non è ancora arrivato.
+/// Quali metriche fornisce ogni store. Dove manca, il frontend mostra un
+/// trattino e non uno zero: Apple non comunica le disinstallazioni, Google non
+/// distingue i riscaricamenti.
 /// </summary>
-/// <param name="ProceedsThrough">
-/// Fino a che giorno i ricavi netti sono completi, quando arrivano in ritardo:
-/// per Google sono nel report mensile dei guadagni, che esce verso il 5 del
-/// mese dopo. Null se arrivano giorno per giorno (Apple).
-/// </param>
-public record StoreCoverage(Store Store, IReadOnlyList<string> Metrics, DateOnly? ProceedsThrough = null)
+/// <remarks>
+/// I ricavi non sono in elenco per scelta: il prodotto mostra solo download e
+/// installazioni. Le colonne dei ricavi esistono ancora nelle metriche Apple
+/// (vengono dallo stesso report dei download) ma non si espongono.
+/// </remarks>
+public record StoreCoverage(Store Store, IReadOnlyList<string> Metrics)
 {
-    public static readonly StoreCoverage Apple =
-        new(Store.AppStore, ["downloads", "redownloads", "updates", "inAppPurchases", "refunds", "proceeds", "sales"]);
-
-    /// <summary>
-    /// Google: le installazioni sempre; vendite e ricavi netti solo quando il
-    /// rispettivo report è arrivato almeno una volta. Le disinstallazioni Apple
-    /// non le dà, quindi le ha solo Google.
-    /// </summary>
-    public static async Task<StoreCoverage> GoogleAsync(FlarelyticsDbContext db, CancellationToken ct)
-    {
-        var finance = await db.Set<ReportFile>()
-            .Where(f => (f.Kind == ReportKind.GooglePlaySalesMonthly || f.Kind == ReportKind.GooglePlayEarningsMonthly) && f.ProcessedAtUtc != null)
-            .GroupBy(f => f.Kind)
-            .Select(g => new { Kind = g.Key, Latest = g.Max(f => f.ReportDate) })
-            .ToListAsync(ct);
-
-        var metrics = new List<string> { "downloads", "updates", "uninstalls" };
-        if (finance.Any(f => f.Kind == ReportKind.GooglePlaySalesMonthly)) metrics.AddRange(["inAppPurchases", "refunds", "sales"]);
-
-        DateOnly? through = null;
-        if (finance.SingleOrDefault(f => f.Kind == ReportKind.GooglePlayEarningsMonthly) is { } earnings)
-        {
-            metrics.Add("proceeds");
-            through = earnings.Latest.AddMonths(1).AddDays(-1);
-        }
-
-        return new StoreCoverage(Store.GooglePlay, metrics, through);
-    }
+    public static readonly IReadOnlyList<StoreCoverage> Current =
+    [
+        new(Store.AppStore, ["downloads", "redownloads", "updates"]),
+        new(Store.GooglePlay, ["downloads", "updates", "uninstalls"])
+    ];
 }
 
 public record DailyPoint(DateOnly Date, Store Store, int Downloads, decimal ProceedsEur);

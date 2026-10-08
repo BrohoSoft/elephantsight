@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Metrics, Store } from "../api/types";
-import { formatCompact, formatDay, formatEur, formatInt, parseDay } from "./format";
+import { formatCompact, formatDay, formatInt, parseDay } from "./format";
 import { storeName } from "./StoreIcons";
-
-export type ChartMetric = "downloads" | "proceeds";
 
 interface Bucket {
   key: string;
@@ -21,15 +19,14 @@ const GAP = 2;
 const RADIUS = 4;
 
 /**
- * Barre impilate per giorno: App Store in basso, Google Play sopra. Si legge
- * il totale (l'altezza della colonna) e la parte di ciascuno store (i due
- * segmenti). Un valore alla volta, download o ricavi: due misure con scale
- * diverse non stanno sullo stesso asse.
+ * Download in barre impilate per giorno: App Store in basso, Google Play
+ * sopra. Si legge il totale (l'altezza della colonna) e la parte di ciascuno
+ * store (i due segmenti).
  *
  * Oltre i 90 giorni le barre diventano settimanali, altrimenti sarebbero più
  * sottili di un pixel.
  */
-export function TrendChart({ metrics, metric, unavailable = [] }: { metrics: Metrics; metric: ChartMetric; unavailable?: Store[] }) {
+export function TrendChart({ metrics }: { metrics: Metrics }) {
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -43,8 +40,8 @@ export function TrendChart({ metrics, metric, unavailable = [] }: { metrics: Met
     return () => observer.disconnect();
   }, []);
 
-  const buckets = useMemo(() => buildBuckets(metrics, metric), [metrics, metric]);
-  const format = metric === "downloads" ? formatInt : formatEur;
+  const buckets = useMemo(() => buildBuckets(metrics), [metrics]);
+  const format = formatInt;
   const totals = STORES.map((s) => buckets.reduce((sum, b) => sum + b.values[s], 0));
 
   const plotWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
@@ -65,10 +62,7 @@ export function TrendChart({ metrics, metric, unavailable = [] }: { metrics: Met
           {STORES.map((s, i) => (
             <span key={s} className="inline-flex items-center gap-1.5 text-muted">
               <span className="size-2.5 rounded-sm" style={{ background: COLOR[s] }} />
-              {storeName(s)}{" "}
-              {unavailable.includes(s)
-                ? <span className="text-faint" title="Questo dato non è ancora collegato per questo store">non disponibile</span>
-                : <span className="font-medium text-fg tabular-nums">{format(totals[i])}</span>}
+              {storeName(s)} <span className="font-medium text-fg tabular-nums">{format(totals[i])}</span>
             </span>
           ))}
         </div>
@@ -101,12 +95,12 @@ export function TrendChart({ metrics, metric, unavailable = [] }: { metrics: Met
       ) : (
         <div ref={container} className="relative" onPointerLeave={() => setHover(null)}>
           {width > 0 && (
-            <svg width={width} height={HEIGHT} role="img" aria-label={`${metric === "downloads" ? "Download" : "Ricavi"} per ${metrics.days > 90 ? "settimana" : "giorno"}, App Store e Google Play`}>
+            <svg width={width} height={HEIGHT} role="img" aria-label={`Download per ${metrics.days > 90 ? "settimana" : "giorno"}, App Store e Google Play`}>
               {ticks.map((t) => (
                 <g key={t}>
                   <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(t)} y2={y(t)} stroke="var(--grid)" strokeWidth={1} />
                   <text x={MARGIN.left - 8} y={y(t)} dy="0.32em" textAnchor="end" fontSize={11} fill="var(--faint)">
-                    {metric === "downloads" ? formatCompact(t) : `${formatCompact(t)} €`}
+                    {formatCompact(t)}
                   </text>
                 </g>
               ))}
@@ -207,7 +201,7 @@ function niceScale(max: number): { top: number; ticks: number[] } {
   return { top, ticks: Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step) };
 }
 
-function buildBuckets(metrics: Metrics, metric: ChartMetric): Bucket[] {
+function buildBuckets(metrics: Metrics): Bucket[] {
   if (!metrics.from || !metrics.to) return [];
 
   const weekly = metrics.days > 90;
@@ -230,7 +224,7 @@ function buildBuckets(metrics: Metrics, metric: ChartMetric): Bucket[] {
 
   for (const p of metrics.daily) {
     const bucket = byKey.get(keyOf(p.date));
-    if (bucket) bucket.values[p.store] += metric === "downloads" ? p.downloads : p.proceedsEur;
+    if (bucket) bucket.values[p.store] += p.downloads;
   }
 
   return [...byKey.values()];

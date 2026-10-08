@@ -19,7 +19,12 @@ public class InvitationTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var response = await by.Client.PostAsJsonAsync($"/api/v1/orgs/{by.OrgId}/invitations", new { email, role });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return _app.LinkToken(email);
+
+        // Il link torna anche nella risposta (serve quando l'email non è
+        // configurata) ed è lo stesso dell'email.
+        var token = _app.LinkToken(email);
+        Assert.EndsWith(Uri.EscapeDataString(token), (await response.ReadJsonAsync()).GetProperty("link").GetString());
+        return token;
     }
 
     [Fact]
@@ -38,7 +43,6 @@ public class InvitationTests(PostgresFixture postgres) : IAsyncLifetime
             email, password = TestApi.Password, fullName = "Luigi Verdi", invitationToken = token
         });
         Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
-        Assert.False((await registered.ReadJsonAsync()).GetProperty("emailConfirmationRequired").GetBoolean());
 
         // Nessuna conferma email: il link d'invito l'ha già provata.
         await client.LoginAsync(email);

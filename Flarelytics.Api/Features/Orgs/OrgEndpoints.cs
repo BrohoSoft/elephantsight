@@ -1,21 +1,17 @@
 using Flarelytics.Api.Common;
-using Flarelytics.Core.Billing;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
-using Flarelytics.Core.Tenancy;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace Flarelytics.Api.Features.Orgs;
 
-/// <summary>Profilo, organizzazioni e listino. L'abbonamento sta in <c>BillingEndpoints</c>.</summary>
+/// <summary>Profilo e organizzazioni.</summary>
 public static class OrgEndpoints
 {
     public static void MapOrgs(this IEndpointRouteBuilder api)
     {
-        api.MapGet("/plans", () => Plans.All).AllowAnonymous();
-
         api.MapGet("/me", Me).RequireAuthorization();
 
         api.MapPost("/orgs", CreateOrg).RequireAuthorization().Validating<CreateOrgRequest>();
@@ -40,19 +36,14 @@ public static class OrgEndpoints
         return Results.Ok(new MeResponse(user.Id, user.Email, user.FullName, user.IsTwoFactorEnabled, orgs));
     }
 
-    /// <summary>Una seconda organizzazione, con il suo abbonamento: per chi lavora per più clienti.</summary>
-    private static async Task<IResult> CreateOrg(
-        CreateOrgRequest req, ClaimsPrincipal principal, FlarelyticsDbContext db, TenantContext tenant,
-        IBillingProvider billing, CancellationToken ct)
+    /// <summary>Un'altra organizzazione: per tenere separate app di clienti o di progetti diversi.</summary>
+    private static async Task<IResult> CreateOrg(CreateOrgRequest req, ClaimsPrincipal principal, FlarelyticsDbContext db, CancellationToken ct)
     {
         var org = Tenant.Create(req.Name);
-        tenant.Set(org.Id);
-
-        var checkout = await billing.StartAsync(org.Id, Plans.Find(req.Plan ?? Plans.Starter.Code)!, ct);
-        db.AddRange(org, Membership.Create(org.Id, principal.UserId(), OrgRole.Owner), checkout.Subscription);
+        db.AddRange(org, Membership.Create(org.Id, principal.UserId(), OrgRole.Owner));
         await db.SaveChangesAsync(ct);
 
-        return Results.Created($"/api/v1/orgs/{org.Id}", new CreateOrgResponse(org.Id, checkout.CheckoutUrl));
+        return Results.Created($"/api/v1/orgs/{org.Id}", new CreateOrgResponse(org.Id));
     }
 
     private static async Task<IResult> GetOrg(CurrentOrg current, FlarelyticsDbContext db, CancellationToken ct)
@@ -73,17 +64,13 @@ public static class OrgEndpoints
 public record OrgSummary(Guid Id, string Name, OrgRole Role);
 public record MeResponse(Guid Id, string Email, string FullName, bool TwoFactorEnabled, IReadOnlyList<OrgSummary> Organizations);
 
-public record CreateOrgRequest(string Name, string? Plan);
-public record CreateOrgResponse(Guid Id, string? CheckoutUrl);
+public record CreateOrgRequest(string Name);
+public record CreateOrgResponse(Guid Id);
 public record RenameOrgRequest(string Name);
 
 public class CreateOrgRequestValidator : AbstractValidator<CreateOrgRequest>
 {
-    public CreateOrgRequestValidator()
-    {
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
-        RuleFor(x => x.Plan).Must(p => p is null || Plans.Find(p) is not null).WithMessage("Piano sconosciuto.");
-    }
+    public CreateOrgRequestValidator() => RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
 }
 
 public class RenameOrgRequestValidator : AbstractValidator<RenameOrgRequest>

@@ -1,15 +1,15 @@
 import { Building2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
-import { useMe } from "./api/hooks";
+import { useInstance, useMe } from "./api/hooks";
 import { useAuth } from "./auth/AuthContext";
 import { AppShell, lastOrg } from "./components/AppShell";
 import { EmptyState, PageLoader } from "./components/ui";
 import { AccountPage } from "./pages/Account";
-import { BillingPage } from "./pages/Billing";
 import { useTheme } from "./theme";
 import { AcceptInvitePage } from "./pages/auth/AcceptInvite";
-import { ConfirmEmailPage, ForgotPasswordPage, ResetPasswordPage } from "./pages/auth/EmailLinks";
+import { ForgotPasswordPage, ResetPasswordPage } from "./pages/auth/EmailLinks";
+import { SetupPage } from "./pages/auth/Setup";
 import { LoginPage } from "./pages/auth/Login";
 import { RegisterPage } from "./pages/auth/Register";
 import { CredentialsPage } from "./pages/Credentials";
@@ -70,14 +70,23 @@ export function App() {
   // Sempre montato: con la preferenza "Sistema" il tema deve seguire il
   // sistema operativo anche quando nessun selettore è a schermo.
   useTheme();
+  const instance = useInstance();
+  const location = useLocation();
+
+  if (instance.isPending) return <PageLoader />;
+
+  // Un'istanza appena installata non ha utenti: tutto porta all'installer,
+  // e l'installer non si riapre dopo.
+  const setupRequired = instance.data?.setupRequired ?? false;
+  if (setupRequired && location.pathname !== "/setup") return <Navigate to="/setup" replace />;
 
   return (
     <Routes>
+      <Route path="/setup" element={setupRequired ? <SetupPage /> : <Navigate to="/" replace />} />
       <Route path="/login" element={<AnonymousOnly><LoginPage /></AnonymousOnly>} />
       <Route path="/register" element={<AnonymousOnly><RegisterPage /></AnonymousOnly>} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/confirm-email" element={<ConfirmEmailPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
@@ -89,7 +98,6 @@ export function App() {
         <Route path="/o/:orgId/credentials" element={<OrgGuard><CredentialsPage /></OrgGuard>} />
         <Route path="/o/:orgId/members" element={<OrgGuard><MembersPage /></OrgGuard>} />
         <Route path="/o/:orgId/settings" element={<OrgGuard><OrgSettingsPage /></OrgGuard>} />
-        <Route path="/o/:orgId/billing" element={<OrgGuard><BillingPage /></OrgGuard>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

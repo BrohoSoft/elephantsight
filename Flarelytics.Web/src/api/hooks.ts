@@ -1,25 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "./client";
 import type {
-  BillingOverview,
   Metrics,
   Credential,
+  InstanceInfo,
   Invitation,
   Me,
   Member,
   OrgRole,
-  Plan,
   Project,
   StoreApp,
-  SubscriptionInfo,
 } from "./types";
 
 export const keys = {
   me: ["me"] as const,
-  plans: ["plans"] as const,
+  instance: ["instance"] as const,
   org: (orgId: string) => ["org", orgId] as const,
-  subscription: (orgId: string) => ["org", orgId, "subscription"] as const,
-  billing: (orgId: string) => ["org", orgId, "billing"] as const,
   metrics: (orgId: string) => ["org", orgId, "metrics"] as const,
   projects: (orgId: string) => ["org", orgId, "projects"] as const,
   project: (orgId: string, id: string) => ["org", orgId, "projects", id] as const,
@@ -30,13 +26,8 @@ export const keys = {
 };
 
 export const useMe = (enabled = true) => useQuery({ queryKey: keys.me, queryFn: () => request<Me>("/me"), enabled });
-export const usePlans = () => useQuery({ queryKey: keys.plans, queryFn: () => request<Plan[]>("/plans", { anonymous: true }), staleTime: Infinity });
-
-export const useSubscription = (orgId: string) =>
-  useQuery({ queryKey: keys.subscription(orgId), queryFn: () => request<SubscriptionInfo>(`/orgs/${orgId}/subscription`) });
-
-export const useBilling = (orgId: string) =>
-  useQuery({ queryKey: keys.billing(orgId), queryFn: () => request<BillingOverview>(`/orgs/${orgId}/billing`) });
+export const useInstance = () =>
+  useQuery({ queryKey: keys.instance, queryFn: () => request<InstanceInfo>("/instance", { anonymous: true }), staleTime: 60_000 });
 
 export const useMetrics = (orgId: string, days: number, projectId?: string) =>
   useQuery({

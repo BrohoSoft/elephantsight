@@ -9,8 +9,8 @@ using Microsoft.Extensions.Options;
 namespace Flarelytics.Core.Sync;
 
 /// <summary>
-/// Scarica dal bucket di Play Console i report mensili (installazioni,
-/// vendite, guadagni) e li trasforma in metriche.
+/// Scarica dal bucket di Play Console i report mensili delle installazioni e
+/// li trasforma in metriche.
 /// </summary>
 /// <remarks>
 /// <para>Google riscrive ogni giorno il file del mese in corso (e per qualche
@@ -59,25 +59,13 @@ public class GooglePlaySync(
         {
             var token = await google.ConnectAsync(secret, ct);
 
-            // Tre cartelle, tre tipi di report; per ognuno si riconoscono il
-            // mese e cosa distingue un file dall'altro (l'app per le
-            // installazioni, il nome stesso per vendite e guadagni).
+            // Solo i report delle installazioni: i report finanziari di Google
+            // (vendite e guadagni) non si leggono, per scelta.
             var objects = new List<(BucketObject Object, ReportKind Kind, DateOnly Month, string Scope)>();
 
             foreach (var o in await google.ListAsync(token, bucket, GoogleInstallsParser.Prefix, ct))
             {
                 if (GoogleInstallsParser.ParseName(o.Name) is { } p) objects.Add((o, ReportKind.GooglePlayInstallsMonthly, p.Month, p.Package));
-            }
-
-            foreach (var prefix in new[] { "sales/", "earnings/" })
-            {
-                foreach (var o in await google.ListAsync(token, bucket, prefix, ct))
-                {
-                    if (GoogleFinanceParser.ParseName(o.Name) is { } p)
-                    {
-                        objects.Add((o, p.Kind == "sales" ? ReportKind.GooglePlaySalesMonthly : ReportKind.GooglePlayEarningsMonthly, p.Month, o.Name));
-                    }
-                }
             }
 
             var files = await db.Set<ReportFile>()
@@ -143,97 +131,12 @@ public class GooglePlaySync(
             processed++;
         }
 
-        // Vendite e guadagni si rielaborano per mese intero: per i guadagni un
-        // mese può avere più file, e rifarne uno solo sommerebbe due volte.
-        foreach (var kind in new[] { ReportKind.GooglePlaySalesMonthly, ReportKind.GooglePlayEarningsMonthly })
-        {
-            var months = await Pending(credential, kind, GoogleFinanceParser.Version).Select(f => f.ReportDate).Distinct().ToListAsync(ct);
-            foreach (var month in months.Order())
-            {
-                processed += await ProcessFinanceMonthAsync(credential, kind, month, ct);
-            }
-        }
-
         return processed;
     }
 
     private IQueryable<ReportFile> Pending(StoreCredential credential, ReportKind kind, int version) =>
         db.Set<ReportFile>().Where(f => f.CredentialId == credential.Id && f.Kind == kind && f.Status == ReportFileStatus.Stored
                                         && (f.ProcessedAtUtc == null || f.ParserVersion < version));
-
-    /// <summary>
-    /// Rifà un mese di vendite o di guadagni da tutti i suoi file, e scrive solo
-    /// le colonne di quel report: acquisti, rimborsi e venduto per le vendite,
-    /// ricavi netti per i guadagni.
-    /// </summary>
-    /// <returns>Quanti file sono stati elaborati, o 0 se il mese aspetta i cambi.</returns>
-    private async Task<int> ProcessFinanceMonthAsync(StoreCredential credential, ReportKind kind, DateOnly month, CancellationToken ct)
-    {
-        var monthEnd = month.AddMonths(1).AddDays(-1);
-        var converter = await CurrencyConverter.LoadAsync(db, month, monthEnd, ct);
-        if (!converter.HasRatesFor(month)) return 0;
-
-        var files = await db.Set<ReportFile>()
-            .Where(f => f.CredentialId == credential.Id && f.Kind == kind && f.ReportDate == month && f.Status == ReportFileStatus.Stored)
-            .ToListAsync(ct);
-
-        var rows = new List<GoogleMoneyRow>();
-        foreach (var file in files)
-        {
-            var content = await storage.ReadAsync(file.RelativePath!, ct);
-            rows.AddRange(kind == ReportKind.GooglePlaySalesMonthly ? GoogleFinanceParser.ParseSales(content) : GoogleFinanceParser.ParseEarnings(content));
-        }
-
-        // Le app di questo account: quelle dei suoi report. Solo le loro righe
-        // si azzerano, così un secondo account Google dello stesso tenant non
-        // perde i suoi numeri.
-        var packages = await db.Set<ReportFile>()
-            .Where(f => f.CredentialId == credential.Id && f.Kind == ReportKind.GooglePlayInstallsMonthly)
-            .Select(f => f.Scope).Distinct().ToListAsync(ct);
-        packages = packages.Concat(rows.Select(r => r.Package)).Distinct().ToList();
-
-        var existing = await db.Set<DailyAppMetric>()
-            .Where(m => m.Store == Store.GooglePlay && packages.Contains(m.AppId) && m.Date >= month && m.Date <= monthEnd)
-            .ToDictionaryAsync(m => (m.AppId, m.Date, m.CountryCode), ct);
-
-        var sales = kind == ReportKind.GooglePlaySalesMonthly;
-        foreach (var row in existing.Values)
-        {
-            if (sales) { row.InAppPurchases = 0; row.Refunds = 0; row.SalesEurMicros = 0; }
-            else row.ProceedsEurMicros = 0;
-        }
-
-        foreach (var r in rows.Where(r => r.Date >= month && r.Date <= monthEnd))
-        {
-            if (!existing.TryGetValue((r.Package, r.Date, r.Country), out var m))
-            {
-                m = new DailyAppMetric { TenantId = credential.TenantId, Store = Store.GooglePlay, AppId = r.Package, Date = r.Date, CountryCode = r.Country };
-                db.Add(m);
-                existing[(r.Package, r.Date, r.Country)] = m;
-            }
-
-            var micros = converter.ToEurMicros(r.Amount, r.Currency, r.Date);
-            if (micros is null && r.Amount != 0) m.HasUnconvertedAmounts = true;
-
-            if (sales)
-            {
-                m.InAppPurchases += r.Purchases;
-                m.Refunds += r.Refunds;
-                m.SalesEurMicros += micros ?? 0;
-            }
-            else
-            {
-                m.ProceedsEurMicros += micros ?? 0;
-            }
-        }
-
-        var now = DateTime.UtcNow;
-        foreach (var file in files) file.MarkProcessed(GoogleFinanceParser.Version, now);
-        await db.SaveChangesAsync(ct);
-
-        foreach (var m in existing.Values) db.Entry(m).State = EntityState.Detached;
-        return files.Count;
-    }
 
     /// <summary>
     /// Riscrive le colonne delle installazioni per l'app e il mese del file.

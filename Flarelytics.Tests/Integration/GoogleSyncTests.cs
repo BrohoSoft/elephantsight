@@ -86,7 +86,7 @@ public class GoogleSyncTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(3, google.GetProperty("uninstalls").GetInt32());
         Assert.Equal(2, _sync.Google.Downloaded.Count);
 
-        // La dashboard dichiara che i ricavi di Google non ci sono, invece di dire zero.
+        // I report finanziari non si leggono, e la dashboard non promette ricavi.
         var metrics = await (await account.Client.GetAsync($"/api/v1/orgs/{account.OrgId}/metrics?days=365")).ReadJsonAsync();
         var coverage = metrics.GetProperty("coverage").EnumerateArray().Single(c => c.GetProperty("store").GetString() == "GooglePlay");
         Assert.DoesNotContain("proceeds", coverage.GetProperty("metrics").EnumerateArray().Select(x => x.GetString()));
@@ -113,54 +113,6 @@ public class GoogleSyncTests(PostgresFixture postgres) : IAsyncLifetime
 
         Assert.Equal(2, _sync.Google.Downloaded.Count);
         Assert.Equal(10, (await GoogleTotalsAsync(account)).GetProperty("downloads").GetInt32()); // 4 + 6, non 3 + 4 + 6
-    }
-
-    [Fact]
-    public async Task Vendite_e_guadagni_di_google_unificati_con_le_installazioni()
-    {
-        var account = await SetupAsync();
-        var month = _thisMonth.AddMonths(-1);
-        var day = month.AddDays(9);
-
-        _sync.Google.Files[Name(Package, month)] = Csv(Package, new Row(day, "IT", 10, 0, 0));
-        _sync.Google.Files[$"sales/salesreport_{month:yyyyMM}.zip"] = Zip($"salesreport_{month:yyyyMM}.csv", string.Join('\n',
-            SalesHeader,
-            SalesRow(day, "Charged", "One-time product", Package, "EUR", 4.99m, "IT"),
-            SalesRow(day, "Charged", "Subscription", Package, "USD", 11.00m, "US"),
-            SalesRow(day, "Refund", "One-time product", Package, "EUR", 4.99m, "IT")));
-        // Due file di guadagni nello stesso mese: vanno sommati, una volta sola.
-        _sync.Google.Files[$"earnings/earnings_{month:yyyyMM}_123-1.zip"] = Zip("a.csv", string.Join('\n',
-            EarningsHeader,
-            EarningsRow(day, "Charge", Package, "IT", "EUR", 4.99m),
-            EarningsRow(day, "Google fee", Package, "IT", "EUR", -0.75m)));
-        _sync.Google.Files[$"earnings/earnings_{month:yyyyMM}_123-2.zip"] = Zip("b.csv", string.Join('\n',
-            EarningsHeader,
-            EarningsRow(day, "Charge", Package, "US", "USD", 11.00m),
-            EarningsRow(day, "Google fee", Package, "US", "USD", -1.10m)));
-
-        await RunAsync();
-
-        var google = await GoogleTotalsAsync(account);
-        Assert.Equal(10, google.GetProperty("downloads").GetInt32());                 // le installazioni non sono state toccate
-        Assert.Equal(2, google.GetProperty("inAppPurchases").GetInt32());
-        Assert.Equal(1, google.GetProperty("refunds").GetInt32());
-        Assert.Equal(4.99m + 10m - 4.99m, google.GetProperty("salesEur").GetDecimal()); // 11 USD / 1,10
-        Assert.Equal(4.24m + 9m, google.GetProperty("proceedsEur").GetDecimal());       // 4,99 − 0,75 + (11 − 1,10) / 1,10
-
-        var metrics = await (await account.Client.GetAsync($"/api/v1/orgs/{account.OrgId}/metrics?days=365")).ReadJsonAsync();
-        var coverage = metrics.GetProperty("coverage").EnumerateArray().Single(c => c.GetProperty("store").GetString() == "GooglePlay");
-        Assert.Contains("proceeds", coverage.GetProperty("metrics").EnumerateArray().Select(x => x.GetString()));
-        Assert.Equal(month.AddMonths(1).AddDays(-1), DateOnly.Parse(coverage.GetProperty("proceedsThrough").GetString()!));
-
-        // Google aggiorna uno dei due file: il mese si rifà da entrambi, senza doppioni.
-        _sync.Google.Files[$"earnings/earnings_{month:yyyyMM}_123-2.zip"] = Zip("b.csv", string.Join('\n',
-            EarningsHeader,
-            EarningsRow(day, "Charge", Package, "US", "USD", 22.00m),
-            EarningsRow(day, "Google fee", Package, "US", "USD", -2.20m)));
-        await RequestSyncAsync(account);
-        await RunAsync();
-
-        Assert.Equal(4.24m + 18m, (await GoogleTotalsAsync(account)).GetProperty("proceedsEur").GetDecimal());
     }
 
     [Fact]

@@ -67,39 +67,11 @@ public class OrgAccessFilter : IEndpointFilter
     }
 }
 
-/// <summary>
-/// Le modifiche vogliono un abbonamento attivo. La lettura no: chi ha un
-/// pagamento in sospeso continua a vedere i suoi dati.
-/// </summary>
-/// <remarks>Va dopo <see cref="OrgAccessFilter"/>: legge l'abbonamento del tenant già impostato.</remarks>
-public class ActiveSubscriptionFilter : IEndpointFilter
-{
-    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-    {
-        var http = context.HttpContext;
-        var db = http.RequestServices.GetRequiredService<FlarelyticsDbContext>();
-
-        var subscription = await db.Set<Subscription>().AsNoTracking().SingleOrDefaultAsync(http.RequestAborted);
-
-        if (subscription is null || !subscription.IsActive(DateTime.UtcNow))
-        {
-            throw new ApiProblem(StatusCodes.Status402PaymentRequired, "subscription_inactive",
-                "L'abbonamento non è attivo: rinnovalo per fare modifiche.");
-        }
-
-        return await next(context);
-    }
-}
-
 public static class OrgAccessExtensions
 {
     public static TBuilder RequireOrgRole<TBuilder>(this TBuilder builder, OrgRole role)
         where TBuilder : IEndpointConventionBuilder =>
         builder.WithMetadata(new RequiredOrgRole(role));
-
-    public static TBuilder RequireActiveSubscription<TBuilder>(this TBuilder builder)
-        where TBuilder : IEndpointConventionBuilder =>
-        builder.AddEndpointFilter<TBuilder, ActiveSubscriptionFilter>();
 
     /// <summary>Il gruppo <c>/orgs/{orgId}</c>, con autenticazione e controllo di appartenenza già applicati.</summary>
     public static RouteGroupBuilder MapOrgGroup(this IEndpointRouteBuilder api, string prefix = "") =>

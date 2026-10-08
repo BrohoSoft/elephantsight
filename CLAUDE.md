@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Cos'è
 
-Flarelytics è un SaaS multi-tenant che mette in un'unica dashboard i dati di App Store Connect e Google Play. Un'organizzazione (tenant) ha più progetti; ogni progetto collega al massimo un'app App Store e un'app Google Play, attraverso le chiavi degli store che il tenant carica (il .p8 di Apple, il JSON di un service account Google).
+Flarelytics è uno strumento **self-hosted** (un'immagine Docker + PostgreSQL) per gestire le proprie app su App Store e Google Play da un pannello solo. Un'istanza ha più organizzazioni (tenant); un'organizzazione ha più progetti; ogni progetto collega al massimo un'app App Store e un'app Google Play, attraverso le chiavi degli store caricate dall'utente (il .p8 di Apple, il JSON di un service account Google). Non c'è registrazione libera: il primo utente lo crea l'installer (`/setup`, finché non esistono utenti), gli altri entrano per invito. Niente pagamenti né fatturazione.
 
-Stato: fase 1 completa e fase 2 avviata (sincronizzazione delle vendite Apple), cioè account con 2FA, organizzazioni con membri e inviti, progetti, credenziali cifrate, pagamenti finti e pannello React. Fasi successive: worker di sincronizzazione e metriche giornaliere (schema `metrics` su Postgres, report grezzi conservati per poterli rielaborare; i box degli indicatori nella UI per ora sono segnaposto), poi pagamenti veri.
+Stato: fatti account con 2FA, organizzazioni con membri e inviti, chiavi cifrate, dashboard dei download App Store + Google Play, icone. Piano delle prossime fasi: versioni e build (B), recensioni unificate (C), gestione della pagina dello store (D), cassaforte dei file di firma (E), caricamento delle build (F). Essendo self-hosted, chi installa usa le API per le proprie app: è l'uso consentito dai termini di Apple e Google (compresa la Publishing API di Google, che prima andava evitata).
 
 Codice, commenti e messaggi d'errore sono in italiano; i commenti spiegano il *perché*. Mantieni lo stesso stile.
 
@@ -14,10 +14,10 @@ Codice, commenti e messaggi d'errore sono in italiano; i commenti spiegano il *p
 
 ```bash
 docker compose -f compose.dev.yaml up -d                          # PostgreSQL di sviluppo su :5433
-cd Flarelytics.Api && dotnet run                                   # API su http://localhost:5080, Scalar su /scalar
+cd Flarelytics.Api && dotnet run                                   # API + sincronizzazione su http://localhost:5080, Scalar su /scalar
 cd Flarelytics.Web && npm install && npm run dev                   # pannello su http://localhost:5173 (proxy /api → 5080)
 cd Flarelytics.Web && npm run build                                # typecheck + build di produzione
-cd Flarelytics.Worker && dotnet run                                # worker di sincronizzazione (con l'API già avviata: è lei ad applicare le migration)
+docker compose up -d --build                                       # l'installazione vera (immagine unica + PostgreSQL), con .env: DB_PASSWORD, PUBLIC_URL
 dotnet build
 dotnet test                                                        # serve Docker (Testcontainers)
 dotnet test --filter "FullyQualifiedName~CredentialTests"          # una classe
@@ -25,21 +25,20 @@ dotnet test --filter "FullyQualifiedName~SecretVaultTests.Un_byte_alterato_si_ri
 dotnet ef migrations add <Nome> --project Flarelytics.Core --startup-project Flarelytics.Core --output-dir Database/Migrations
 ```
 
-In sviluppo le email non partono: link di conferma e reset si leggono nel log dell'API. La chiave master di sviluppo viene creata da sola in `.dev/keys` (solo con ambiente Development). `dotnet run --environment` non imposta l'ambiente: usa il launch profile oppure `ASPNETCORE_ENVIRONMENT=Development`.
+In sviluppo le email non partono: i link si leggono nel log dell'API. L'SMTP è facoltativo anche in produzione (`/api/v1/instance` dice al pannello se c'è): senza, gli inviti restituiscono il link da copiare. La chiave master (e quella dei JWT se `Jwt:Key` manca) si crea da sola in `Secrets:KeysDirectory` con `Secrets:CreateKeyIfMissing` (attivo in Development e nell'immagine Docker). `dotnet run --environment` non imposta l'ambiente: usa il launch profile oppure `ASPNETCORE_ENVIRONMENT=Development`.
 
 ## Architettura
 
-- **Flarelytics.Core**: modello EF, isolamento dei tenant, cifratura, client degli store, piani/billing. Niente HTTP in ingresso: lo userà anche il worker della fase 2.
-- **Flarelytics.Worker**: processo separato, una sola istanza, che ogni `Sync:PollInterval` chiama `SyncCoordinator.RunOnceAsync`.
-- **Flarelytics.Api**: minimal API sotto `/api/v1`, un file per feature in `Features/` (handler statici, richieste, validatori FluentValidation nello stesso file).
+- **Flarelytics.Core**: modello EF, isolamento dei tenant, cifratura, client degli store, sincronizzazione (`Sync/`, con `SyncWorker` che chiama `SyncCoordinator.RunOnceAsync` ogni `Sync:PollInterval`).
+- **Flarelytics.Api**: minimal API sotto `/api/v1`, un file per feature in `Features/` (handler statici, richieste, validatori FluentValidation nello stesso file). Ospita anche la sincronizzazione (`Worker:Enabled`, spenta nei test) e, nell'immagine Docker, serve il pannello da `wwwroot` (`Common/Frontend.cs`, che mette anche gli header di sicurezza/CSP). Deve girare in **una sola istanza**.
 - **Flarelytics.Tests**: integrazione con Testcontainers (un database per test) e unit test. `MigrationTests` applica le migration una per volta sopra dati già presenti: una colonna NOT NULL nuova vuole un valore predefinito, altrimenti in produzione l'API non parte.
-- **Flarelytics.Web**: React 19 + Vite + Tailwind 4 + TanStack Query + React Router, stile Supabase con tema chiaro, scuro o di sistema: i colori sono variabili CSS in `src/styles.css` (`@theme inline` → `var(--…)`, una palette per `[data-theme]`); `public/theme.js` applica il tema prima del primo disegno (file e non script inline, per la CSP) e `src/theme.ts` lo gestisce dopo. Per un colore nuovo serve un valore in entrambe le palette. Componenti base in `src/components/ui.tsx`, tipi delle risposte scritti a mano in `src/api/types.ts` (da allineare ai record C#). In produzione è servito da Caddy (`Flarelytics.Web/Dockerfile`).
+- **Flarelytics.Web**: React 19 + Vite + Tailwind 4 + TanStack Query + React Router, stile Supabase con tema chiaro, scuro o di sistema: i colori sono variabili CSS in `src/styles.css` (`@theme inline` → `var(--…)`, una palette per `[data-theme]`); `public/theme.js` applica il tema prima del primo disegno (file e non script inline, per la CSP) e `src/theme.ts` lo gestisce dopo. Per un colore nuovo serve un valore in entrambe le palette. Componenti base in `src/components/ui.tsx`, tipi delle risposte scritti a mano in `src/api/types.ts` (da allineare ai record C#). In produzione lo serve l'API (il `Dockerfile` alla radice lo compila e lo copia in `wwwroot`).
 
 ### Isolamento dei tenant: due livelli, entrambi obbligatori
 1. Le entità `ITenantOwned` ricevono un filtro globale EF su `TenantContext.TenantId` (`FlarelyticsDbContext`). Con il tenant non impostato le tabelle appaiono vuote.
 2. Row-Level Security di PostgreSQL. `TenantConnectionInterceptor` scrive `app.tenant_id` a ogni apertura di connessione; le politiche sono create in migration con `RowLevelSecurity.Enable(...)`. **Una nuova tabella `ITenantOwned` ha bisogno della sua chiamata `RowLevelSecurity.Enable` nella migration**: non è automatico.
 
-`TenantContext.Set` si chiama solo in `OrgAccessFilter` (tutte le rotte `/orgs/{orgId}/...`, che controllano la membership e il ruolo) e nei flussi che creano un tenant. Se la richiesta usa una transazione esplicita, il tenant va impostato prima di aprirla. L'app deve collegarsi con un ruolo **non superutente e senza BYPASSRLS**, proprietario delle tabelle: per questo le politiche sono `FORCE`. I test fanno lo stesso (`PostgresFixture`), altrimenti i test sulla RLS passerebbero senza verificare niente.
+`TenantContext.Set` si chiama solo in `OrgAccessFilter` (tutte le rotte `/orgs/{orgId}/...`, che controllano la membership e il ruolo) e nel worker, tenant per tenant. Se la richiesta usa una transazione esplicita, il tenant va impostato prima di aprirla. L'app deve collegarsi con un ruolo **non superutente e senza BYPASSRLS**, proprietario delle tabelle: per questo le politiche sono `FORCE`. I test fanno lo stesso (`PostgresFixture`), altrimenti i test sulla RLS passerebbero senza verificare niente.
 
 `Tenant`, `User`, `Membership`, `RefreshToken`, `EmailToken` non sono del tenant: si leggono prima di aver scelto un tenant.
 
@@ -49,16 +48,15 @@ In sviluppo le email non partono: link di conferma e reset si leggono nel log de
 - Il segreto si usa solo tramite `CredentialSecrets.UseAsync`, che lo azzera dopo l'uso.
 - Al caricamento: parse (`AppleKey`/`GoogleServiceAccount`) → verifica con lo store (`IStoreGateway`) → cifratura → salvataggio. `Rejected` non si salva; `Limited` sì, con l'avviso (i permessi di Google Play arrivano ore dopo l'invito).
 - Gateway senza SDK: JWT ES256 firmato da noi per Apple; JWT RS256 scambiato con un token OAuth per Google (`GoogleAuth`).
-- **Google: solo il bucket GCS `pubsite_prod_…`, mai la Play Developer Reporting API.** I suoi termini (marzo 2022) vietano di usarla con l'account sviluppatore di un terzo, che è il caso di Flarelytics. Verifica della chiave ed elenco delle app (dai nomi dei file) passano dal bucket.
-- **Termini Apple:** i termini dell'API App Store Connect, citati in un post del forum sviluppatori del 2023, ne limitano l'uso al team interno e vietano di chiedere credenziali a terzi. Il punto è aperto e va chiarito con Apple prima di vendere il servizio.
+- Google: verifica della chiave ed elenco delle app passano dal bucket GCS `pubsite_prod_…` (le app dai nomi dei file). Il codice è nato quando Flarelytics doveva essere un SaaS e i termini della Play Developer Reporting/Publishing API vietavano di usarle con l'account di un terzo; da self-hosted quelle API si possono usare (servono per build, listing, recensioni).
 - `ProjectApp.ExternalAppId` è l'Apple ID numerico (non il bundle id) oppure il package name Android.
 
 ### Sincronizzazione e metriche (fase 2)
-- Flusso: `SyncCoordinator` → cambi BCE (`RatesRefresher`) → per ogni tenant con abbonamento attivo apre uno scope, imposta `TenantContext` (la RLS vale anche nel worker) e chiama `AppleSalesSync` per le credenziali App Store da sincronizzare (ogni `Sync:Interval`, o subito con "Sincronizza ora" = `SyncRequestedAtUtc`).
+- Flusso: `SyncCoordinator` → cambi BCE (`RatesRefresher`) → per ogni tenant apre uno scope, imposta `TenantContext` (la RLS vale anche nel worker) e chiama `AppleSalesSync` per le credenziali App Store da sincronizzare (ogni `Sync:Interval`, o subito con "Sincronizza ora" = `SyncRequestedAtUtc`).
 - `AppleSalesSync` scarica SALES/SUMMARY/DAILY versione `1_0` per ogni giorno mancante degli ultimi `BackfillDays` (dal più recente), e ritenta i giorni vuoti recenti: Apple risponde 404 sia per "nessuna vendita" sia per "non ancora pronto". I giorni seguono il fuso del Pacifico (`AppleCalendar`). 401 rende la chiave `Invalid`, 403 `Limited`.
 - Google Play: `GooglePlaySync` legge `stats/installs/installs_<package>_<aaaamm>_country.csv` (UTF-16, colonne per nome con alternative; Download = "Daily User Installs"), riscarica un file mensile solo se cambia l'MD5, e riscrive solo le colonne delle installazioni (download, aggiornamenti, disinstallazioni).
-- Google, finanza (`GoogleFinanceParser`): `sales/salesreport_<aaaamm>.zip` dà acquisti in-app, rimborsi e venduto lordo (ordine per ordine, giorno UTC); `earnings/earnings_<aaaamm>….zip` dà il netto (somma di incasso, commissione, tasse, rimborsi; giorno del Pacifico; più file per mese). Si rielaborano per **mese intero** e ogni report scrive solo le sue colonne, così installazioni, vendite e guadagni convivono sulle stesse righe. Il segno nei rimborsi del report vendite lo decide lo stato, non l'importo: la documentazione non lo chiarisce, va verificato sui file veri.
-- `StoreCoverage` dice quali metriche ogni store fornisce (per Google dipende dai report arrivati) e fino a quando i ricavi netti Google sono completi (`ProceedsThrough`, fine dell'ultimo mese di guadagni): la UI mostra "—" e note, mai zeri finti.
+- **Niente ricavi, per scelta di prodotto**: si mostrano solo download, riscaricamenti, aggiornamenti e disinstallazioni. I report finanziari di Google (vendite, guadagni) non si scaricano. Le colonne dei ricavi in `DailyAppMetric` si riempiono ancora per Apple (vengono dallo stesso report dei download), ma l'API non le espone come coperte (`StoreCoverage`) e la UI non le mostra. Per i download Apple basta una chiave con ruolo **Sales**.
+- Icone (`AppIcon`, tabella globale, non del tenant): il worker le scarica da iTunes Lookup (Apple, nei paesi con più download dell'app) e dall'`og:image` della pagina pubblica di Google Play. Servite anonime da `GET /api/v1/icons/{id}` con un Guid casuale, per non rivelare quali app sono seguite.
 - I report grezzi (gzip, così come arrivano) stanno su disco tramite `ReportStorage` e sono la fonte di verità: `ReportProcessor` ne ricava `DailyAppMetric` senza rete. Cambiando il modo di contare si alza `AppleSalesAggregator.Version` e i file vengono rielaborati al giro successivo.
 - `DailyAppMetric` (schema `metrics`, chiave tenant+store+app+giorno+paese, importi in micro-euro) è legata all'app, non al progetto: i progetti la leggono tramite `ProjectApp.ExternalAppId`. Gli acquisti in-app si attribuiscono all'app tramite lo SKU (`AppleAppSku`).
 - Il parser legge le colonne per nome; per i rimborsi gli importi sono unità × |prezzo| (Apple scrive il prezzo negativo ma il ricavo positivo).
@@ -67,17 +65,16 @@ In sviluppo le email non partono: link di conferma e reset si leggono nel log de
 - La dashboard (`GET /orgs/{orgId}/metrics?days=&projectId=`) fa finire il periodo all'ultimo giorno con dati, non a oggi. Nel frontend `components/Dashboard.tsx` e `TrendChart.tsx` (barre impilate per store, un solo valore alla volta: mai due assi). I colori `--ios`/`--android` sono validati per contrasto e daltonismo in entrambi i temi: se cambiano, vanno rivalidati.
 
 ### Auth
-Access token JWT (15 min) nel corpo della risposta, tenuto solo in memoria dal frontend (`src/api/client.ts`); refresh token (30 giorni, ruotato a ogni uso, rilevamento del riuso) in un cookie HttpOnly `SameSite=Strict` con path `/api/v1/auth`. Per questo frontend e API devono stare sullo stesso dominio (Caddy in produzione, proxy di Vite in sviluppo), e il frontend deve avere un solo refresh in volo per volta. Un cambio password ruota `SecurityStamp`, controllato a ogni richiesta in `OnTokenValidated`.
+Access token JWT (15 min) nel corpo della risposta, tenuto solo in memoria dal frontend (`src/api/client.ts`); refresh token (30 giorni, ruotato a ogni uso, rilevamento del riuso) in un cookie HttpOnly `SameSite=Strict` con path `/api/v1/auth` (`Secure` salvo `Auth:SecureCookies=false`, necessario in HTTP fuori da localhost). Per questo frontend e API stanno sulla stessa origine (l'API serve il pannello in produzione, proxy di Vite in sviluppo), e il frontend deve avere un solo refresh in volo per volta. Un cambio password ruota `SecurityStamp`, controllato a ogni richiesta in `OnTokenValidated`.
 
 2FA TOTP (RFC 6238, implementazione propria in `Auth/Totp.cs`): il seme è cifrato in colonna con `FieldProtector` (stesse chiavi master del vault). Con la 2FA attiva il login risponde **202** con una `LoginChallenge` (a database, 5 tentativi) da completare su `/auth/login/2fa`; ogni intervallo TOTP vale una volta sola (`TotpLastUsedStep`). Codici di recupero salvati come hash SHA-256.
 
-Inviti: `Invitation` e `Membership` **non** sono `ITenantOwned` (chi accetta non è ancora nel tenant), quindi in `MemberEndpoints` si filtra per tenant a mano. L'invito è nominativo (l'email deve coincidere) e, se ci si registra dal link, vale come conferma dell'email.
+Installer (`Features/Setup`): `GET /instance` (`setupRequired`, `emailEnabled`) e `POST /setup`, che crea l'amministratore e la prima organizzazione sotto un `pg_advisory_xact_lock`, così due installer simultanei non creano due amministratori. Il pannello reindirizza tutto a `/setup` finché serve.
 
-### Billing
-`IBillingProvider` con `ManualBillingProvider`, che attiva subito qualsiasi piano e annulla subito. Le rotte di abbonamento e fatturazione sono in `Features/Billing` (pagina `/o/:orgId/billing` nel pannello); `BillingProfile` è l'intestatario delle fatture, con i campi della fattura elettronica italiana (SDI o PEC obbligatori per un'azienda IT con partita IVA). Le rotte di billing non richiedono un abbonamento attivo: è da lì che lo si riattiva. I piani sono codice (`Plans`), non dati. Le modifiche richiedono `.RequireActiveSubscription()`; il limite di progetti si controlla in `ProjectEndpoints.Create`.
+Inviti: `Invitation` e `Membership` **non** sono `ITenantOwned` (chi accetta non è ancora nel tenant), quindi in `MemberEndpoints` si filtra per tenant a mano. L'invito è nominativo (l'email deve coincidere), vale come conferma dell'email, ed è l'unico modo di registrarsi (`POST /auth/register` vuole sempre il token). La creazione restituisce il link una volta sola, per mandarlo a mano senza SMTP.
 
 ### Errori
 Lancia `ApiProblem` (stato + `code` stabile + dettaglio). `ProblemExceptionHandler` lo trasforma in Problem Details e mappa anche le chiavi non valide (400), gli errori degli store (502) e le violazioni di vincoli unique (409). Il frontend ragiona sul `code`, non sul testo.
 
 ## Deploy
-`deploy/`: Compose con Caddy (TLS + file statici del frontend + CSP), API, worker e PostgreSQL su una macchina sola. Volumi da salvare: database, `credential-data` (chiavi cifrate) e `report-data` (report grezzi). La chiave master sta in `deploy/keys/` montata in sola lettura e va salvata in un backup **separato** da quello dei dati. `deploy/postgres/10-app-role.sh` crea il ruolo applicativo non superutente.
+`Dockerfile` e `compose.yaml` alla radice: un'immagine sola (pannello + API + sincronizzazione, porta 8080, dati in `/data`) e PostgreSQL. Volumi: `flarelytics-keys` (chiave master e chiave dei JWT: da salvare **a parte** dai dati), `flarelytics-data` (credenziali cifrate), `flarelytics-reports` (report grezzi e icone), `postgres-data`. `deploy/postgres/10-app-role.sh` crea il ruolo applicativo non superutente: senza, la RLS non varrebbe.

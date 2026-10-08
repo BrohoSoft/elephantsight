@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { ApiError, errorMessage, request, requestWithStatus } from "../../api/client";
+import { useInstance } from "../../api/hooks";
 import type { SecondFactorChallenge, Session } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
 import { AuthLayout } from "../../components/AuthLayout";
@@ -18,7 +19,6 @@ export function LoginPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [resent, setResent] = useState(false);
 
   const done = (session: Session) => {
     signIn(session);
@@ -63,7 +63,7 @@ export function LoginPage() {
     }
   }
 
-  const notConfirmed = error instanceof ApiError && error.code === "email_not_confirmed";
+  const instance = useInstance();
 
   if (challenge) {
     return (
@@ -93,18 +93,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout
-      title="Bentornato"
-      subtitle="Accedi al tuo pannello."
-      footer={
-        <>
-          Non hai un account?{" "}
-          <Link to="/register" className="text-fg underline-offset-4 hover:underline">
-            Registrati
-          </Link>
-        </>
-      }
-    >
+    <AuthLayout title="Bentornato" subtitle="Accedi al tuo pannello.">
       <form onSubmit={submitPassword} className="space-y-4">
         <Field label="Email">
           <Input type="email" autoComplete="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@azienda.it" />
@@ -112,32 +101,16 @@ export function LoginPage() {
         <Field label="Password">
           <Input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </Field>
-        <div className="-mt-2 text-right">
-          <Link to="/forgot-password" className="text-xs text-muted hover:text-fg">
-            Password dimenticata?
-          </Link>
-        </div>
+        {/* Senza email configurata il link per reimpostarla non potrebbe arrivare. */}
+        {instance.data?.emailEnabled && (
+          <div className="-mt-2 text-right">
+            <Link to="/forgot-password" className="text-xs text-muted hover:text-fg">
+              Password dimenticata?
+            </Link>
+          </div>
+        )}
 
-        {notConfirmed ? (
-          <Alert tone="warn" title="Conferma la tua email">
-            Ti abbiamo mandato un link quando ti sei registrato.{" "}
-            {resent ? (
-              "Ne abbiamo mandato uno nuovo."
-            ) : (
-              <button
-                type="button"
-                className="text-fg underline underline-offset-4"
-                onClick={() =>
-                  request("/auth/resend-confirmation", { method: "POST", body: { email }, anonymous: true }).then(() => setResent(true))
-                }
-              >
-                Mandalo di nuovo
-              </button>
-            )}
-          </Alert>
-        ) : error ? (
-          <Alert tone="bad">{errorMessage(error)}</Alert>
-        ) : null}
+        {error ? <Alert tone="bad">{errorMessage(error)}</Alert> : null}
 
         <Button type="submit" variant="primary" className="h-9 w-full" loading={busy}>
           Accedi

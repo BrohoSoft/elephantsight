@@ -1,0 +1,91 @@
+using Flarelytics.Api.Auth;
+using Flarelytics.Api.Common;
+using Flarelytics.Api.Email;
+using Flarelytics.Api.Features.Auth;
+using Flarelytics.Core.Database;
+using Flarelytics.Core.Database.Entities;
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+
+namespace Flarelytics.Api.Features.Setup;
+
+/// <summary>
+/// L'installazione: lo stato dell'istanza e la creazione del primo utente.
+/// </summary>
+/// <remarks>
+/// <para>Flarelytics non ha registrazione libera. Al primo avvio, finché non
+/// esiste nessun utente, il pannello mostra l'installer: chi apre per primo
+/// l'indirizzo crea l'account amministratore e la prima organizzazione. Da lì
+/// in poi si entra solo per invito.</para>
+///
+/// <para><b>Chi arriva per primo vince</b>, quindi l'istanza va avviata e
+/// configurata subito, prima di esporla. Due installer lanciati nello stesso
+/// istante non creano due amministratori: il controllo "nessun utente" e
+/// l'inserimento avvengono sotto un lock del database.</para>
+/// </remarks>
+public static class SetupEndpoints
+{
+    /// <summary>Chiave arbitraria ma fissa del lock: identifica "l'installazione" fra tutti i lock di Postgres.</summary>
+    private const long SetupLockKey = 0x466C617265; // "Flare"
+
+    public static void MapSetup(this IEndpointRouteBuilder api)
+    {
+        api.MapGet("/instance", Instance).AllowAnonymous();
+        api.MapPost("/setup", Setup).AllowAnonymous().RequireRateLimiting(AuthEndpoints.RateLimitPolicy).Validating<SetupRequest>();
+    }
+
+    /// <summary>Quello che il pannello deve sapere prima ancora del login.</summary>
+    private static async Task<IResult> Instance(FlarelyticsDbContext db, AccountEmails emails, CancellationToken ct) =>
+        Results.Ok(new InstanceInfo(
+            SetupRequired: !await db.Set<User>().AnyAsync(ct),
+            EmailEnabled: emails.Enabled,
+            Version: typeof(SetupEndpoints).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
+
+    /// <summary>
+    /// Crea l'amministratore (owner della prima organizzazione) e apre subito
+    /// la sessione. Risponde 409 se l'istanza è già installata.
+    /// </summary>
+    private static async Task<IResult> Setup(
+        SetupRequest req, FlarelyticsDbContext db, TokenService tokens, RefreshTokenService sessions,
+        RefreshCookie cookie, HttpResponse response, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", [SetupLockKey], ct);
+
+        if (await db.Set<User>().AnyAsync(ct))
+        {
+            throw ApiProblem.Conflict("setup_done", "Flarelytics è già installato: accedi con il tuo account.");
+        }
+
+        var user = User.Create(req.Email, req.Password, req.FullName);
+        user.ConfirmEmail(now);
+        var org = Tenant.Create(req.OrganizationName);
+        db.AddRange(user, org, Membership.Create(org.Id, user.Id, OrgRole.Owner));
+
+        user.RegisterLogin(now);
+        var refresh = sessions.Issue(user, now);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        cookie.Write(response, refresh, now);
+        return Results.Ok(AuthEndpoints.Session(tokens, user, now));
+    }
+}
+
+/// <param name="SetupRequired">Nessun utente ancora: il pannello mostra l'installer.</param>
+/// <param name="EmailEnabled">Senza SMTP gli inviti si mandano copiando il link, e il recupero password non c'è.</param>
+public record InstanceInfo(bool SetupRequired, bool EmailEnabled, string Version);
+
+public record SetupRequest(string Email, string Password, string FullName, string OrganizationName);
+
+public class SetupRequestValidator : AbstractValidator<SetupRequest>
+{
+    public SetupRequestValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(255);
+        RuleFor(x => x.Password).StrongPassword();
+        RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.OrganizationName).NotEmpty().MaximumLength(100);
+    }
+}

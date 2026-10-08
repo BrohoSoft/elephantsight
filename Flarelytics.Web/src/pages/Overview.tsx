@@ -3,8 +3,9 @@ import { ArrowRight, Check, FolderKanban } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useCredentials, useProjects } from "../api/hooks";
+import { AppIcon } from "../components/AppIcon";
 import { Dashboard } from "../components/Dashboard";
-import { formatEur, formatInt } from "../components/format";
+import { formatInt } from "../components/format";
 import { StoreGlyph } from "../components/StoreIcons";
 import { EmptyState, PageHeader, PageLoader, Panel } from "../components/ui";
 import { useOrg } from "../components/org";
@@ -62,7 +63,6 @@ export function OverviewPage() {
                   <tr className="border-b border-line">
                     <th className="px-4 py-2 text-left font-medium">Progetto</th>
                     <th className="px-4 py-2 text-right font-medium">Download</th>
-                    <th className="px-4 py-2 text-right font-medium">Ricavi netti</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -71,7 +71,8 @@ export function OverviewPage() {
                     return (
                       <tr key={p.id} className="hover:bg-hover/50">
                         <td className="px-4 py-2.5">
-                          <Link to={`/o/${org.id}/projects/${p.id}`} className="flex items-center gap-2">
+                          <Link to={`/o/${org.id}/projects/${p.id}`} className="flex items-center gap-2.5">
+                            <AppIcon src={p.iconUrl} name={p.name} size="sm" />
                             <span className="truncate text-fg">{p.name}</span>
                             <span className="flex gap-1">
                               {p.apps.map((a) => <StoreGlyph key={a.id} store={a.store} className={clsx("size-3", a.store === "AppStore" ? "text-ios" : "text-android")} />)}
@@ -79,7 +80,6 @@ export function OverviewPage() {
                           </Link>
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums">{totals ? formatInt(totals.downloads) : "—"}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-muted">{totals ? formatEur(totals.proceedsEur) : "—"}</td>
                       </tr>
                     );
                   })}

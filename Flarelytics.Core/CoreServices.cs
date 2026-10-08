@@ -72,6 +72,7 @@ public static class CoreServices
 
         services.AddOptions<ReportsOptions>().BindConfiguration(ReportsOptions.Section);
         services.AddSingleton<ReportStorage>();
+        services.AddSingleton<IconStorage>();
 
         // I report sono file anche di qualche MB: un minuto di margine.
         services.AddHttpClient<IAppleSalesReports, AppleSalesReports>(c =>
@@ -86,7 +87,7 @@ public static class CoreServices
         return services;
     }
 
-    /// <summary>La sincronizzazione con gli store. La usa il worker; l'API no.</summary>
+    /// <summary>La sincronizzazione con gli store, con il ciclo in background che la fa girare.</summary>
     public static IServiceCollection AddFlarelyticsSync(this IServiceCollection services)
     {
         services.AddOptions<SyncOptions>().BindConfiguration(SyncOptions.Section);
@@ -95,7 +96,16 @@ public static class CoreServices
         services.AddScoped<ReportProcessor>();
         services.AddScoped<AppleSalesSync>();
         services.AddScoped<GooglePlaySync>();
+        services.AddScoped<IconRefresher>();
+        services.AddHttpClient<IAppIconSource, AppIconSource>(c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(20);
+            // La pagina di Google Play risponde in modo diverso a chi non si
+            // presenta come un browser.
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; Flarelytics/1.0)");
+        });
         services.AddSingleton<SyncCoordinator>();
+        services.AddHostedService<SyncWorker>();
         return services;
     }
 }

@@ -38,8 +38,11 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
         builder.UseSetting("Auth:SecureCookies", "false");
         builder.UseSetting("Auth:PublicAppUrl", "http://app.test");
         builder.UseSetting("Auth:AuthRequestsPerMinute", "10000");
+        // Il worker non deve girare da solo durante i test: lo si chiama a mano (SyncHost).
+        builder.UseSetting("Worker:Enabled", "false");
         builder.UseSetting("Secrets:KeysDirectory", KeysDirectory);
         builder.UseSetting("Secrets:StorageDirectory", SecretsDirectory);
+        builder.UseSetting("Reports:StorageDirectory", Path.Combine(Root, "reports"));
 
         builder.ConfigureTestServices(services =>
         {

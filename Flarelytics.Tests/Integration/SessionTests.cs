@@ -4,7 +4,7 @@ using Flarelytics.Tests.Integration.Infrastructure;
 
 namespace Flarelytics.Tests.Integration;
 
-/// <summary>Registrazione, conferma, accesso e ciclo di vita della sessione.</summary>
+/// <summary>Accesso e ciclo di vita della sessione.</summary>
 [Trait("Category", "Integration")]
 [Collection(DatabaseCollection.Name)]
 public class SessionTests(PostgresFixture postgres) : IAsyncLifetime
@@ -14,38 +14,6 @@ public class SessionTests(PostgresFixture postgres) : IAsyncLifetime
     public async Task InitializeAsync() => _app = new FlarelyticsAppFactory(await postgres.CreateDatabaseAsync());
 
     public async Task DisposeAsync() => await _app.DisposeAsync();
-
-    [Fact]
-    public async Task La_registrazione_crea_utente_organizzazione_e_abbonamento_attivo()
-    {
-        var account = await _app.SignUpAsync();
-
-        var me = await (await account.Client.GetAsync("/api/v1/me")).ReadJsonAsync();
-        var org = me.GetProperty("organizations")[0];
-        Assert.Equal(account.OrgId, org.GetProperty("id").GetGuid());
-        Assert.Equal("Owner", org.GetProperty("role").GetString());
-
-        // I pagamenti sono in sordina: il piano risulta pagato subito.
-        var subscription = await (await account.Client.GetAsync($"/api/v1/orgs/{account.OrgId}/subscription")).ReadJsonAsync();
-        Assert.True(subscription.GetProperty("isActive").GetBoolean());
-        Assert.Equal("starter", subscription.GetProperty("plan").GetProperty("code").GetString());
-    }
-
-    [Fact]
-    public async Task Senza_conferma_dell_email_non_si_entra()
-    {
-        var client = _app.CreateClient();
-        var email = $"u{Guid.NewGuid():N}@example.com";
-        await client.PostAsJsonAsync("/api/v1/auth/register", new
-        {
-            email, password = TestApi.Password, fullName = "Mario Rossi", organizationName = "Acme"
-        });
-
-        var login = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = TestApi.Password });
-
-        Assert.Equal(HttpStatusCode.Forbidden, login.StatusCode);
-        Assert.Equal("email_not_confirmed", await login.ProblemCodeAsync());
-    }
 
     [Fact]
     public async Task Password_sbagliata_ed_email_inesistente_rispondono_allo_stesso_modo()
@@ -101,17 +69,4 @@ public class SessionTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, (await account.Client.GetAsync("/api/v1/me")).StatusCode);
     }
 
-    [Fact]
-    public async Task La_stessa_email_non_si_registra_due_volte_anche_cambiando_le_maiuscole()
-    {
-        var account = await _app.SignUpAsync();
-
-        var again = await _app.CreateClient().PostAsJsonAsync("/api/v1/auth/register", new
-        {
-            email = account.Email.ToUpperInvariant(), password = TestApi.Password, fullName = "Altro", organizationName = "Altra"
-        });
-
-        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
-        Assert.Equal("email_taken", await again.ProblemCodeAsync());
-    }
 }

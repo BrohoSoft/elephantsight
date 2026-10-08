@@ -1,0 +1,68 @@
+# Flarelytics self-hosted: `docker compose up -d`, poi apri l'indirizzo e
+# completa l'installazione.
+#
+# Prima di partire, in un file .env accanto a questo:
+#   DB_PASSWORD=una-password-lunga
+#   PUBLIC_URL=https://flarelytics.tuodominio.it   (o http://localhost:8080)
+#
+# Dietro HTTPS (consigliato) lascia SECURE_COOKIES a true. Solo se lo apri in
+# HTTP da un indirizzo diverso da localhost mettilo a false, altrimenti il
+# browser non conserva la sessione.
+
+name: flarelytics
+
+services:
+  app:
+    image: flarelytics:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      ConnectionStrings__Database: Host=postgres;Database=flarelytics;Username=flarelytics;Password=${DB_PASSWORD:?manca DB_PASSWORD}
+      Auth__PublicAppUrl: ${PUBLIC_URL:-http://localhost:8080}
+      Auth__SecureCookies: ${SECURE_COOKIES:-true}
+      # Facoltativo: senza, gli inviti si mandano copiando il link.
+      Email__Smtp__Host: ${SMTP_HOST:-}
+      Email__Smtp__Port: ${SMTP_PORT:-587}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__Smtp__FromAddress: ${SMTP_FROM:-}
+    volumes:
+      # Le chiavi: quella che cifra le credenziali degli store e quella dei
+      # login. Vanno salvate a parte rispetto al resto: senza la chiave master
+      # le credenziali non si decifrano più.
+      - flarelytics-keys:/data/keys
+      # Credenziali cifrate e report scaricati dagli store.
+      - flarelytics-data:/data/secrets
+      - flarelytics-reports:/data/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: &log
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      APP_DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Crea il ruolo con cui si collega l'app: non superutente, perché un
+      # superutente ignorerebbe la Row-Level Security.
+      - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d flarelytics"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *log
+
+volumes:
+  flarelytics-keys:
+  flarelytics-data:
+  flarelytics-reports:
+  postgres-data:
