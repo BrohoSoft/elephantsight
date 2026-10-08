@@ -1,6 +1,13 @@
 # Flarelytics
 
-Le tue app su App Store e Google Play in un pannello solo: download, aggiornamenti, disinstallazioni, paesi, con iOS e Android affiancati. Self-hosted: gira sul tuo server, con le tue chiavi.
+Le tue app su App Store e Google Play in un pannello solo, iOS e Android affiancati: download e paesi, versioni e build, recensioni con risposta, testi e screenshot della pagina dello store, file di firma cifrati, caricamento delle build. Self-hosted: gira sul tuo server, con le tue chiavi.
+
+## Le chiavi degli store
+
+| Store | Cosa serve | Per cosa |
+|---|---|---|
+| App Store | Chiave API **del team** (.p8) con ruolo **Admin** (o App Manager + una chiave Sales), Issuer ID, Vendor Number | download, versioni, build, recensioni, pagina dello store, caricamento .ipa |
+| Google Play | JSON di un **service account**, invitato in Play Console con i permessi di rilascio, gestione della scheda, risposta alle recensioni e report in blocco; la **Google Play Android Developer API** abilitata nel progetto Cloud; l'URI del bucket dei report | download, release, recensioni, pagina dello store, caricamento .aab |
 
 ## Installazione
 
@@ -19,6 +26,9 @@ Apri `PUBLIC_URL` e **completa subito l'installazione**: il primo che apre la pa
 
 ### HTTPS
 Mettilo dietro un proxy con HTTPS (Caddy, Traefik, nginx…) che inoltra alla porta `8080`. Se lo usi in HTTP da un indirizzo che non è `localhost`, aggiungi `SECURE_COOKIES=false` al file `.env`, altrimenti il browser non conserva la sessione.
+
+### Caricamento delle build
+Le build passano dal pannello: se usi un proxy davanti, alza il limite della dimensione delle richieste (nginx `client_max_body_size 4g;`, Caddy di suo non ne ha).
 
 ### Email (facoltativa)
 Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero password non c'è. Per attivarla aggiungi a `.env` `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`.

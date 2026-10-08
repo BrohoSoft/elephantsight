@@ -81,6 +81,20 @@ public static class CoreServices
             c.Timeout = TimeSpan.FromSeconds(60);
         });
 
+        // Gestione delle app: tempi lunghi perché qui passano anche i
+        // caricamenti delle build, che pesano centinaia di MB.
+        services.AddHttpClient<Management.AppleApi>(c =>
+        {
+            c.BaseAddress = new Uri(AppStoreConnectGateway.BaseAddress);
+            c.Timeout = TimeSpan.FromMinutes(30);
+        });
+        services.AddHttpClient<Management.GooglePublisher>(c => c.Timeout = TimeSpan.FromMinutes(30));
+        services.AddScoped<Management.ReleasesService>();
+        services.AddScoped<Management.ReviewsService>();
+        services.AddScoped<Management.ListingService>();
+        services.AddSingleton<Management.UploadStorage>();
+        services.AddScoped<Management.BuildUploader>();
+
         // I file mensili di Google sono di qualche centinaio di KB al massimo.
         services.AddHttpClient<IGooglePlayReports, GooglePlayReports>(c => c.Timeout = TimeSpan.FromSeconds(60));
 
@@ -106,6 +120,7 @@ public static class CoreServices
         });
         services.AddSingleton<SyncCoordinator>();
         services.AddHostedService<SyncWorker>();
+        services.AddHostedService<Management.BuildUploadWorker>();
         return services;
     }
 }

@@ -86,6 +86,17 @@ public class SyncCoordinator(IServiceScopeFactory scopes, IOptions<SyncOptions> 
                     Store.GooglePlay => await services.GetRequiredService<GooglePlaySync>().SyncAsync(credential, nowUtc, ct),
                     _ => throw new InvalidOperationException($"Nessuna sincronizzazione per {credential.Store}.")
                 };
+
+                // Le recensioni delle app collegate con questa chiave, allo
+                // stesso ritmo dei download. Ogni app ha il suo stato e il suo
+                // errore: una chiave senza il permesso per le recensioni non
+                // ferma il resto.
+                var apps = await db.Set<ProjectApp>().Where(a => a.CredentialId == credential.Id)
+                    .Select(a => a.ExternalAppId).Distinct().ToListAsync(ct);
+                foreach (var appId in apps)
+                {
+                    await services.GetRequiredService<Management.ReviewsService>().SyncAsync(credential, appId, ct);
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {

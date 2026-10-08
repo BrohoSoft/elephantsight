@@ -107,3 +107,74 @@ public class AppleAppSkuConfiguration : IEntityTypeConfiguration<AppleAppSku>
         b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+public class ReviewConfiguration : IEntityTypeConfiguration<Review>
+{
+    public void Configure(EntityTypeBuilder<Review> b)
+    {
+        b.Property(r => r.AppId).HasMaxLength(200);
+        b.Property(r => r.ExternalId).HasMaxLength(200);
+        b.Property(r => r.Title).HasMaxLength(500);
+        b.Property(r => r.Body).HasMaxLength(10000);
+        b.Property(r => r.Author).HasMaxLength(200);
+        b.Property(r => r.Locale).HasMaxLength(20);
+        b.Property(r => r.AppVersion).HasMaxLength(50);
+        b.Property(r => r.ReplyText).HasMaxLength(10000);
+        b.Property(r => r.ReplyExternalId).HasMaxLength(200);
+        b.Property(r => r.ReplyState).HasMaxLength(30);
+
+        b.HasIndex(r => new { r.TenantId, r.Store, r.ExternalId }).IsUnique();
+        b.HasIndex(r => new { r.TenantId, r.WrittenAtUtc });
+        b.HasOne<Tenant>().WithMany().HasForeignKey(r => r.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ReviewSyncStateConfiguration : IEntityTypeConfiguration<ReviewSyncState>
+{
+    public void Configure(EntityTypeBuilder<ReviewSyncState> b)
+    {
+        b.HasKey(s => new { s.TenantId, s.Store, s.AppId });
+        b.Property(s => s.AppId).HasMaxLength(200);
+        b.Property(s => s.LastError).HasMaxLength(1000);
+        b.HasOne<Tenant>().WithMany().HasForeignKey(s => s.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ProjectSecretFileConfiguration : IEntityTypeConfiguration<ProjectSecretFile>
+{
+    public void Configure(EntityTypeBuilder<ProjectSecretFile> b)
+    {
+        b.Property(f => f.Name).HasMaxLength(200);
+        b.Property(f => f.FileName).HasMaxLength(255);
+        b.Property(f => f.Sha256).HasMaxLength(64);
+        b.Property(f => f.Notes).HasMaxLength(2000);
+        b.Property(f => f.KeyVersion).HasMaxLength(32);
+
+        b.HasIndex(f => f.ProjectId);
+        b.HasOne<Project>().WithMany().HasForeignKey(f => f.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<Tenant>().WithMany().HasForeignKey(f => f.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class BuildUploadConfiguration : IEntityTypeConfiguration<BuildUpload>
+{
+    public void Configure(EntityTypeBuilder<BuildUpload> b)
+    {
+        b.Property(u => u.AppId).HasMaxLength(200);
+        b.Property(u => u.FileName).HasMaxLength(255);
+        b.Property(u => u.StoragePath).HasMaxLength(400);
+        b.Property(u => u.Version).HasMaxLength(100);
+        b.Property(u => u.BuildNumber).HasMaxLength(50);
+        b.Property(u => u.Track).HasMaxLength(100);
+        b.Property(u => u.ReleaseStatus).HasMaxLength(20);
+        b.Property(u => u.ReleaseNotesLanguage).HasMaxLength(20);
+        b.Property(u => u.ReleaseNotes).HasMaxLength(500);
+        b.Property(u => u.ExternalId).HasMaxLength(200);
+        b.Property(u => u.Message).HasMaxLength(2000);
+
+        b.HasIndex(u => new { u.TenantId, u.Status });
+        b.HasIndex(u => u.ProjectId);
+        b.HasOne<Project>().WithMany().HasForeignKey(u => u.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<Tenant>().WithMany().HasForeignKey(u => u.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

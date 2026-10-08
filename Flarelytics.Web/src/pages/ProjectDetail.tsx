@@ -9,10 +9,16 @@ import { StoreBadge, StoreGlyph, storeName } from "../components/StoreIcons";
 import { Alert, Button, EmptyState, Field, Input, Modal, PageLoader, Select, Spinner, Textarea } from "../components/ui";
 import { useOrg } from "../components/org";
 import { Dashboard } from "../components/Dashboard";
+import { ReviewList } from "../components/ReviewList";
+import { Tabs } from "../components/Tabs";
+import { ListingTab } from "./project/ListingTab";
+import { ReleasesTab } from "./project/ReleasesTab";
+import { SecretFilesTab } from "./project/SecretFilesTab";
 
 export function ProjectDetailPage() {
   const org = useOrg();
-  const { projectId = "" } = useParams();
+  const { projectId = "", tab } = useParams();
+  const base = `/o/${org.id}/projects/${projectId}`;
   const project = useProject(org.id, projectId);
   const [linking, setLinking] = useState<Store | null>(null);
   const [editing, setEditing] = useState(false);
@@ -43,13 +49,28 @@ export function ProjectDetailPage() {
         {admin && <Button onClick={() => setEditing(true)}>Modifica</Button>}
       </div>
 
-      <div className="mb-6 grid gap-3 md:grid-cols-2">
-        {(["AppStore", "GooglePlay"] as Store[]).map((store) => (
-          <StoreSlot key={store} orgId={org.id} project={p} store={store} admin={admin} onLink={() => setLinking(store)} />
-        ))}
-      </div>
+      <Tabs items={[
+        { to: base, label: "Panoramica", end: true },
+        { to: `${base}/releases`, label: "Versioni e build" },
+        { to: `${base}/reviews`, label: "Recensioni" },
+        { to: `${base}/listing`, label: "Pagina dello store" },
+        { to: `${base}/files`, label: "File di firma" },
+      ]} />
 
-      <Dashboard orgId={org.id} projectId={p.id} />
+      {tab === "releases" ? <ReleasesTab project={p} />
+        : tab === "reviews" ? <ReviewList projectId={p.id} />
+        : tab === "listing" ? <ListingTab project={p} />
+        : tab === "files" ? <SecretFilesTab project={p} />
+        : (
+          <>
+            <div className="mb-6 grid gap-3 md:grid-cols-2">
+              {(["AppStore", "GooglePlay"] as Store[]).map((store) => (
+                <StoreSlot key={store} orgId={org.id} project={p} store={store} admin={admin} onLink={() => setLinking(store)} />
+              ))}
+            </div>
+            <Dashboard orgId={org.id} projectId={p.id} />
+          </>
+        )}
 
       {linking && <LinkAppModal orgId={org.id} project={p} store={linking} onClose={() => setLinking(null)} />}
       <EditProjectModal orgId={org.id} project={p} open={editing} onOpenChange={setEditing} />

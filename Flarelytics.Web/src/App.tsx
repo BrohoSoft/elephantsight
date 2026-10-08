@@ -18,6 +18,7 @@ import { OrgSettingsPage } from "./pages/OrgSettings";
 import { OverviewPage } from "./pages/Overview";
 import { ProjectDetailPage } from "./pages/ProjectDetail";
 import { ProjectsPage } from "./pages/Projects";
+import { ReviewsPage } from "./pages/Reviews";
 
 /** Le pagine interne: chi non ha una sessione va all'accesso, e poi torna qui. */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -95,6 +96,8 @@ export function App() {
         <Route path="/o/:orgId" element={<OrgGuard><OverviewPage /></OrgGuard>} />
         <Route path="/o/:orgId/projects" element={<OrgGuard><ProjectsPage /></OrgGuard>} />
         <Route path="/o/:orgId/projects/:projectId" element={<OrgGuard><ProjectDetailPage /></OrgGuard>} />
+        <Route path="/o/:orgId/projects/:projectId/:tab" element={<OrgGuard><ProjectDetailPage /></OrgGuard>} />
+        <Route path="/o/:orgId/reviews" element={<OrgGuard><ReviewsPage /></OrgGuard>} />
         <Route path="/o/:orgId/credentials" element={<OrgGuard><CredentialsPage /></OrgGuard>} />
         <Route path="/o/:orgId/members" element={<OrgGuard><MembersPage /></OrgGuard>} />
         <Route path="/o/:orgId/settings" element={<OrgGuard><OrgSettingsPage /></OrgGuard>} />

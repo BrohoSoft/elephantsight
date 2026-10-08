@@ -24,6 +24,9 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
     public FakeStoreGateway AppStore { get; } = new(Store.AppStore);
     public FakeStoreGateway GooglePlay { get; } = new(Store.GooglePlay);
 
+    /// <summary>Le API di gestione degli store (versioni, recensioni, pagina, build).</summary>
+    public FakeStoreServer StoreApis { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         KeyRing.CreateKeyFile(KeysDirectory, "v1");
@@ -48,6 +51,14 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
         {
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(Emails);
+
+            // I client di gestione parlano con il finto server invece che con
+            // Apple e Google. Il nome del client tipizzato è quello del tipo.
+            foreach (var client in new[] { nameof(Flarelytics.Core.Management.AppleApi), nameof(Flarelytics.Core.Management.GooglePublisher) })
+            {
+                services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
+                    o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = StoreApis));
+            }
 
             services.RemoveAll<IStoreGateway>();
             services.AddSingleton<IStoreGateway>(AppStore);

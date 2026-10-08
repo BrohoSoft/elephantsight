@@ -3,6 +3,7 @@ using Flarelytics.Api.Features.Account;
 using Flarelytics.Api.Features.Auth;
 using Flarelytics.Api.Features.Credentials;
 using Flarelytics.Api.Features.Icons;
+using Flarelytics.Api.Features.Manage;
 using Flarelytics.Api.Features.Metrics;
 using Flarelytics.Api.Features.Orgs;
 using Flarelytics.Api.Features.Projects;
@@ -76,6 +77,11 @@ api.MapMetrics();
 api.MapIcons();
 api.MapProjects();
 api.MapCredentials();
+api.MapReleases();
+api.MapReviews();
+api.MapListing();
+api.MapSecretFiles();
+api.MapBuilds();
 
 // Il pannello, se l'immagine lo contiene (wwwroot): ogni percorso che non è
 // un file e non è l'API riceve index.html, e la rotta la gestisce React.

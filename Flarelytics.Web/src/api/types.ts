@@ -152,3 +152,152 @@ export interface CreatedInvitation {
   link: string;
   emailSent: boolean;
 }
+
+export type ReleaseStage = "Live" | "Rolling" | "InReview" | "Draft" | "Rejected" | "Retired" | "Processing" | "Other";
+
+export interface VersionInfo {
+  version: string;
+  stage: ReleaseStage;
+  rawState: string;
+  track: string | null;
+  createdAtUtc: string | null;
+  rolloutPercent: number | null;
+  buildNumbers: string[];
+  releaseNotes: string | null;
+}
+
+export interface BuildInfo {
+  version: string | null;
+  buildNumber: string;
+  stage: ReleaseStage;
+  rawState: string;
+  uploadedAtUtc: string | null;
+  tracks: string[];
+}
+
+export interface StoreReleases {
+  store: Store;
+  appId: string;
+  versions: VersionInfo[];
+  builds: BuildInfo[];
+  error: string | null;
+}
+
+export interface ReviewItem {
+  id: string;
+  store: Store;
+  appId: string;
+  projectId: string | null;
+  projectName: string | null;
+  iconUrl: string | null;
+  rating: number;
+  title: string | null;
+  body: string;
+  author: string | null;
+  locale: string | null;
+  appVersion: string | null;
+  writtenAtUtc: string;
+  replyText: string | null;
+  repliedAtUtc: string | null;
+  replyState: string | null;
+}
+
+export interface RatingSummary {
+  store: Store;
+  count: number;
+  average: number;
+  distribution: number[];
+}
+
+export interface ReviewPage {
+  items: ReviewItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: RatingSummary[];
+  sync: { store: Store; appId: string; lastSyncedAtUtc: string | null; lastError: string | null }[];
+}
+
+export interface AppleLocaleText {
+  locale: string;
+  name: string | null;
+  subtitle: string | null;
+  privacyPolicyUrl: string | null;
+  description: string | null;
+  keywords: string | null;
+  whatsNew: string | null;
+  promotionalText: string | null;
+  marketingUrl: string | null;
+  supportUrl: string | null;
+}
+
+export interface AppleListing {
+  version: string | null;
+  infoEditable: boolean;
+  versionEditable: boolean;
+  locales: AppleLocaleText[];
+}
+
+export interface GoogleLocaleText {
+  language: string;
+  title: string;
+  shortDescription: string;
+  fullDescription: string;
+  video: string | null;
+}
+
+export interface GoogleListing {
+  defaultLanguage: string | null;
+  locales: GoogleLocaleText[];
+}
+
+export interface StoreResult<T> {
+  data: T | null;
+  error: string | null;
+}
+
+export interface ListingResponse {
+  appStore: StoreResult<AppleListing> | null;
+  googlePlay: StoreResult<GoogleListing> | null;
+}
+
+export interface ImageGroup {
+  group: string;
+  images: { id: string; url: string; fileName: string | null }[];
+}
+
+export type SecretPlatform = "Android" | "Ios" | "Common";
+export type SecretKind =
+  | "AndroidKeystore" | "KeyProperties" | "GoogleServicesJson" | "IosCertificate"
+  | "ProvisioningProfile" | "GoogleServiceInfoPlist" | "Environment" | "Other";
+
+export interface SecretFile {
+  id: string;
+  platform: SecretPlatform;
+  kind: SecretKind;
+  name: string;
+  fileName: string;
+  sizeBytes: number;
+  sha256: string;
+  notes: string | null;
+  createdAtUtc: string;
+  lastDownloadedAtUtc: string | null;
+}
+
+export type BuildUploadStatus = "Queued" | "Uploading" | "Processing" | "Completed" | "Failed";
+
+export interface BuildUploadItem {
+  id: string;
+  store: Store;
+  fileName: string;
+  sizeBytes: number;
+  version: string | null;
+  buildNumber: string | null;
+  track: string | null;
+  releaseStatus: string | null;
+  rolloutPercent: number | null;
+  status: BuildUploadStatus;
+  message: string | null;
+  createdAtUtc: string;
+  finishedAtUtc: string | null;
+}

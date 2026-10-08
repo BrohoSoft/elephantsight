@@ -46,6 +46,11 @@ public sealed class SyncHost : IAsyncDisposable
         services.AddSingleton<IAppleSalesReports>(Apple);
         services.RemoveAll<IGooglePlayReports>();
         services.AddSingleton<IGooglePlayReports>(Google);
+        foreach (var client in new[] { nameof(Flarelytics.Core.Management.AppleApi), nameof(Flarelytics.Core.Management.GooglePublisher) })
+        {
+            services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
+                o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = app.StoreApis));
+        }
         services.RemoveAll<IAppIconSource>();
         services.AddSingleton<IAppIconSource>(Icons);
 

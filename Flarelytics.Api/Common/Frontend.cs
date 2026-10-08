@@ -12,6 +12,8 @@ public static class Frontend
     /// protezione che rende inutile a uno script iniettato l'access token
     /// tenuto in memoria. Gli stili inline servono a Radix, che posiziona
     /// menu e finestre con l'attributo style; il QR della 2FA è un'immagine data:.
+    /// Le immagini di Apple (mzstatic) e Google (googleusercontent) sono gli
+    /// screenshot della pagina dello store, mostrati così come li serve lo store.
     /// </remarks>
     public static void UseSecurityHeaders(this WebApplication app)
     {
@@ -22,7 +24,8 @@ public static class Frontend
             h["Referrer-Policy"] = "strict-origin-when-cross-origin";
             h["X-Frame-Options"] = "DENY";
             h["Content-Security-Policy"] =
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data: https://*.mzstatic.com https://*.googleusercontent.com; " +
                 "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
             await next();
         });

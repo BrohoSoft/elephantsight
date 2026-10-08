@@ -4,6 +4,13 @@ import type {
   Metrics,
   Credential,
   InstanceInfo,
+  BuildUploadItem,
+  ImageGroup,
+  ListingResponse,
+  ReviewPage,
+  SecretFile,
+  Store,
+  StoreReleases,
   Invitation,
   Me,
   Member,
@@ -23,6 +30,12 @@ export const keys = {
   credentialApps: (orgId: string, id: string) => ["org", orgId, "credentials", id, "apps"] as const,
   members: (orgId: string) => ["org", orgId, "members"] as const,
   invitations: (orgId: string) => ["org", orgId, "invitations"] as const,
+  releases: (orgId: string, projectId: string) => ["org", orgId, "projects", projectId, "releases"] as const,
+  reviews: (orgId: string) => ["org", orgId, "reviews"] as const,
+  listing: (orgId: string, projectId: string) => ["org", orgId, "projects", projectId, "listing"] as const,
+  screenshots: (orgId: string, projectId: string, store: Store, locale: string) => ["org", orgId, "projects", projectId, "listing", store, locale] as const,
+  files: (orgId: string, projectId: string) => ["org", orgId, "projects", projectId, "files"] as const,
+  uploads: (orgId: string, projectId: string) => ["org", orgId, "projects", projectId, "uploads"] as const,
 };
 
 export const useMe = (enabled = true) => useQuery({ queryKey: keys.me, queryFn: () => request<Me>("/me"), enabled });
@@ -79,3 +92,46 @@ export function useApiMutation<TBody = void, TResult = unknown>(
 
 export const roleRank: Record<OrgRole, number> = { Viewer: 0, Admin: 1, Owner: 2 };
 export const canAdmin = (role: OrgRole) => roleRank[role] >= roleRank.Admin;
+
+export const useReleases = (orgId: string, projectId: string) =>
+  useQuery({ queryKey: keys.releases(orgId, projectId), queryFn: () => request<StoreReleases[]>(`/orgs/${orgId}/projects/${projectId}/releases`), staleTime: 60_000 });
+
+export interface ReviewFilters {
+  projectId?: string;
+  store?: Store;
+  rating?: number;
+  unanswered?: boolean;
+  page?: number;
+}
+
+export function useReviews(orgId: string, filters: ReviewFilters) {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => v !== undefined && v !== false && query.set(k, String(v)));
+  return useQuery({
+    queryKey: [...keys.reviews(orgId), filters],
+    queryFn: () => request<ReviewPage>(`/orgs/${orgId}/reviews?${query}`),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export const useListing = (orgId: string, projectId: string) =>
+  useQuery({ queryKey: keys.listing(orgId, projectId), queryFn: () => request<ListingResponse>(`/orgs/${orgId}/projects/${projectId}/listing`), staleTime: 60_000 });
+
+export const useScreenshots = (orgId: string, projectId: string, store: Store, locale: string | null) =>
+  useQuery({
+    queryKey: keys.screenshots(orgId, projectId, store, locale ?? ""),
+    queryFn: () => request<ImageGroup[]>(`/orgs/${orgId}/projects/${projectId}/listing/screenshots?store=${store}&locale=${encodeURIComponent(locale!)}`),
+    enabled: !!locale,
+    staleTime: 60_000,
+  });
+
+export const useSecretFiles = (orgId: string, projectId: string) =>
+  useQuery({ queryKey: keys.files(orgId, projectId), queryFn: () => request<SecretFile[]>(`/orgs/${orgId}/projects/${projectId}/files`) });
+
+/** Si aggiorna da sola finché c'è un caricamento in corso: lo stato lo cambia il worker. */
+export const useBuildUploads = (orgId: string, projectId: string) =>
+  useQuery({
+    queryKey: keys.uploads(orgId, projectId),
+    queryFn: () => request<BuildUploadItem[]>(`/orgs/${orgId}/projects/${projectId}/builds/uploads`),
+    refetchInterval: (q) => (q.state.data?.some((u) => u.status === "Queued" || u.status === "Uploading" || u.status === "Processing") ? 5000 : false),
+  });

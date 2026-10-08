@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { Check, ChevronsUpDown, FolderKanban, KeyRound, LayoutDashboard, LogOut, Plus, Settings, UserRound, Users } from "lucide-react";
+import { Check, ChevronsUpDown, FolderKanban, KeyRound, LayoutDashboard, LogOut, MessageSquare, Plus, Settings, UserRound, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useApiMutation, keys, useMe } from "../api/hooks";
@@ -46,6 +46,7 @@ export function AppShell() {
           <nav className="flex-1 space-y-0.5 p-2">
             <NavItem to={`/o/${navOrg.id}`} end icon={<LayoutDashboard className="size-4" />}>Panoramica</NavItem>
             <NavItem to={`/o/${navOrg.id}/projects`} icon={<FolderKanban className="size-4" />}>Progetti</NavItem>
+            <NavItem to={`/o/${navOrg.id}/reviews`} icon={<MessageSquare className="size-4" />}>Recensioni</NavItem>
             <NavItem to={`/o/${navOrg.id}/credentials`} icon={<KeyRound className="size-4" />}>Chiavi degli store</NavItem>
             <p className="px-2 pt-4 pb-1 text-[11px] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
             <NavItem to={`/o/${navOrg.id}/members`} icon={<Users className="size-4" />}>Membri</NavItem>
@@ -233,6 +234,7 @@ function MobileBar({ me, orgId }: { me: Me; orgId?: string }) {
           {[
             ["", "Panoramica"],
             ["/projects", "Progetti"],
+            ["/reviews", "Recensioni"],
             ["/credentials", "Chiavi"],
             ["/members", "Membri"],
             ["/settings", "Impostazioni"],

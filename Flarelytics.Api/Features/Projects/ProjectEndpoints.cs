@@ -4,6 +4,8 @@ using Flarelytics.Api.Features.Icons;
 using Flarelytics.Api.Features.Orgs;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
+using Flarelytics.Core.Management;
+using Flarelytics.Core.Secrets;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
@@ -77,11 +79,21 @@ public static partial class ProjectEndpoints
         return Results.Ok(ProjectResponse.From(project));
     }
 
-    private static async Task<IResult> Delete(Guid projectId, FlarelyticsDbContext db, CancellationToken ct)
+    /// <summary>
+    /// Cancella il progetto con tutto quello che è suo, anche fuori dal
+    /// database: i file di firma cifrati e le build in attesa di caricamento.
+    /// </summary>
+    private static async Task<IResult> Delete(Guid projectId, FlarelyticsDbContext db, SecretVault vault, UploadStorage uploads, CancellationToken ct)
     {
         var project = await LoadAsync(db, projectId, ct);
+        var files = await db.Set<ProjectSecretFile>().Where(f => f.ProjectId == projectId).Select(f => f.Id).ToListAsync(ct);
+        var pending = await db.Set<BuildUpload>().Where(u => u.ProjectId == projectId && u.StoragePath != null).Select(u => u.StoragePath).ToListAsync(ct);
+
         db.Remove(project);
         await db.SaveChangesAsync(ct);
+
+        foreach (var file in files) vault.Delete(project.TenantId, file);
+        foreach (var path in pending) uploads.Delete(path);
         return Results.NoContent();
     }
 
