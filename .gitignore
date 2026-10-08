@@ -1,0 +1,17 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.vscode/
+
+# Chiave master e segreti cifrati dello sviluppo locale.
+.dev/
+
+# Configurazione di produzione: contiene password e chiavi.
+deploy/.env
+deploy/keys/
+
+# Frontend
+node_modules/
+Flarelytics.Web/dist/

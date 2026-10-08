@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/*
+ * Lo stile di riferimento è il pannello di Supabase: pannelli appena staccati
+ * dallo sfondo, bordi sottili e un solo colore d'accento.
+ *
+ * Due palette, chiara e scura, scelte da data-theme su <html>. Lo imposta
+ * public/theme.js prima che la pagina venga disegnata, e poi src/theme.ts
+ * quando l'utente cambia preferenza. Le classi Tailwind (bg-panel, text-muted…)
+ * leggono le variabili: "inline" fa sì che puntino a var(--…) invece di
+ * copiarne il valore, così cambiare tema non vuole una seconda serie di classi.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-field: var(--field);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  /* brand è il fondo dei pulsanti principali; brand-fg è il colore del testo
+     d'accento, più scuro nel tema chiaro per restare leggibile sul bianco. */
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-fg: var(--brand-fg);
+
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+
+  --color-ios: var(--ios);
+  --color-android: var(--android);
+  --color-grid: var(--grid);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --panel-2: #f4f4f5;
+  --field: #ffffff;
+  --hover: #ececef;
+  --line: #e4e4e7;
+  --line-strong: #d4d4d8;
+  --fg: #18181b;
+  --muted: #52525b;
+  --faint: #8e8e96;
+
+  --brand: #f59e0b;
+  --brand-strong: #e08e06;
+  --brand-ink: #1a1203;
+  --brand-fg: #b45309;
+
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #dc2626;
+
+  --ios: #2563eb;
+  --android: #16a34a;
+  --grid: #ececef;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121212;
+  --panel: #1a1a1a;
+  --panel-2: #202020;
+  --field: #121212;
+  --hover: #262626;
+  --line: #2a2a2a;
+  --line-strong: #383838;
+  --fg: #ededed;
+  --muted: #a1a1a1;
+  --faint: #707070;
+
+  --brand: #f59e0b;
+  --brand-strong: #fbbf24;
+  --brand-ink: #1a1203;
+  --brand-fg: #f59e0b;
+
+  --ok: #3ecf8e;
+  --warn: #f5a524;
+  --bad: #f87171;
+
+  /* Colori dei due store nei grafici: validati per contrasto e daltonismo
+     sulla superficie dei pannelli, uno per tema. */
+  --ios: #3b82f6;
+  --android: #22a06b;
+  --grid: #262626;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 35%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}

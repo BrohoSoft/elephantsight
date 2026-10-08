@@ -1,0 +1,21 @@
+# Solo il database, per lavorare in locale: `docker compose -f compose.dev.yaml up -d`.
+# L'API si avvia con `dotnet run` e trova la stringa di connessione in
+# appsettings.Development.json. Porta 5433 per non scontrarsi con un
+# PostgreSQL già installato sulla macchina.
+
+name: flarelytics-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      APP_DB_PASSWORD: flarelytics
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-dev:/var/lib/postgresql/data
+      - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  postgres-dev:

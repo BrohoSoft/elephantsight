@@ -1,0 +1,6 @@
+**/bin
+**/obj
+.dev
+.git
+deploy
+Flarelytics.Tests
