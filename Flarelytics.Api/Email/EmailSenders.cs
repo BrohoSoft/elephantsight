@@ -35,7 +35,7 @@ public class SmtpOptions
     [Required] public string Username { get; set; } = null!;
     [Required] public string Password { get; set; } = null!;
     [Required, EmailAddress] public string FromAddress { get; set; } = null!;
-    public string FromName { get; set; } = "WatchStore";
+    public string FromName { get; set; } = "ElephantSight";
 }
 
 /// <summary>

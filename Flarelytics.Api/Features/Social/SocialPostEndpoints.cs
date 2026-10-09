@@ -77,7 +77,7 @@ public static class SocialPostEndpoints
     {
         var post = await LoadAsync(db, postId, ct);
         if (post.IsImported)
-            throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da WatchStore: qui si legge e basta.");
+            throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da ElephantSight: qui si legge e basta.");
         if (!post.IsEditable)
             throw ApiProblem.Conflict("post_published", "Il post è già uscito (o sta uscendo) su almeno un account: non si modifica più.");
 
@@ -95,7 +95,7 @@ public static class SocialPostEndpoints
         var post = await LoadAsync(db, postId, ct);
         // Un post importato tornerebbe al giro dopo: è una copia di quello sulla rete.
         if (post.IsImported)
-            throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da WatchStore: si toglie cancellandolo sulla rete.");
+            throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da ElephantSight: si toglie cancellandolo sulla rete.");
         if (post.Targets.Any(t => t.Status == SocialTargetStatus.Publishing))
             throw ApiProblem.Conflict("post_publishing", "Il post si sta pubblicando proprio adesso: riprova fra un momento.");
 
@@ -415,7 +415,7 @@ public static class SocialPostEndpoints
 
 public enum SocialPostStatus { Draft, Scheduled, Publishing, Published, PartiallyFailed, Failed, Inbox }
 
-/// <param name="Imported">Pubblicato fuori da WatchStore e copiato qui: si legge e basta.</param>
+/// <param name="Imported">Pubblicato fuori da ElephantSight e copiato qui: si legge e basta.</param>
 /// <param name="Inbox">Arrivato con una chiave API e in attesa nella coda "Da programmare".</param>
 /// <param name="SuggestedAtUtc">La data proposta da chi l'ha mandato.</param>
 /// <param name="Source">Il nome della chiave API da cui è arrivato (solo nell'elenco della coda).</param>

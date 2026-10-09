@@ -412,7 +412,7 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task I_post_pubblicati_fuori_da_WatchStore_si_importano_negli_ultimi_90_giorni_in_sola_lettura()
+    public async Task I_post_pubblicati_fuori_da_ElephantSight_si_importano_negli_ultimi_90_giorni_in_sola_lettura()
     {
         var a = await _app.SignUpAsync();
         await ConnectInstagramLoginAsync(a);
@@ -459,7 +459,7 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Un_post_uscito_da_WatchStore_non_si_reimporta_e_su_Bluesky_si_saltano_i_repost()
+    public async Task Un_post_uscito_da_ElephantSight_non_si_reimporta_e_su_Bluesky_si_saltano_i_repost()
     {
         var a = await _app.SignUpAsync();
         var mastodon = await ConnectMastodonAsync(a);
@@ -468,7 +468,7 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
         Net.On(HttpMethod.Post, $"^{Mastodon}/api/v1/statuses$", """{"id":"s1","url":"https://mastodon.example/@meteo/s1"}""")
             .On(HttpMethod.Get, $"^{Mastodon}/api/v1/accounts/42/statuses$", $$"""
                 [{"id":"s9","created_at":"{{at}}","url":"https://mastodon.example/@meteo/s9","content":"<p>Prima riga</p><p>Seconda &amp; ultima</p>","media_attachments":[]},
-                 {"id":"s1","created_at":"{{at}}","url":"https://mastodon.example/@meteo/s1","content":"<p>Da WatchStore</p>","media_attachments":[]}]
+                 {"id":"s1","created_at":"{{at}}","url":"https://mastodon.example/@meteo/s1","content":"<p>Da ElephantSight</p>","media_attachments":[]}]
                 """)
             .On(HttpMethod.Get, "^https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed$", $$$"""
                 {"feed":[
@@ -477,11 +477,11 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
                 ]}
                 """);
 
-        await CreatePostAsync(a, Post("Da WatchStore", DateTime.UtcNow.AddMinutes(-1), [mastodon]));
+        await CreatePostAsync(a, Post("Da ElephantSight", DateTime.UtcNow.AddMinutes(-1), [mastodon]));
         await Worker.RunOnceAsync(CancellationToken.None);
 
         var texts = (await CalendarAsync(a)).EnumerateArray().Select(p => p.GetProperty("text").GetString()).OrderBy(t => t).ToArray();
-        Assert.Equal(["Da WatchStore", "Mio post", "Prima riga\nSeconda & ultima"], texts);
+        Assert.Equal(["Da ElephantSight", "Mio post", "Prima riga\nSeconda & ultima"], texts);
     }
 
     [Fact]

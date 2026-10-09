@@ -40,7 +40,7 @@ export function SetupPage() {
 
   return (
     <AuthLayout
-      title="Benvenuto in WatchStore"
+      title="Benvenuto in ElephantSight"
       subtitle="Crea l'account amministratore. Gli altri utenti entreranno solo su tuo invito."
     >
       <form onSubmit={submit} className="space-y-4">

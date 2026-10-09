@@ -90,7 +90,7 @@ export function SocialCalendarPage() {
     <>
       <PageHeader
         title="Calendario social"
-        description="I post di tutti gli account dell'organizzazione: quelli programmati qui, che WatchStore pubblica all'ora indicata, e quelli usciti da altre app negli ultimi 90 giorni (tratteggiati)."
+        description="I post di tutti gli account dell'organizzazione: quelli programmati qui, che ElephantSight pubblica all'ora indicata, e quelli usciti da altre app negli ultimi 90 giorni (tratteggiati)."
         actions={
           <>
             {(projects.data?.length ?? 0) > 0 && (

@@ -31,7 +31,7 @@ export function ApiKeysPage() {
     <>
       <PageHeader
         title="Chiavi API"
-        description="Per mandare post a WatchStore da altri programmi: finiscono nella coda Da programmare, dove scegli account e ora."
+        description="Per mandare post a ElephantSight da altri programmi: finiscono nella coda Da programmare, dove scegli account e ora."
         actions={<Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>Nuova chiave</Button>}
       />
 
@@ -85,7 +85,7 @@ function CreateKeyModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal open onOpenChange={(o) => !o && onClose()} title={secret ? "Copia la chiave adesso" : "Nuova chiave API"}
-      description={secret ? "Non la potrai più rivedere: WatchStore ne conserva solo un'impronta. Se la perdi, revocala e creane un'altra." : "Dalle il nome del programma che la userà."}
+      description={secret ? "Non la potrai più rivedere: ElephantSight ne conserva solo un'impronta. Se la perdi, revocala e creane un'altra." : "Dalle il nome del programma che la userà."}
       footer={secret
         ? <Button variant="primary" onClick={onClose}>Fatto, l'ho copiata</Button>
         : <><Button variant="ghost" onClick={onClose}>Annulla</Button><Button variant="primary" loading={create.isPending} disabled={!name.trim()} onClick={() => create.mutate()}>Crea</Button></>}>

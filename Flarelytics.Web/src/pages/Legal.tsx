@@ -8,7 +8,7 @@ import { PageLoader } from "../components/ui";
 /*
  * Informativa privacy e termini d'uso di questa installazione, pubbliche e
  * senza login: TikTok e Meta le chiedono per approvare un'app. Descrivono
- * quello che WatchStore fa davvero (uno strumento privato con cui chi lo
+ * quello che ElephantSight fa davvero (uno strumento privato con cui chi lo
  * gestisce pubblica sui propri account), in inglese per chi fa la revisione e
  * in italiano sotto. Titolare e contatto vengono dalla configurazione
  * (LEGAL_OWNER, LEGAL_CONTACT_EMAIL).
@@ -71,7 +71,7 @@ export function PrivacyPage() {
 
         <h2>1. Who we are</h2>
         <p>
-          WatchStore at <strong>{site}</strong> is a private, self-hosted tool operated by <strong>{owner}</strong> (the "Operator").
+          ElephantSight at <strong>{site}</strong> is a private, self-hosted tool operated by <strong>{owner}</strong> (the "Operator").
           It is used internally by the Operator and by people the Operator invites, to manage the Operator's own mobile apps
           and to prepare, schedule and publish content on the Operator's own social media accounts (TikTok, Instagram, Facebook Pages, Bluesky, Mastodon).
           It is not a public service: there is no open sign-up, and every user is invited by the Operator.
@@ -112,10 +112,10 @@ export function PrivacyPage() {
 
         <h2>6. Retention and deletion</h2>
         <ul>
-          <li>Disconnecting a social account in WatchStore deletes its tokens immediately.</li>
+          <li>Disconnecting a social account in ElephantSight deletes its tokens immediately.</li>
           <li>Deleting a post deletes its uploaded media from the server.</li>
           <li>Media that is uploaded but never used in a post is deleted after one day.</li>
-          <li>You can also revoke WatchStore's access at any time from the platform: on TikTok in Settings and privacy → Security and permissions → Apps and services.</li>
+          <li>You can also revoke ElephantSight's access at any time from the platform: on TikTok in Settings and privacy → Security and permissions → Apps and services.</li>
           <li>To have all your data deleted, write to <Contact email={email} fallback="the Operator" />; we act within 30 days.</li>
         </ul>
 
@@ -133,7 +133,7 @@ export function PrivacyPage() {
         <h2 className="!mt-0 text-lg">Informativa privacy (italiano)</h2>
         <p className="text-xs text-faint">Ultimo aggiornamento: {UPDATED_IT}</p>
         <p>
-          WatchStore su <strong>{site}</strong> è uno strumento privato e installato sui propri server da <strong>{ownerIt}</strong> (il "Titolare"),
+          ElephantSight su <strong>{site}</strong> è uno strumento privato e installato sui propri server da <strong>{ownerIt}</strong> (il "Titolare"),
           usato dal Titolare e dalle persone che invita per gestire le proprie app e preparare, programmare e pubblicare contenuti sui propri account social
           (TikTok, Instagram, Pagine Facebook, Bluesky, Mastodon). Non è un servizio aperto al pubblico: non c'è registrazione libera.
         </p>
@@ -162,7 +162,7 @@ export function TermsPage() {
 
         <h2>1. The service</h2>
         <p>
-          WatchStore at <strong>{site}</strong> is a private, self-hosted tool operated by <strong>{owner}</strong>. It lets the Operator and
+          ElephantSight at <strong>{site}</strong> is a private, self-hosted tool operated by <strong>{owner}</strong>. It lets the Operator and
           invited users manage the Operator's mobile apps and prepare, schedule and publish content on social media accounts that the account owners
           connect themselves. It is not offered to the public and access is by invitation only.
         </p>
@@ -176,7 +176,7 @@ export function TermsPage() {
         <h2>3. Connected social accounts</h2>
         <p>
           A social account can be connected only by its owner or by someone authorized to act for it, through the platform's own login.
-          Access can be revoked at any time, in WatchStore or in the platform's settings.
+          Access can be revoked at any time, in ElephantSight or in the platform's settings.
         </p>
 
         <h2>4. Content and publishing</h2>
@@ -190,7 +190,7 @@ export function TermsPage() {
             {" "}and, for branded content, the <a className="text-brand-fg hover:underline" href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer">Branded Content Policy</a>;
             commercial content must be disclosed with the options shown before publishing.
           </li>
-          <li>Platforms may process, delay or reject content according to their own rules; WatchStore shows the result each platform returns.</li>
+          <li>Platforms may process, delay or reject content according to their own rules; ElephantSight shows the result each platform returns.</li>
         </ul>
 
         <h2>5. Personal data</h2>
@@ -210,7 +210,7 @@ export function TermsPage() {
         <h2 className="!mt-0 text-lg">Termini d'uso (italiano)</h2>
         <p className="text-xs text-faint">Ultimo aggiornamento: {UPDATED_IT}</p>
         <ul>
-          <li><strong>Il servizio</strong>: WatchStore su {site} è uno strumento privato di {ownerIt}, per gestire le proprie app e pubblicare sui propri account social. Si accede solo su invito.</li>
+          <li><strong>Il servizio</strong>: ElephantSight su {site} è uno strumento privato di {ownerIt}, per gestire le proprie app e pubblicare sui propri account social. Si accede solo su invito.</li>
           <li><strong>Account</strong>: gli utenti custodiscono le proprie credenziali (la verifica in due passaggi è consigliata); il Titolare può sospendere l'accesso in qualsiasi momento.</li>
           <li><strong>Account social</strong>: li collega solo chi ne è titolare o autorizzato, con il login della piattaforma; l'accesso si revoca in qualsiasi momento.</li>
           <li><strong>Contenuti</strong>: si pubblicano solo contenuti propri o di cui si hanno i diritti, solo quando un utente li programma, con le impostazioni scelte per ogni post. Valgono le regole di ogni piattaforma; per TikTok i Termini, la Music Usage Confirmation e, per i contenuti commerciali, la Branded Content Policy.</li>

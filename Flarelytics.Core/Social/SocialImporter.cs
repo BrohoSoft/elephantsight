@@ -41,7 +41,7 @@ public class RemoteImageClient(HttpClient http)
 }
 
 /// <summary>
-/// Porta sul calendario i post pubblicati fuori da WatchStore: da Business
+/// Porta sul calendario i post pubblicati fuori da ElephantSight: da Business
 /// Suite, dall'app, dal sito. Ogni account si rilegge ogni mezz'ora; la prima
 /// volta si va indietro di 90 giorni, poi si riparte dall'ultima lettura (con un
 /// giorno di sovrapposizione, i doppioni si riconoscono dall'id).

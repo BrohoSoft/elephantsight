@@ -1,4 +1,4 @@
-# WatchStore
+# ElephantSight
 
 Le tue app su App Store e Google Play in un pannello solo, iOS e Android affiancati: download e paesi, versioni e build, recensioni con risposta, testi e screenshot della pagina dello store, file di firma cifrati, caricamento delle build, e un calendario per programmare i post su Bluesky, Mastodon, Instagram (anche Reel), Pagine Facebook e TikTok. Self-hosted: gira sul tuo server, con le tue chiavi.
 

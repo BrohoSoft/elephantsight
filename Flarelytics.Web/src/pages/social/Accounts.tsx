@@ -33,7 +33,7 @@ export function SocialAccountsPage() {
 
   return (
     <>
-      <PageHeader title="Account social" description="Gli account su cui WatchStore pubblica i post del calendario. Password e token sono cifrati e non escono più dal server." />
+      <PageHeader title="Account social" description="Gli account su cui ElephantSight pubblica i post del calendario. Password e token sono cifrati e non escono più dal server." />
 
       {admin && (
         <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -194,7 +194,7 @@ function InstagramCard({ enabled, redirectUri }: { enabled: boolean; redirectUri
         </ol>
         <div className="mt-4 space-y-2">
           <Alert tone="info">
-            L'accesso dura 60 giorni e WatchStore lo rinnova da solo. Se l'istanza resta spenta per più di 60 giorni, l'account va ricollegato.
+            L'accesso dura 60 giorni e ElephantSight lo rinnova da solo. Se l'istanza resta spenta per più di 60 giorni, l'account va ricollegato.
           </Alert>
           <Alert tone="info">
             Instagram scarica le immagini dall'indirizzo pubblico dell'istanza: deve essere raggiungibile da internet. Con Cloudflare Access davanti, lascia libero <Mono>/api/v1/social/media/</Mono>.
@@ -253,7 +253,7 @@ function TikTokCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: s
         <div className="mt-4">
           <Alert tone="warn" title="Finché TikTok non approva l'app">
             I video escono solo con visibilità "Solo io", e l'account TikTok deve essere privato; al massimo 5 account al giorno. Per pubblicare in pubblico
-            l'app va mandata in revisione a TikTok (servono un'informativa privacy, i termini d'uso e un video che mostri il flusso). WatchStore mostra già
+            l'app va mandata in revisione a TikTok (servono un'informativa privacy, i termini d'uso e un video che mostri il flusso). ElephantSight mostra già
             le scelte che TikTok controlla in revisione.
           </Alert>
         </div>

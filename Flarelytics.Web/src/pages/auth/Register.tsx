@@ -48,7 +48,7 @@ export function RegisterPage() {
     }
   }
 
-  // Senza invito non ci si registra: WatchStore non ha registrazione libera.
+  // Senza invito non ci si registra: ElephantSight non ha registrazione libera.
   if (!invite) return <Navigate to="/login" replace />;
 
   if (preview.isPending) return <PageLoader />;

@@ -53,7 +53,7 @@ public class SocialAccount : BaseEntity, ITenantOwned
     public string? StatusMessage { get; private set; }
     public Guid CreatedByUserId { get; private set; }
 
-    /// <summary>L'ultima lettura dei post pubblicati fuori da WatchStore (vedi <see cref="Social.SocialImporter"/>).</summary>
+    /// <summary>L'ultima lettura dei post pubblicati fuori da ElephantSight (vedi <see cref="Social.SocialImporter"/>).</summary>
     public DateTime? LastImportAtUtc { get; private set; }
 
     private SocialAccount() { }
@@ -121,7 +121,7 @@ public class SocialPost : BaseEntity, ITenantOwned
     public bool IsDraft { get; private set; }
 
     /// <summary>
-    /// Pubblicato fuori da WatchStore (Business Suite, l'app, il sito) e
+    /// Pubblicato fuori da ElephantSight (Business Suite, l'app, il sito) e
     /// copiato qui per vederlo sul calendario: si legge e basta.
     /// </summary>
     public bool IsImported { get; private set; }

@@ -176,7 +176,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
     <Modal open onOpenChange={(o) => !o && onClose()} wide footer={footer}
       title={post?.inbox ? "Post da programmare" : post ? (readOnly ? "Post" : "Modifica post") : "Nuovo post"}
       description={post && (post.imported
-        ? <Badge tone="ok">Pubblicato fuori da WatchStore</Badge>
+        ? <Badge tone="ok">Pubblicato fuori da ElephantSight</Badge>
         : post.inbox
           ? <span>Arrivato {post.source ? <>da <b className="text-fg">{post.source}</b></> : "con una chiave API"}{post.suggestedAtUtc ? `, proposto per il ${formatDateTime(post.suggestedAtUtc)}` : ", senza data proposta"}. Scegli gli account e programmalo.</span>
           : <Badge tone={postStatus[post.status].tone}>{postStatus[post.status].label}</Badge>)}>

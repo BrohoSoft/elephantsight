@@ -10,7 +10,7 @@ namespace Flarelytics.Core.Social;
 /// post, così l'errore arriva subito e non all'ora della pubblicazione.
 /// </summary>
 /// <param name="CharacterCounting">Come conta la rete: <c>graphemes</c> (Bluesky), <c>codepoints</c>, <c>mastodon</c> (ogni link vale 23).</param>
-/// <param name="Video"><c>none</c> (la rete non riceve video da WatchStore), <c>optional</c> (Instagram: diventa un Reel), <c>required</c> (TikTok).</param>
+/// <param name="Video"><c>none</c> (la rete non riceve video da ElephantSight), <c>optional</c> (Instagram: diventa un Reel), <c>required</c> (TikTok).</param>
 /// <param name="RequiresFastStart">Il video deve avere l'indice in testa (Instagram, Reel).</param>
 public record NetworkLimits(
     int MaxCharacters, int MaxImages, bool RequiresMedia, long MaxImageBytes,
@@ -59,7 +59,7 @@ public static partial class SocialRules
         var videos = media.Where(m => m.Kind == MediaKind.Video).ToList();
         if (videos.Count > 0)
         {
-            if (limits.Video == "none") problems.Add("questa rete non riceve video da WatchStore");
+            if (limits.Video == "none") problems.Add("questa rete non riceve video da ElephantSight");
             else if (media.Count > 1) problems.Add("un video va pubblicato da solo, senza altre immagini");
             foreach (var v in videos)
             {

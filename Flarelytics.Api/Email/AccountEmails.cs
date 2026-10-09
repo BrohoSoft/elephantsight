@@ -25,11 +25,11 @@ public class AccountEmails(IEmailSender sender, IOptions<AuthOptions> options)
     /// <returns>Se l'email è partita davvero.</returns>
     public async Task<bool> SendInvitationAsync(string to, string organization, string invitedBy, string token, CancellationToken ct)
     {
-        await sender.SendAsync(new EmailMessage(to, $"{invitedBy} ti ha invitato su WatchStore",
+        await sender.SendAsync(new EmailMessage(to, $"{invitedBy} ti ha invitato su ElephantSight",
             $"""
             Ciao,
 
-            {invitedBy} ti ha invitato a entrare in "{organization}" su WatchStore.
+            {invitedBy} ti ha invitato a entrare in "{organization}" su ElephantSight.
             Per accettare apri questo link:
             {AppUrl}/accept-invite?token={Uri.EscapeDataString(token)}
 

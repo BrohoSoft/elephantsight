@@ -142,7 +142,7 @@ public static class CoreServices
             c.Timeout = TimeSpan.FromSeconds(20);
             // La pagina di Google Play risponde in modo diverso a chi non si
             // presenta come un browser.
-            c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; WatchStore/1.0)");
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; ElephantSight/1.0)");
         });
         services.AddSingleton<SyncCoordinator>();
         services.AddHostedService<SyncWorker>();

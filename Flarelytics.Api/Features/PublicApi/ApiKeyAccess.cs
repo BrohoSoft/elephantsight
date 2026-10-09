@@ -54,7 +54,7 @@ public class ApiKeyFilter : IEndpointFilter
         return await next(context);
     }
 
-    /// <summary>La chiave dall'header Authorization, se ha la forma di una chiave WatchStore.</summary>
+    /// <summary>La chiave dall'header Authorization, se ha la forma di una chiave ElephantSight.</summary>
     public static string? ReadKey(HttpRequest request)
     {
         var header = request.Headers.Authorization.ToString();

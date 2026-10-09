@@ -25,7 +25,7 @@ export function CredentialsPage() {
     <>
       <PageHeader
         title="Chiavi degli store"
-        description="Le chiavi con cui WatchStore legge i dati da App Store Connect e Google Play. Sono cifrate e non escono più dal server."
+        description="Le chiavi con cui ElephantSight legge i dati da App Store Connect e Google Play. Sono cifrate e non escono più dal server."
         actions={admin && <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setAdding(true)}>Aggiungi chiave</Button>}
       />
 

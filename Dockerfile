@@ -1,4 +1,4 @@
-# WatchStore in un'immagine sola: API, sincronizzazione con gli store e
+# ElephantSight in un'immagine sola: API, sincronizzazione con gli store e
 # pannello. Accanto serve solo PostgreSQL (vedi compose.yaml).
 
 # 1. Il pannello: file statici.

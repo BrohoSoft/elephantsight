@@ -1,4 +1,4 @@
-# WatchStore self-hosted: `docker compose up -d`, poi apri l'indirizzo e
+# ElephantSight self-hosted: `docker compose up -d`, poi apri l'indirizzo e
 # completa l'installazione.
 #
 # Prima di partire, in un file .env accanto a questo:

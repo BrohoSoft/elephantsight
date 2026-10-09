@@ -389,7 +389,7 @@ export interface SocialPost {
   projectId: string | null;
   status: SocialPostStatus;
   editable: boolean;
-  /** Pubblicato fuori da WatchStore (Business Suite, l'app…) e copiato qui: si legge e basta. */
+  /** Pubblicato fuori da ElephantSight (Business Suite, l'app…) e copiato qui: si legge e basta. */
   imported: boolean;
   /** Arrivato con una chiave API, in attesa nella coda "Da programmare". */
   inbox: boolean;
