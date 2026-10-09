@@ -1,4 +1,5 @@
-import type { RecurrenceFrequency, RecurringPost, Weekday } from "../api/types";
+import { request } from "../api/client";
+import type { RecurrenceFrequency, RecurringPost, SocialMediaItem, Weekday } from "../api/types";
 
 /** La settimana da lunedì, come in Italia (e come la scorre il server). */
 export const weekdays: { value: Weekday; short: string; long: string; article: string }[] = [
@@ -36,4 +37,17 @@ export function describeRule(r: Pick<RecurringPost, "frequency" | "interval" | "
   if (r.timeZone !== browserTimeZone()) text += ` (ora di ${r.timeZone})`;
   if (r.endDate) text += `, fino al ${new Date(`${r.endDate}T12:00`).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}`;
   return text;
+}
+
+/**
+ * Il modello per duplicare un post ricorrente: tutto uguale, ma con una copia
+ * di immagini e video (quelli dell'originale restano suoi). Le copie non
+ * salvate le cancella il server dopo un giorno.
+ */
+export async function duplicateTemplate(orgId: string, r: RecurringPost): Promise<RecurringPost> {
+  const media = r.media.length === 0 ? [] : await request<SocialMediaItem[]>(`/orgs/${orgId}/social/media/copies`, {
+    method: "POST",
+    body: { ids: r.media.map((m) => m.id) },
+  });
+  return { ...r, media, isPaused: false };
 }

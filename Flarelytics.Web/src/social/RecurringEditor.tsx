@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Trash2 } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { errorMessage, request } from "../api/client";
 import { keys } from "../api/hooks";
@@ -10,7 +10,7 @@ import { NetworkGlyph } from "../components/SocialIcons";
 import { Alert, Button, Field, Input, Modal, Segmented, Select, Textarea } from "../components/ui";
 import { AccountPicker, MediaField, mediaHint } from "./EditorParts";
 import { commercialIncomplete, NetworkOptions } from "./NetworkOptions";
-import { browserTimeZone, describeRule, weekdays } from "./recurrence";
+import { browserTimeZone, describeRule, duplicateTemplate, weekdays } from "./recurrence";
 import { accountLabel, countCharacters, optionProblems, problems } from "./rules";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -26,9 +26,14 @@ const weekdayOf = (date: string): Weekday =>
  * Scrivere un post ricorrente: lo stesso contenuto di un post (account,
  * testo, immagini, scelte per rete) più la regola. Le uscite le crea il
  * server all'ora giusta, quindi una modifica vale per tutte quelle future.
+ * Con <code>template</code> è un post nuovo che parte da una copia (vedi duplicateTemplate).
  */
-export function RecurringEditor({ recurring, accounts, projects, admin, onClose }: {
+export function RecurringEditor({ recurring, template, accounts, projects, admin, onClose, onDuplicate }: {
   recurring?: RecurringPost;
+  /** Un post nuovo che parte da questi valori: "Duplica". */
+  template?: RecurringPost;
+  /** Chiude questo editor e ne apre uno nuovo con la copia. */
+  onDuplicate?: (recurring: RecurringPost) => void;
   accounts: SocialAccount[];
   projects: Project[];
   admin: boolean;
@@ -37,24 +42,26 @@ export function RecurringEditor({ recurring, accounts, projects, admin, onClose 
   const org = useOrg();
   const queryClient = useQueryClient();
   const readOnly = !admin;
+  // Da dove partono i campi: il post che si modifica, o quello che si duplica.
+  const source = recurring ?? template;
 
-  const [text, setText] = useState(recurring?.text ?? "");
-  const [selected, setSelected] = useState<string[]>(recurring?.accountIds ?? []);
-  const [media, setMedia] = useState<SocialMediaItem[]>(recurring?.media ?? []);
-  const [options, setOptions] = useState<PostOptions>(recurring?.options ?? defaultPostOptions);
-  const [commercial, setCommercial] = useState(!!(recurring?.options.tikTokBrandOrganic || recurring?.options.tikTokBrandedContent));
-  const [projectId, setProjectId] = useState(recurring?.projectId ?? "");
-  const [frequency, setFrequency] = useState<RecurrenceFrequency>(recurring?.frequency ?? "Daily");
-  const [interval, setIntervalText] = useState(String(recurring?.interval ?? 1));
-  const [startDate, setStartDate] = useState(recurring?.startDate ?? today());
-  const [days, setDays] = useState<Weekday[]>(recurring?.daysOfWeek.length ? recurring.daysOfWeek : [weekdayOf(recurring?.startDate ?? today())]);
-  const [time, setTime] = useState(recurring?.timeOfDay ?? "09:00");
-  const [endDate, setEndDate] = useState(recurring?.endDate ?? "");
+  const [text, setText] = useState(source?.text ?? "");
+  const [selected, setSelected] = useState<string[]>(source?.accountIds ?? []);
+  const [media, setMedia] = useState<SocialMediaItem[]>(source?.media ?? []);
+  const [options, setOptions] = useState<PostOptions>(source?.options ?? defaultPostOptions);
+  const [commercial, setCommercial] = useState(!!(source?.options.tikTokBrandOrganic || source?.options.tikTokBrandedContent));
+  const [projectId, setProjectId] = useState(source?.projectId ?? "");
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>(source?.frequency ?? "Daily");
+  const [interval, setIntervalText] = useState(String(source?.interval ?? 1));
+  const [startDate, setStartDate] = useState(source?.startDate ?? today());
+  const [days, setDays] = useState<Weekday[]>(source?.daysOfWeek.length ? source.daysOfWeek : [weekdayOf(source?.startDate ?? today())]);
+  const [time, setTime] = useState(source?.timeOfDay ?? "09:00");
+  const [endDate, setEndDate] = useState(source?.endDate ?? "");
   // Un post ricorrente creato altrove resta nel suo fuso; uno nuovo prende quello del browser.
-  const timeZone = recurring?.timeZone ?? browserTimeZone();
+  const timeZone = source?.timeZone ?? browserTimeZone();
 
   const [uploading, setUploading] = useState(0);
-  const [busy, setBusy] = useState<"save" | "delete" | null>(null);
+  const [busy, setBusy] = useState<"save" | "delete" | "duplicate" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -93,7 +100,7 @@ export function RecurringEditor({ recurring, accounts, projects, admin, onClose 
       timeZone,
       startDate,
       endDate: endDate || null,
-      isPaused: recurring?.isPaused ?? false,
+      isPaused: recurring?.isPaused ?? false, // una copia parte attiva
     };
     try {
       await request(recurring ? `/orgs/${org.id}/social/recurring/${recurring.id}` : `/orgs/${org.id}/social/recurring`, { method: recurring ? "PUT" : "POST", body });
@@ -102,6 +109,17 @@ export function RecurringEditor({ recurring, accounts, projects, admin, onClose 
     } catch (e) {
       setError(e);
     } finally {
+      setBusy(null);
+    }
+  }
+
+  async function duplicate() {
+    setBusy("duplicate");
+    setError(null);
+    try {
+      onDuplicate!(await duplicateTemplate(org.id, recurring!));
+    } catch (e) {
+      setError(e);
       setBusy(null);
     }
   }
@@ -127,6 +145,10 @@ export function RecurringEditor({ recurring, accounts, projects, admin, onClose 
           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>No</Button>
         </>
       ) : <Button variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={() => setConfirmDelete(true)} aria-label="Elimina" />)}
+      {recurring && admin && onDuplicate && !confirmDelete && (
+        <Button variant="ghost" icon={<Copy className="size-3.5" />} loading={busy === "duplicate"} onClick={duplicate}
+          title="Un post ricorrente nuovo con gli stessi valori: cambi solo quello che serve">Duplica</Button>
+      )}
       <span className="flex-1" />
       {readOnly ? <Button variant="primary" onClick={onClose}>Chiudi</Button> : (
         <>
@@ -143,8 +165,10 @@ export function RecurringEditor({ recurring, accounts, projects, admin, onClose 
 
   return (
     <Modal open onOpenChange={(o) => !o && onClose()} wide footer={footer}
-      title={recurring ? (readOnly ? "Post ricorrente" : "Modifica post ricorrente") : "Nuovo post ricorrente"}
-      description="Esce da solo all'ora indicata, ogni volta con questo contenuto. Le modifiche valgono per tutte le uscite future; quelle già uscite restano sul calendario.">
+      title={recurring ? (readOnly ? "Post ricorrente" : "Modifica post ricorrente") : template ? "Copia di un post ricorrente" : "Nuovo post ricorrente"}
+      description={template
+        ? "Un post ricorrente nuovo, con gli stessi valori e una copia delle immagini: cambia testo, foto o regola e crealo. L'originale non cambia."
+        : "Esce da solo all'ora indicata, ogni volta con questo contenuto. Le modifiche valgono per tutte le uscite future; quelle già uscite restano sul calendario."}>
       <div className="space-y-5">
         <Field label="Dove">
           <AccountPicker accounts={accounts} selected={selected} onToggle={toggle} readOnly={readOnly} />

@@ -1,4 +1,4 @@
-import { Pause, Play, Plus, Repeat } from "lucide-react";
+import { Copy, Pause, Play, Plus, Repeat } from "lucide-react";
 import { useState } from "react";
 import { canAdmin, keys, useApiMutation, useProjects, useSocialAccounts, useSocialRecurring } from "../../api/hooks";
 import type { RecurringPost, SocialAccount } from "../../api/types";
@@ -6,7 +6,7 @@ import { formatDateTime, useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
 import { Alert, Badge, Button, EmptyState, PageHeader, PageLoader, Panel } from "../../components/ui";
 import { postStatus } from "../../social/PostEditor";
-import { describeRule } from "../../social/recurrence";
+import { describeRule, duplicateTemplate } from "../../social/recurrence";
 import { RecurringEditor } from "../../social/RecurringEditor";
 import { accountLabel } from "../../social/rules";
 import { errorMessage } from "../../api/client";
@@ -23,7 +23,9 @@ export function SocialRecurringPage() {
   const recurring = useSocialRecurring(org.id);
   const accounts = useSocialAccounts(org.id);
   const projects = useProjects(org.id);
-  const [editing, setEditing] = useState<{ recurring?: RecurringPost } | null>(null);
+  // Si apre per modificare (recurring), per creare da una copia (template) o da zero.
+  const [editing, setEditing] = useState<{ recurring?: RecurringPost; template?: RecurringPost } | null>(null);
+  const duplicate = (copy: RecurringPost) => setEditing({ template: copy });
 
   if (recurring.isPending || accounts.isPending || projects.isPending) return <PageLoader />;
 
@@ -48,21 +50,44 @@ export function SocialRecurringPage() {
         <Panel>
           <ul className="divide-y divide-line">
             {recurring.data!.map((r) => (
-              <RecurringRow key={r.id} recurring={r} accounts={accounts.data!} admin={admin} onOpen={() => setEditing({ recurring: r })} />
+              <RecurringRow key={r.id} recurring={r} accounts={accounts.data!} admin={admin} onOpen={() => setEditing({ recurring: r })} onDuplicate={duplicate} />
             ))}
           </ul>
         </Panel>
       )}
 
       {editing && (
-        <RecurringEditor recurring={editing.recurring} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />
+        // La chiave rimonta l'editor quando da un post si passa alla sua copia.
+        <RecurringEditor key={editing.recurring?.id ?? (editing.template ? "copia" : "nuovo")} recurring={editing.recurring} template={editing.template}
+          accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} onDuplicate={duplicate} />
       )}
     </>
   );
 }
 
-function RecurringRow({ recurring: r, accounts, admin, onOpen }: { recurring: RecurringPost; accounts: SocialAccount[]; admin: boolean; onOpen: () => void }) {
+function RecurringRow({ recurring: r, accounts, admin, onOpen, onDuplicate }: {
+  recurring: RecurringPost;
+  accounts: SocialAccount[];
+  admin: boolean;
+  onOpen: () => void;
+  onDuplicate: (copy: RecurringPost) => void;
+}) {
   const org = useOrg();
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState<unknown>(null);
+
+  async function duplicate() {
+    setCopying(true);
+    setCopyError(null);
+    try {
+      onDuplicate(await duplicateTemplate(org.id, r));
+    } catch (e) {
+      setCopyError(e);
+    } finally {
+      setCopying(false);
+    }
+  }
+
   const pause = useApiMutation(
     () => ({ path: `/orgs/${org.id}/social/recurring/${r.id}/paused`, body: { paused: !r.isPaused } }),
     [keys.socialRecurring(org.id)],
@@ -92,12 +117,18 @@ function RecurringRow({ recurring: r, accounts, admin, onOpen }: { recurring: Re
           </span>
         )}
         {r.occurrenceCount > 0 && <span className="text-faint">{r.occurrenceCount === 1 ? "1 uscita" : `${r.occurrenceCount} uscite`}</span>}
-        {admin && (r.isPaused || r.nextOccurrenceUtc) && (
-          <Button size="sm" variant="ghost" loading={pause.isPending} icon={r.isPaused ? <Play className="size-3" /> : <Pause className="size-3" />}
-            onClick={(e) => { e.stopPropagation(); pause.mutate(); }}>
-            {r.isPaused ? "Riprendi" : "Metti in pausa"}
-          </Button>
+        {admin && (
+          <span className="flex gap-1">
+            <Button size="sm" variant="ghost" loading={copying} icon={<Copy className="size-3" />} onClick={(e) => { e.stopPropagation(); duplicate(); }}>Duplica</Button>
+            {(r.isPaused || r.nextOccurrenceUtc) && (
+              <Button size="sm" variant="ghost" loading={pause.isPending} icon={r.isPaused ? <Play className="size-3" /> : <Pause className="size-3" />}
+                onClick={(e) => { e.stopPropagation(); pause.mutate(); }}>
+                {r.isPaused ? "Riprendi" : "Metti in pausa"}
+              </Button>
+            )}
+          </span>
         )}
+        {copyError ? <span className="text-bad">{errorMessage(copyError)}</span> : null}
       </div>
     </li>
   );

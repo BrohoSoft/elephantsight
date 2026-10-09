@@ -396,9 +396,11 @@ public class SocialMedia : BaseEntity, ITenantOwned
     /// <summary>
     /// Un'altra riga per lo stesso contenuto (il file va copiato a parte): ogni
     /// uscita di un post ricorrente ha i suoi file, che restano con il post
-    /// anche se la serie cambia immagini o viene cancellata.
+    /// anche se la serie cambia immagini o viene cancellata. Con
+    /// <paramref name="postId"/> null la copia resta libera, come appena
+    /// caricata (per duplicare un post ricorrente nell'editor).
     /// </summary>
-    public SocialMedia CopyFor(Guid postId, int position) => new()
+    public SocialMedia CopyFor(Guid? postId, int position) => new()
     {
         TenantId = TenantId, FileName = FileName, SizeBytes = SizeBytes, Width = Width, Height = Height, CreatedByUserId = CreatedByUserId,
         Kind = Kind, ContentType = ContentType, DurationMs = DurationMs, FastStart = FastStart, PostId = postId, Position = position, AltText = AltText

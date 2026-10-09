@@ -36,6 +36,7 @@ public static class SocialPostEndpoints
         admin.MapDelete("/posts/{postId:guid}", Delete);
         admin.MapPost("/posts/{postId:guid}/retry", Retry);
         admin.MapPost("/media", UploadMedia).DisableAntiforgery().WithFormOptions(multipartBodyLengthLimit: SocialMediaFiles.MaxSingleRequestBytes);
+        admin.MapPost("/media/copies", CopyMedia).Validating<CopyMediaRequest>();
         admin.MapChunkedUploads(http => (http.RequestServices.GetRequiredService<CurrentOrg>().TenantId, http.User.UserId()));
         admin.MapPost("/inbox/assign", Assign).Validating<AssignInboxRequest>();
         admin.MapPost("/posts/accounts", ChangeAccounts).Validating<ChangeAccountsRequest>();
@@ -153,6 +154,36 @@ public static class SocialPostEndpoints
             throw;
         }
         return media;
+    }
+
+    /// <summary>
+    /// Copie libere di immagini e video già usati (da un post ricorrente da
+    /// duplicare, per esempio): file nuovi, non attaccati a niente, che si
+    /// attaccano al salvataggio come quelli appena caricati. Quelle mai usate le
+    /// cancella il worker dopo un giorno. Nell'ordine della richiesta.
+    /// </summary>
+    private static async Task<IResult> CopyMedia(CopyMediaRequest req, FlarelyticsDbContext db, SocialMediaStorage storage, MediaUrlSigner signer,
+        CancellationToken ct)
+    {
+        var sources = await db.Set<SocialMedia>().Where(m => req.Ids.Contains(m.Id)).ToListAsync(ct);
+        if (sources.Count != req.Ids.Distinct().Count()) throw ApiProblem.NotFound("Immagine");
+
+        var copies = new List<SocialMedia>();
+        foreach (var (id, position) in req.Ids.Select((id, i) => (id, i)))
+        {
+            var source = sources.Single(m => m.Id == id);
+            var copy = source.CopyFor(null, position);
+            if (!storage.Copy(source, copy))
+            {
+                foreach (var c in copies) storage.Delete(c);
+                throw ApiProblem.NotFound("Il file dell'immagine");
+            }
+            copies.Add(copy);
+        }
+
+        db.AddRange(copies);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(copies.Select(m => SocialMediaResponse.From(m, signer)));
     }
 
     /// <summary>
@@ -468,6 +499,13 @@ public record SocialMediaResponse(Guid Id, MediaKind Kind, int Width, int Height
 }
 
 public record SavePostMedia(Guid Id, string? AltText);
+
+public record CopyMediaRequest(IReadOnlyList<Guid> Ids);
+
+public class CopyMediaRequestValidator : AbstractValidator<CopyMediaRequest>
+{
+    public CopyMediaRequestValidator() => RuleFor(x => x.Ids).NotEmpty().Must(i => i.Count <= 10);
+}
 
 /// <param name="ScheduledAtUtc">Un'ora per tutti; null = ciascuno all'ora che ha proposto.</param>
 /// <param name="Options">Le scelte per le reti che le chiedono (TikTok), uguali per tutti i post assegnati.</param>

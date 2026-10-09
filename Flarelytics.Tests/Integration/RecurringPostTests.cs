@@ -242,6 +242,36 @@ public class RecurringPostTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Duplicare_copia_le_immagini_e_la_copia_resta_indipendente_dall_originale()
+    {
+        var a = await _app.SignUpAsync();
+        var mastodon = await ConnectMastodonAsync(a);
+        var image = await UploadImageAsync(a);
+        var original = await CreateAsync(a, Recurring("Il meteo del lunedì", [mastodon], [image], frequency: "Weekly", days: ["Monday"]));
+
+        // Come fa il pannello: copie libere delle immagini, poi un post nuovo con il testo cambiato.
+        var copies = await (await a.Client.PostAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/media/copies", new { ids = new[] { image } })).ReadJsonAsync();
+        var copyId = copies[0].GetProperty("id").GetGuid();
+        Assert.NotEqual(image, copyId);
+        Assert.Equal("Il radar", copies[0].GetProperty("altText").GetString());
+
+        // L'immagine dell'originale non si può prendere: appartiene già a un post ricorrente.
+        Assert.Equal(HttpStatusCode.NotFound, (await a.Client.PostAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/recurring",
+            Recurring("Il meteo del giovedì", [mastodon], [image], frequency: "Weekly", days: ["Thursday"]))).StatusCode);
+        var duplicate = await CreateAsync(a, Recurring("Il meteo del giovedì", [mastodon], [copyId], frequency: "Weekly", days: ["Thursday"]));
+
+        var list = (await ListAsync(a)).EnumerateArray().ToList();
+        Assert.Equal(2, list.Count);
+        Assert.Equal(image, list.Single(r => r.GetProperty("id").GetGuid() == original.GetProperty("id").GetGuid()).GetProperty("media")[0].GetProperty("id").GetGuid());
+
+        // Cancellare la copia non tocca il file dell'originale.
+        Assert.Equal(HttpStatusCode.NoContent, (await a.Client.DeleteAsync($"/api/v1/orgs/{a.OrgId}/social/recurring/{duplicate.GetProperty("id").GetGuid()}")).StatusCode);
+        var storage = _app.Services.GetRequiredService<SocialMediaStorage>();
+        Assert.True(File.Exists(storage.PathFor(a.OrgId, image, ".jpg")));
+        Assert.False(File.Exists(storage.PathFor(a.OrgId, copyId, ".jpg")));
+    }
+
+    [Fact]
     public async Task Un_altra_organizzazione_non_vede_ne_tocca_i_post_ricorrenti()
     {
         var a = await _app.SignUpAsync();

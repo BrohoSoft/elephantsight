@@ -50,7 +50,8 @@ export function SocialCalendarPage() {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [projectId, setProjectId] = useState("");
   const [editing, setEditing] = useState<{ post?: SocialPost; date?: Date } | null>(null);
-  const [editingRecurring, setEditingRecurring] = useState<RecurringPost | null>(null);
+  // Un post ricorrente da modificare, o (template) la copia da cui crearne uno nuovo.
+  const [editingRecurring, setEditingRecurring] = useState<{ recurring?: RecurringPost; template?: RecurringPost } | null>(null);
   // Modalità selezione: i clic sui post li selezionano invece di aprirli.
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -170,7 +171,7 @@ export function SocialCalendarPage() {
                   {(selecting ? list : list.slice(0, 3)).map((e) => e.kind === "post" ? (
                     <PostChip key={e.post.id} post={e.post} onOpen={() => onChip(e.post)} selecting={selecting} selected={selectedIds.includes(e.post.id)} disabled={selecting && !selectable(e.post)} />
                   ) : (
-                    <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} disabled={selecting} onOpen={() => setEditingRecurring(e.recurring)} />
+                    <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} disabled={selecting} onOpen={() => setEditingRecurring({ recurring: e.recurring })} />
                   ))}
                   {!selecting && list.length > 3 && <p className="px-1 text-[0.6875rem] text-faint">+{list.length - 3} altri</p>}
                 </div>
@@ -190,7 +191,7 @@ export function SocialCalendarPage() {
             <div className="space-y-1.5">{byDay.get(dayKey(day))!.map((e) => e.kind === "post" ? (
               <PostChip key={e.post.id} post={e.post} onOpen={() => onChip(e.post)} large selecting={selecting} selected={selectedIds.includes(e.post.id)} disabled={selecting && !selectable(e.post)} />
             ) : (
-              <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} large disabled={selecting} onOpen={() => setEditingRecurring(e.recurring)} />
+              <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} large disabled={selecting} onOpen={() => setEditingRecurring({ recurring: e.recurring })} />
             ))}</div>
           </section>
         ))}
@@ -200,7 +201,9 @@ export function SocialCalendarPage() {
         <PostEditor post={editing.post} initialDate={editing.date} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />
       )}
       {editingRecurring && (
-        <RecurringEditor recurring={editingRecurring} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditingRecurring(null)} />
+        <RecurringEditor key={editingRecurring.recurring?.id ?? "copia"} recurring={editingRecurring.recurring} template={editingRecurring.template}
+          accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditingRecurring(null)}
+          onDuplicate={(copy) => setEditingRecurring({ template: copy })} />
       )}
     </>
   );
