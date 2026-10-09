@@ -38,6 +38,7 @@ public static class SocialPostEndpoints
         admin.MapPost("/media", UploadMedia).DisableAntiforgery().WithFormOptions(multipartBodyLengthLimit: SocialMediaFiles.MaxSingleRequestBytes);
         admin.MapChunkedUploads(http => (http.RequestServices.GetRequiredService<CurrentOrg>().TenantId, http.User.UserId()));
         admin.MapPost("/inbox/assign", Assign).Validating<AssignInboxRequest>();
+        admin.MapPost("/posts/accounts", ChangeAccounts).Validating<ChangeAccountsRequest>();
 
         // Anonima: la usa Instagram, che scarica l'immagine da sé, e i tag
         // <img> del pannello, che non possono mandare l'access token. La firma
@@ -246,6 +247,88 @@ public static class SocialPostEndpoints
         return Results.File(path, contentType, enableRangeProcessing: contentType != "image/jpeg");
     }
 
+    /// <summary>
+    /// Aggiunge e/o toglie account a più post insieme: quelli scelti, o tutti
+    /// quelli ancora da uscire. Ogni post si controlla da solo, con gli account
+    /// che avrebbe dopo il cambio: quelli che non andrebbero bene (una foto per
+    /// TikTok, un testo troppo lungo per Bluesky…) restano com'erano, con il motivo.
+    /// </summary>
+    /// <remarks>
+    /// Valgono le regole dell'editor: si cambiano solo post non ancora usciti da
+    /// nessuna parte, e un post programmato non resta senza account. I testi
+    /// diversi per account restano a quelli che li avevano.
+    /// </remarks>
+    private static async Task<IResult> ChangeAccounts(ChangeAccountsRequest req, FlarelyticsDbContext db, CancellationToken ct)
+    {
+        var add = req.AddAccountIds ?? [];
+        var remove = req.RemoveAccountIds ?? [];
+        var accounts = await db.Set<SocialAccount>().ToListAsync(ct);
+        if (add.Concat(remove).Any(id => accounts.All(a => a.Id != id))) throw ApiProblem.NotFound("Account");
+
+        var now = DateTime.UtcNow;
+        var query = db.Set<SocialPost>().Include(p => p.Targets).Include(p => p.Media).Where(p => !p.IsImported && !p.IsInbox);
+        query = req.AllUpcoming
+            ? query.Where(p => p.ScheduledAtUtc >= now)
+            : query.Where(p => (req.PostIds ?? new List<Guid>()).Contains(p.Id));
+        var posts = await query.OrderBy(p => p.ScheduledAtUtc).ToListAsync(ct);
+
+        var results = new List<ChangeAccountsResult>();
+        foreach (var post in posts)
+        {
+            var current = post.Targets.Where(t => t.AccountId != null).Select(t => t.AccountId!.Value).ToHashSet();
+            var next = current.Union(add).Except(remove).ToHashSet();
+            if (next.SetEquals(current))
+            {
+                results.Add(new ChangeAccountsResult(post.Id, post.Text, post.ScheduledAtUtc, false, null));
+                continue;
+            }
+            if (!post.IsEditable)
+            {
+                results.Add(new ChangeAccountsResult(post.Id, post.Text, post.ScheduledAtUtc, false, "È già uscito (o sta uscendo) su almeno un account."));
+                continue;
+            }
+            if (!post.IsDraft && next.Count == 0)
+            {
+                results.Add(new ChangeAccountsResult(post.Id, post.Text, post.ScheduledAtUtc, false, "Resterebbe senza account: cancellalo o mettilo in bozza."));
+                continue;
+            }
+
+            // Le scelte per TikTok arrivano con la richiesta (le fa la persona,
+            // qui); il resto delle opzioni del post non cambia.
+            var options = post.Options;
+            if (req.Options is { } chosen && add.Any(id => accounts.Single(a => a.Id == id).Network == SocialNetwork.TikTok))
+                options = chosen with { InstagramShowInGrid = options.InstagramShowInGrid };
+
+            if (!post.IsDraft)
+            {
+                var problems = ProblemsFor(post, accounts.Where(a => next.Contains(a.Id)),
+                    a => post.Targets.FirstOrDefault(t => t.AccountId == a.Id)?.TextOverride, options);
+                if (problems.Count > 0)
+                {
+                    results.Add(new ChangeAccountsResult(post.Id, post.Text, post.ScheduledAtUtc, false, string.Join(" ", problems)));
+                    continue;
+                }
+            }
+
+            foreach (var t in post.Targets.Where(t => t.AccountId is { } id && !next.Contains(id)).ToList())
+            {
+                post.RemoveTarget(t);
+                db.Remove(t);
+            }
+            foreach (var a in accounts.Where(a => next.Contains(a.Id) && !current.Contains(a.Id)))
+            {
+                var target = SocialPostTarget.For(post, a);
+                post.AddTarget(target);
+                db.Add(target);
+            }
+            post.SetOptions(options);
+            results.Add(new ChangeAccountsResult(post.Id, post.Text, post.ScheduledAtUtc, true, null));
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(results);
+    }
+
     /// <summary>Scrive sul post testo, data, account e immagini della richiesta, e lo controlla contro i limiti delle reti.</summary>
     private static async Task ApplyAsync(SocialPost post, SavePostRequest req, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
     {
@@ -306,10 +389,11 @@ public static class SocialPostEndpoints
     }
 
     /// <summary>Quello che impedisce di pubblicare il post su ciascun account, in frasi da mostrare.</summary>
-    private static List<string> ProblemsFor(SocialPost post, IEnumerable<SocialAccount> accounts, Func<SocialAccount, string?> textOverride)
+    private static List<string> ProblemsFor(SocialPost post, IEnumerable<SocialAccount> accounts, Func<SocialAccount, string?> textOverride,
+        PostOptions? options = null)
     {
         var ordered = post.Media.OrderBy(m => m.Position).ToList();
-        var options = post.Options;
+        options ??= post.Options;
         return accounts
             .Select(a => (Account: a, Problems: SocialRules.Problems(textOverride(a) ?? post.Text, ordered, SocialRules.For(a))
                 .Concat(SocialRules.OptionProblems(a.Network, options)).ToList()))
@@ -384,6 +468,26 @@ public record SavePostMedia(Guid Id, string? AltText);
 public record AssignInboxRequest(IReadOnlyList<Guid> PostIds, IReadOnlyList<Guid> AccountIds, DateTime? ScheduledAtUtc, PostOptions? Options = null);
 
 public record AssignResult(Guid PostId, bool Scheduled, string? Problem);
+
+/// <param name="AllUpcoming">Tutti i post ancora da uscire (non solo quelli in <paramref name="PostIds"/>).</param>
+/// <param name="Options">Le scelte per TikTok, quando si aggiunge un account TikTok.</param>
+public record ChangeAccountsRequest(IReadOnlyList<Guid>? PostIds, bool AllUpcoming, IReadOnlyList<Guid>? AddAccountIds, IReadOnlyList<Guid>? RemoveAccountIds,
+    PostOptions? Options = null);
+
+/// <param name="Changed">Il post ha gli account nuovi. Falso con <paramref name="Problem"/> nullo: non c'era niente da cambiare.</param>
+public record ChangeAccountsResult(Guid PostId, string Text, DateTime ScheduledAtUtc, bool Changed, string? Problem);
+
+public class ChangeAccountsRequestValidator : AbstractValidator<ChangeAccountsRequest>
+{
+    public ChangeAccountsRequestValidator()
+    {
+        RuleFor(x => x).Must(x => (x.AddAccountIds?.Count ?? 0) + (x.RemoveAccountIds?.Count ?? 0) > 0)
+            .WithName("accounts").WithMessage("Scegli almeno un account da aggiungere o togliere.");
+        RuleFor(x => x).Must(x => x.AllUpcoming || x.PostIds is { Count: > 0 })
+            .WithName("postIds").WithMessage("Scegli i post, o tutti quelli ancora da uscire.");
+        RuleFor(x => x.PostIds).Must(p => p is null || p.Count <= 500);
+    }
+}
 
 public class AssignInboxRequestValidator : AbstractValidator<AssignInboxRequest>
 {

@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { canAdmin, useProjects, useSocialAccounts, useSocialPosts } from "../../api/hooks";
@@ -7,6 +7,7 @@ import type { SocialPost } from "../../api/types";
 import { useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
 import { Badge, Button, EmptyState, PageHeader, PageLoader, Select } from "../../components/ui";
+import { BulkAccounts } from "../../social/BulkAccounts";
 import { PostEditor, postStatus } from "../../social/PostEditor";
 
 const monthFormat = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
@@ -45,6 +46,9 @@ export function SocialCalendarPage() {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [projectId, setProjectId] = useState("");
   const [editing, setEditing] = useState<{ post?: SocialPost; date?: Date } | null>(null);
+  // Modalità selezione: i clic sui post li selezionano invece di aprirli.
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const days = useMemo(() => monthGrid(month), [month]);
   const from = days[0];
@@ -72,6 +76,13 @@ export function SocialCalendarPage() {
     return at.getTime() < Date.now() ? new Date(Math.ceil((Date.now() + 3_600_000) / 900_000) * 900_000) : at;
   };
   const open = (post?: SocialPost, date?: Date) => setEditing({ post, date });
+  /** Si possono cambiare solo i post non ancora usciti, e non quelli importati. */
+  const selectable = (p: SocialPost) => p.editable && !p.imported;
+  const toggle = (p: SocialPost) => setSelectedIds((ids) => (ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id]));
+  const onChip = (p: SocialPost) => (selecting ? selectable(p) && toggle(p) : open(p));
+  const monthSelectable = (posts.data ?? []).filter((p) => selectable(p) && new Date(p.scheduledAtUtc).getMonth() === month.getMonth());
+  const selected = (posts.data ?? []).filter((p) => selectedIds.includes(p.id));
+  const stopSelecting = () => { setSelecting(false); setSelectedIds([]); };
 
   const visibleDays = days.filter((d) => d.getMonth() === month.getMonth() && byDay.has(dayKey(d)));
 
@@ -88,6 +99,7 @@ export function SocialCalendarPage() {
                 {projects.data!.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             )}
+            {admin && !selecting && <Button icon={<ListChecks className="size-3.5" />} onClick={() => setSelecting(true)}>Cambia account a più post</Button>}
             {admin && <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => open(undefined, newPostAt(today))}>Nuovo post</Button>}
           </>
         }
@@ -102,12 +114,21 @@ export function SocialCalendarPage() {
         </div>
       )}
 
+      {selecting && <BulkAccounts selected={selected} accounts={accounts.data!} onDone={stopSelecting} />}
+
       <div className="mb-3 flex items-center gap-2">
         <Button size="sm" variant="ghost" icon={<ChevronLeft className="size-4" />} aria-label="Mese prima" onClick={() => shift(-1)} />
         <Button size="sm" variant="ghost" icon={<ChevronRight className="size-4" />} aria-label="Mese dopo" onClick={() => shift(1)} />
         <h2 className="text-sm font-medium text-fg first-letter:uppercase">{monthFormat.format(month)}</h2>
         <Button size="sm" className="ml-1" onClick={() => setMonth(new Date(today.getFullYear(), today.getMonth(), 1))}>Oggi</Button>
         {posts.isFetching && <span className="text-xs text-faint">aggiornamento…</span>}
+        {selecting && (
+          <span className="ml-auto flex items-center gap-2 text-xs text-muted">
+            Clicca i post per selezionarli
+            <Button size="sm" onClick={() => setSelectedIds(monthSelectable.map((p) => p.id))} disabled={monthSelectable.length === 0}>Seleziona tutti del mese</Button>
+            {selectedIds.length > 0 && <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>Deseleziona</Button>}
+          </span>
+        )}
       </div>
 
       {/* Dal tablet in su: la griglia del mese. */}
@@ -121,11 +142,11 @@ export function SocialCalendarPage() {
             const list = byDay.get(dayKey(day)) ?? [];
             return (
               <div key={i}
-                onClick={() => admin && open(undefined, newPostAt(day))}
+                onClick={() => admin && !selecting && open(undefined, newPostAt(day))}
                 className={clsx(
                   "group min-h-28 border-line p-1.5 [&:not(:nth-child(7n))]:border-r [&:nth-child(n+8)]:border-t",
                   !inMonth && "bg-panel-2/40",
-                  admin && "cursor-pointer hover:bg-hover/40",
+                  admin && !selecting && "cursor-pointer hover:bg-hover/40",
                 )}>
                 <div className="mb-1 flex items-center justify-between">
                   <span className={clsx(
@@ -135,8 +156,10 @@ export function SocialCalendarPage() {
                   {admin && <Plus className="size-3.5 text-faint opacity-0 group-hover:opacity-100" />}
                 </div>
                 <div className="space-y-1">
-                  {list.slice(0, 3).map((p) => <PostChip key={p.id} post={p} onOpen={() => open(p)} />)}
-                  {list.length > 3 && <p className="px-1 text-[0.6875rem] text-faint">+{list.length - 3} altri</p>}
+                  {(selecting ? list : list.slice(0, 3)).map((p) => (
+                    <PostChip key={p.id} post={p} onOpen={() => onChip(p)} selecting={selecting} selected={selectedIds.includes(p.id)} disabled={selecting && !selectable(p)} />
+                  ))}
+                  {!selecting && list.length > 3 && <p className="px-1 text-[0.6875rem] text-faint">+{list.length - 3} altri</p>}
                 </div>
               </div>
             );
@@ -151,7 +174,9 @@ export function SocialCalendarPage() {
         ) : visibleDays.map((day) => (
           <section key={dayKey(day)}>
             <h3 className="mb-1.5 text-xs font-medium text-muted first-letter:uppercase">{dayFormat.format(day)}</h3>
-            <div className="space-y-1.5">{byDay.get(dayKey(day))!.map((p) => <PostChip key={p.id} post={p} onOpen={() => open(p)} large />)}</div>
+            <div className="space-y-1.5">{byDay.get(dayKey(day))!.map((p) => (
+              <PostChip key={p.id} post={p} onOpen={() => onChip(p)} large selecting={selecting} selected={selectedIds.includes(p.id)} disabled={selecting && !selectable(p)} />
+            ))}</div>
           </section>
         ))}
       </div>
@@ -163,19 +188,29 @@ export function SocialCalendarPage() {
   );
 }
 
-function PostChip({ post, onOpen, large }: { post: SocialPost; onOpen: () => void; large?: boolean }) {
+function PostChip({ post, onOpen, large, selecting, selected, disabled }: {
+  post: SocialPost;
+  onOpen: () => void;
+  large?: boolean;
+  selecting?: boolean;
+  selected?: boolean;
+  disabled?: boolean;
+}) {
   const networks = [...new Set(post.targets.map((t) => t.network))];
   const status = post.imported ? { label: "Pubblicato altrove", tone: "ok" as const } : postStatus[post.status];
   return (
-    <button type="button" title={`${status.label}: ${post.text}`}
-      onClick={(e) => { e.stopPropagation(); onOpen(); }}
+    <button type="button" title={disabled ? "Già uscito: non si cambia" : `${status.label}: ${post.text}`} aria-pressed={selecting ? selected : undefined}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onOpen(); }}
       className={clsx(
-        "block w-full rounded border-l-2 text-left transition-opacity hover:opacity-80",
+        "block w-full rounded border-l-2 text-left transition-opacity",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:opacity-80",
+        selected && "ring-2 ring-brand",
         // I post importati: stesso colore dei pubblicati, ma tratteggiati, perché non sono passati da qui.
         post.imported ? "border border-l-2 border-dashed border-ok/40 border-l-ok bg-transparent text-fg" : chipTone[post.status],
         large ? "px-3 py-2" : "px-1.5 py-1",
       )}>
       <span className="flex items-center gap-1">
+        {selecting && !disabled && <input type="checkbox" readOnly tabIndex={-1} checked={!!selected} className="size-3 accent-brand" aria-hidden />}
         <span className="font-mono text-[0.6875rem] text-muted">{timeFormat.format(new Date(post.scheduledAtUtc))}</span>
         {networks.map((n) => <NetworkGlyph key={n} network={n} className="size-3 text-muted" />)}
         {large && <Badge tone={status.tone} className="ml-auto">{status.label}</Badge>}

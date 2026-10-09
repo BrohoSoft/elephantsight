@@ -170,6 +170,15 @@ export function SocialInboxPage() {
           )}
 
           <Panel>
+            {admin && (
+              <label className="flex cursor-pointer items-center gap-3 border-b border-line bg-panel-2/50 px-4 py-2 text-xs font-medium text-muted">
+                <input type="checkbox" className="accent-brand"
+                  checked={posts.length > 0 && selected.length === posts.length}
+                  ref={(el) => { if (el) el.indeterminate = selected.length > 0 && selected.length < posts.length; }}
+                  onChange={() => setSelected(selected.length === posts.length ? [] : posts.map((p) => p.id))} />
+                {selected.length === 0 ? `Seleziona tutti (${posts.length})` : `${selected.length} di ${posts.length} selezionati`}
+              </label>
+            )}
             <ul className="divide-y divide-line">
               {posts.map((p) => (
                 <li key={p.id} onClick={() => setEditing(p)}

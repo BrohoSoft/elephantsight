@@ -485,6 +485,41 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Un_account_si_aggiunge_e_si_toglie_da_piu_post_insieme_e_quelli_che_non_vanno_restano_col_motivo()
+    {
+        var a = await _app.SignUpAsync();
+        var mastodon = await ConnectMastodonAsync(a);
+        var instagram = await ConnectInstagramLoginAsync(a);
+        Net.On(HttpMethod.Post, $"^{Mastodon}/api/v1/statuses$", """{"id":"s1","url":"https://mastodon.example/@meteo/s1"}""");
+
+        var withImage = await CreatePostAsync(a, Post("Con foto", DateTime.UtcNow.AddDays(1), [mastodon], [await UploadImageAsync(a)]));
+        var textOnly = await CreatePostAsync(a, Post("Solo testo", DateTime.UtcNow.AddDays(2), [mastodon]));
+        var published = await CreatePostAsync(a, Post("Già uscito", DateTime.UtcNow.AddMinutes(-1), [mastodon]));
+        await Worker.RunOnceAsync(CancellationToken.None);
+        var ids = new[] { withImage, textOnly, published }.Select(p => p.GetProperty("id").GetGuid()).ToArray();
+
+        var added = await (await a.Client.PostAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/posts/accounts",
+            new { postIds = ids, allUpcoming = false, addAccountIds = new[] { instagram } })).ReadJsonAsync();
+        var results = added.EnumerateArray().ToDictionary(r => r.GetProperty("postId").GetGuid());
+        Assert.True(results[ids[0]].GetProperty("changed").GetBoolean());
+        Assert.Contains("immagine", results[ids[1]].GetProperty("problem").GetString());   // Instagram vuole un media
+        Assert.Contains("già uscito", results[ids[2]].GetProperty("problem").GetString());
+        Assert.Equal(["Instagram", "Mastodon"], (await GetPostAsync(a, withImage)).GetProperty("targets").EnumerateArray()
+            .Select(t => t.GetProperty("network").GetString()).Order().ToArray());
+        Assert.Equal(1, (await GetPostAsync(a, textOnly)).GetProperty("targets").GetArrayLength()); // invariato
+
+        // Togliere Mastodon da tutti i prossimi: dove resta Instagram si toglie,
+        // dove era l'unico account il post non resta vuoto.
+        var removed = await (await a.Client.PostAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/posts/accounts",
+            new { allUpcoming = true, removeAccountIds = new[] { mastodon } })).ReadJsonAsync();
+        var byPost = removed.EnumerateArray().ToDictionary(r => r.GetProperty("postId").GetGuid());
+        Assert.True(byPost[ids[0]].GetProperty("changed").GetBoolean());
+        Assert.Contains("senza account", byPost[ids[1]].GetProperty("problem").GetString());
+        Assert.False(byPost.ContainsKey(ids[2])); // già passato: non è fra i prossimi
+        Assert.Equal("Instagram", (await GetPostAsync(a, withImage)).GetProperty("targets")[0].GetProperty("network").GetString());
+    }
+
+    [Fact]
     public async Task Su_una_Pagina_Facebook_piu_foto_diventano_un_post_solo()
     {
         var a = await _app.SignUpAsync();
