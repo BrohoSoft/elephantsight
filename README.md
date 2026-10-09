@@ -75,3 +75,10 @@ dotnet test                                       # serve Docker (Testcontainers
 ```
 
 In sviluppo le email non partono: i link si leggono nel log dell'API.
+
+## Licenza
+
+ElephantSight è distribuito con la [Elastic License 2.0](LICENSE): il codice è pubblico e puoi usarlo, modificarlo e installarlo gratis, anche in azienda, per gestire le tue app e i tuoi social. Non puoi offrirlo ad altri come servizio gestito o a pagamento, né togliere o aggirare le parti che lo proteggono. È una licenza *source-available*, non open source in senso stretto.
+
+ElephantSight is licensed under the [Elastic License 2.0](LICENSE): free to use, modify and self-host, including for your own business; you may not provide it to others as a managed service.
+
