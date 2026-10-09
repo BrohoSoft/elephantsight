@@ -148,3 +148,32 @@ body {
 :is(ul, ol, tbody).divide-y > :is(li, tr):hover {
   background-color: color-mix(in srgb, var(--hover) 55%, transparent);
 }
+
+/*
+ * La manina su tutto quello che si clicca. Tailwind 4 di serie lascia la
+ * freccia sui pulsanti; qui vale per pulsanti, link, menu, caselle e schede,
+ * anche per quelli che verranno. Disattivati: il cursore "non permesso".
+ */
+@layer base {
+  button,
+  [role="button"],
+  [role="radio"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  select,
+  summary,
+  label:has(> input[type="checkbox"], > input[type="radio"]),
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="date"],
+  input[type="time"] {
+    cursor: pointer;
+  }
+
+  :is(button, select, input):disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
