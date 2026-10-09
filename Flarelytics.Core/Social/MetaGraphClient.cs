@@ -120,6 +120,60 @@ public class MetaGraphClient(HttpClient http, IOptions<SocialOptions> options)
         }
     }
 
+    /// <summary>
+    /// I post dell'account Instagram fino a <paramref name="sinceUtc"/>. Per un
+    /// video l'anteprima è <c>thumbnail_url</c>; per un carosello
+    /// <c>media_url</c> è la prima immagine.
+    /// </summary>
+    public async Task<List<RemotePost>> InstagramRecentPostsAsync(string graphBase, string igId, string token, DateTime sinceUtc, CancellationToken ct)
+    {
+        var posts = new List<RemotePost>();
+        string? next = $"{graphBase}/{igId}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp&limit=50" +
+                       $"&since={new DateTimeOffset(sinceUtc).ToUnixTimeSeconds()}";
+        for (var page = 0; next is not null && page < 20; page++)
+        {
+            var node = await SendAsync(HttpMethod.Get, next, token, null, ct);
+            var older = false;
+            foreach (var m in node?["data"]?.AsArray() ?? [])
+            {
+                var at = ParseGraphTime(m!["timestamp"]!.GetValue<string>());
+                if (at < sinceUtc) { older = true; continue; }
+                var image = m["media_type"]?.GetValue<string>() == "VIDEO" ? m["thumbnail_url"] : m["media_url"];
+                posts.Add(new RemotePost(m["id"]!.GetValue<string>(), m["caption"]?.GetValue<string>() ?? "", at,
+                    m["permalink"]?.GetValue<string>(), image?.GetValue<string>()));
+            }
+            next = older ? null : node?["paging"]?["next"]?.GetValue<string>();
+        }
+        return posts;
+    }
+
+    /// <summary>I post pubblicati della Pagina fino a <paramref name="sinceUtc"/>.</summary>
+    public async Task<List<RemotePost>> PageRecentPostsAsync(string pageId, string token, DateTime sinceUtc, CancellationToken ct)
+    {
+        var posts = new List<RemotePost>();
+        string? next = $"{Graph}/{pageId}/published_posts?fields=id,message,created_time,permalink_url,full_picture&limit=50" +
+                       $"&since={new DateTimeOffset(sinceUtc).ToUnixTimeSeconds()}";
+        for (var page = 0; next is not null && page < 20; page++)
+        {
+            var node = await SendAsync(HttpMethod.Get, next, token, null, ct);
+            var older = false;
+            foreach (var p in node?["data"]?.AsArray() ?? [])
+            {
+                var at = ParseGraphTime(p!["created_time"]!.GetValue<string>());
+                if (at < sinceUtc) { older = true; continue; }
+                posts.Add(new RemotePost(p["id"]!.GetValue<string>(), p["message"]?.GetValue<string>() ?? "", at,
+                    p["permalink_url"]?.GetValue<string>(), p["full_picture"]?.GetValue<string>()));
+            }
+            next = older ? null : node?["paging"]?["next"]?.GetValue<string>();
+        }
+        return posts;
+    }
+
+    /// <summary>La Graph API scrive le date come "2026-10-09T08:30:00+0000", senza i due punti nel fuso.</summary>
+    internal static DateTime ParseGraphTime(string value) =>
+        DateTimeOffset.Parse(System.Text.RegularExpressions.Regex.Replace(value, @"([+-]\d{2})(\d{2})$", "$1:$2"),
+            System.Globalization.CultureInfo.InvariantCulture).UtcDateTime;
+
     private Task<JsonNode?> SendFormAsync(string uri, string token, IEnumerable<KeyValuePair<string, string>> fields, CancellationToken ct) =>
         SendAsync(HttpMethod.Post, uri, token, new FormUrlEncodedContent(fields), ct);
 

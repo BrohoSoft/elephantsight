@@ -95,6 +95,44 @@ public class BlueskyClient(HttpClient http)
         return (uri, $"https://bsky.app/profile/{session.Did}/post/{uri[(uri.LastIndexOf('/') + 1)..]}");
     }
 
+    /// <summary>L'AppView pubblica di Bluesky: i post sono pubblici, non serve una sessione per leggerli.</summary>
+    public const string PublicAppView = "https://public.api.bsky.app";
+
+    /// <summary>
+    /// I post dell'account dal più recente, fino a <paramref name="sinceUtc"/>.
+    /// Niente risposte né repost: nel calendario vanno solo i post suoi.
+    /// </summary>
+    public async Task<List<RemotePost>> RecentPostsAsync(string did, DateTime sinceUtc, CancellationToken ct)
+    {
+        var posts = new List<RemotePost>();
+        string? cursor = null;
+        for (var page = 0; page < 20; page++)
+        {
+            var node = await SendAsync(HttpMethod.Get,
+                $"{PublicAppView}/xrpc/app.bsky.feed.getAuthorFeed?actor={Uri.EscapeDataString(did)}&filter=posts_no_replies&limit=50" +
+                (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}"), null, null, ct);
+
+            var older = false;
+            foreach (var item in node?["feed"]?.AsArray() ?? [])
+            {
+                var post = item!["post"]!;
+                if (item["reason"] is not null || post["author"]?["did"]?.GetValue<string>() != did) continue; // repost
+                var at = DateTime.Parse(post["record"]?["createdAt"]?.GetValue<string>() ?? post["indexedAt"]!.GetValue<string>(),
+                    null, System.Globalization.DateTimeStyles.AdjustToUniversal);
+                if (at < sinceUtc) { older = true; continue; }
+
+                var uri = post["uri"]!.GetValue<string>();
+                posts.Add(new RemotePost(uri, post["record"]?["text"]?.GetValue<string>() ?? "", at,
+                    $"https://bsky.app/profile/{did}/post/{uri[(uri.LastIndexOf('/') + 1)..]}",
+                    post["embed"]?["images"]?[0]?["thumb"]?.GetValue<string>()));
+            }
+
+            cursor = node?["cursor"]?.GetValue<string>();
+            if (older || cursor is null) break;
+        }
+        return posts;
+    }
+
     /// <summary>
     /// Link e hashtag cliccabili. Bluesky non li riconosce da solo nel testo:
     /// vanno indicati come "facet", con gli estremi in byte UTF-8 (non in caratteri).

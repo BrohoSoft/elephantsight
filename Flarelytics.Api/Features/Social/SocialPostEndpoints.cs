@@ -73,6 +73,8 @@ public static class SocialPostEndpoints
     private static async Task<IResult> Update(Guid postId, SavePostRequest req, FlarelyticsDbContext db, MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
     {
         var post = await LoadAsync(db, postId, ct);
+        if (post.IsImported)
+            throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da WatchStore: qui si legge e basta.");
         if (!post.IsEditable)
             throw ApiProblem.Conflict("post_published", "Il post è già uscito (o sta uscendo) su almeno un account: non si modifica più.");
 
@@ -88,6 +90,9 @@ public static class SocialPostEndpoints
     private static async Task<IResult> Delete(Guid postId, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
     {
         var post = await LoadAsync(db, postId, ct);
+        // Un post importato tornerebbe al giro dopo: è una copia di quello sulla rete.
+        if (post.IsImported)
+            throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da WatchStore: si toglie cancellandolo sulla rete.");
         if (post.Targets.Any(t => t.Status == SocialTargetStatus.Publishing))
             throw ApiProblem.Conflict("post_publishing", "Il post si sta pubblicando proprio adesso: riprova fra un momento.");
 
@@ -218,11 +223,12 @@ public static class SocialPostEndpoints
 
 public enum SocialPostStatus { Draft, Scheduled, Publishing, Published, PartiallyFailed, Failed }
 
-public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, SocialPostStatus Status, bool Editable,
+/// <param name="Imported">Pubblicato fuori da WatchStore e copiato qui: si legge e basta.</param>
+public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, SocialPostStatus Status, bool Editable, bool Imported,
     IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc)
 {
     public static SocialPostResponse From(SocialPost p, MediaUrlSigner signer) => new(
-        p.Id, p.Text, p.ScheduledAtUtc, p.IsDraft, p.ProjectId, StatusOf(p), p.IsEditable,
+        p.Id, p.Text, p.ScheduledAtUtc, p.IsDraft, p.ProjectId, StatusOf(p), p.IsEditable, p.IsImported,
         p.Media.OrderBy(m => m.Position).Select(m => SocialMediaResponse.From(m, signer)).ToList(),
         p.Targets.OrderBy(t => t.Network).ThenBy(t => t.AccountName).Select(SocialTargetResponse.From).ToList(),
         p.CreatedAtUtc);

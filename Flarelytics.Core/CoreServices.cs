@@ -119,7 +119,9 @@ public static class CoreServices
         services.AddHttpClient<Social.MastodonClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddHttpClient<Social.MetaGraphClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddHttpClient<Social.InstagramLoginClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddHttpClient<Social.RemoteImageClient>(c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<Social.SocialPublisher>();
+        services.AddScoped<Social.SocialImporter>();
         return services;
     }
 

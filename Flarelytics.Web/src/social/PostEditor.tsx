@@ -131,7 +131,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   const hasFailures = post?.targets.some((t) => t.status === "Failed") ?? false;
   const footer = (
     <div className="flex w-full flex-wrap items-center gap-2">
-      {post && admin && (confirmDelete ? (
+      {post && admin && !post.imported && (confirmDelete ? (
         <>
           <Button variant="danger" loading={busy === "delete"} onClick={() => act("delete")}>Elimina dal calendario</Button>
           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>No</Button>
@@ -158,7 +158,9 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   return (
     <Modal open onOpenChange={(o) => !o && onClose()} wide footer={footer}
       title={post ? (readOnly ? "Post" : "Modifica post") : "Nuovo post"}
-      description={post && <Badge tone={postStatus[post.status].tone}>{postStatus[post.status].label}</Badge>}>
+      description={post && (post.imported
+        ? <Badge tone="ok">Pubblicato fuori da WatchStore</Badge>
+        : <Badge tone={postStatus[post.status].tone}>{postStatus[post.status].label}</Badge>)}>
       <div className="space-y-5">
         {post && post.targets.some((t) => t.status !== "Pending" || t.error) && <TargetList targets={post.targets} />}
 
@@ -252,7 +254,12 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
             )}
           </div>
         )}
-        {readOnly && post && <p className="text-[13px] text-muted">{post.isDraft ? "Bozza per il" : "Programmato per il"} {formatDateTime(post.scheduledAtUtc)}</p>}
+        {readOnly && post && (
+          <p className="text-[13px] text-muted">
+            {post.imported ? "Pubblicato il" : post.isDraft ? "Bozza per il" : "Programmato per il"} {formatDateTime(post.scheduledAtUtc)}
+            {post.imported && " · importato dalla rete: si modifica o si cancella lì."}
+          </p>
+        )}
 
         {projects.length > 0 && (
           <Field label="Progetto (facoltativo)" hint="Per filtrare il calendario per app.">

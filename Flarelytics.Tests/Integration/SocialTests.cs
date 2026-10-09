@@ -395,6 +395,88 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
         return account;
     }
 
+    private static string GraphTime(DateTime utc) => utc.ToString("yyyy-MM-dd'T'HH:mm:ss") + "+0000";
+
+    private async Task<JsonElement> CalendarAsync(Account a)
+    {
+        var from = Uri.EscapeDataString(DateTime.UtcNow.AddDays(-93).ToString("O"));
+        var to = Uri.EscapeDataString(DateTime.UtcNow.AddDays(2).ToString("O"));
+        return await (await a.Client.GetAsync($"/api/v1/orgs/{a.OrgId}/social/posts?from={from}&to={to}")).ReadJsonAsync();
+    }
+
+    [Fact]
+    public async Task I_post_pubblicati_fuori_da_WatchStore_si_importano_negli_ultimi_90_giorni_in_sola_lettura()
+    {
+        var a = await _app.SignUpAsync();
+        await ConnectInstagramLoginAsync(a);
+        var recent = DateTime.UtcNow.AddDays(-3);
+        Net.On(HttpMethod.Get, $"^{InstagramGraph}/17841/media$", $$"""
+                {"data":[
+                  {"id":"m1","caption":"Da Business Suite #meteo","media_type":"IMAGE","media_url":"https://cdn.ig.test/m1.jpg","permalink":"https://www.instagram.com/p/m1/","timestamp":"{{GraphTime(recent)}}"},
+                  {"id":"m2","caption":"Un reel","media_type":"VIDEO","media_url":"https://cdn.ig.test/m2.mp4","thumbnail_url":"https://cdn.ig.test/m2.jpg","permalink":"https://www.instagram.com/reel/m2/","timestamp":"{{GraphTime(recent.AddDays(-1))}}"},
+                  {"id":"m3","caption":"Troppo vecchio","media_type":"IMAGE","media_url":"https://cdn.ig.test/m3.jpg","timestamp":"{{GraphTime(DateTime.UtcNow.AddDays(-100))}}"}
+                ]}
+                """)
+            .OnBytes(HttpMethod.Get, "^https://cdn.ig.test/m1.jpg$", TestJpeg.Create(1080, 1350), "image/jpeg")
+            .OnBytes(HttpMethod.Get, "^https://cdn.ig.test/m2.jpg$", [0x89, 0x50, 0x4E, 0x47], "image/png"); // non JPEG: senza anteprima
+
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        var posts = (await CalendarAsync(a)).EnumerateArray().ToList();
+        Assert.Equal(["Un reel", "Da Business Suite #meteo"], posts.Select(p => p.GetProperty("text").GetString()).ToArray());
+        var first = posts.Single(p => p.GetProperty("text").GetString()!.StartsWith("Da Business"));
+        Assert.True(first.GetProperty("imported").GetBoolean());
+        Assert.False(first.GetProperty("editable").GetBoolean());
+        Assert.Equal("Published", first.GetProperty("status").GetString());
+        Assert.Equal("https://www.instagram.com/p/m1/", Target(first, "Instagram").GetProperty("externalUrl").GetString());
+        Assert.Equal(1350, first.GetProperty("media")[0].GetProperty("height").GetInt32());
+        Assert.Equal(0, posts.Single(p => p.GetProperty("text").GetString() == "Un reel").GetProperty("media").GetArrayLength());
+        Assert.Contains("since=", Net.Calls(HttpMethod.Get, "/17841/media").Single().Url);
+
+        // Copie dei post della rete: non si modificano né si cancellano da qui.
+        var id = first.GetProperty("id").GetGuid();
+        var accountId = Target(first, "Instagram").GetProperty("accountId").GetGuid();
+        Assert.Equal("post_imported", await (await a.Client.PutAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/posts/{id}", Post("x", DateTime.UtcNow, [accountId]))).ProblemCodeAsync());
+        Assert.Equal("post_imported", await (await a.Client.DeleteAsync($"/api/v1/orgs/{a.OrgId}/social/posts/{id}")).ProblemCodeAsync());
+
+        // Una seconda lettura non crea doppioni.
+        using (var scope = _sync.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<TenantContext>().Set(a.OrgId);
+            var db = scope.ServiceProvider.GetRequiredService<FlarelyticsDbContext>();
+            var account = await db.Set<SocialAccount>().SingleAsync();
+            Assert.Equal(0, await scope.ServiceProvider.GetRequiredService<SocialImporter>().ImportAsync(account, DateTime.UtcNow, CancellationToken.None));
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(2, (await CalendarAsync(a)).GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Un_post_uscito_da_WatchStore_non_si_reimporta_e_su_Bluesky_si_saltano_i_repost()
+    {
+        var a = await _app.SignUpAsync();
+        var mastodon = await ConnectMastodonAsync(a);
+        await ConnectBlueskyAsync(a);
+        var at = DateTime.UtcNow.AddHours(-2).ToString("O");
+        Net.On(HttpMethod.Post, $"^{Mastodon}/api/v1/statuses$", """{"id":"s1","url":"https://mastodon.example/@meteo/s1"}""")
+            .On(HttpMethod.Get, $"^{Mastodon}/api/v1/accounts/42/statuses$", $$"""
+                [{"id":"s9","created_at":"{{at}}","url":"https://mastodon.example/@meteo/s9","content":"<p>Prima riga</p><p>Seconda &amp; ultima</p>","media_attachments":[]},
+                 {"id":"s1","created_at":"{{at}}","url":"https://mastodon.example/@meteo/s1","content":"<p>Da WatchStore</p>","media_attachments":[]}]
+                """)
+            .On(HttpMethod.Get, "^https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed$", $$$"""
+                {"feed":[
+                  {"post":{"uri":"at://did:plc:meteo/app.bsky.feed.post/3kown","author":{"did":"did:plc:meteo"},"record":{"text":"Mio post","createdAt":"{{{at}}}"},"indexedAt":"{{{at}}}"}},
+                  {"post":{"uri":"at://did:plc:altro/app.bsky.feed.post/3kre","author":{"did":"did:plc:altro"},"record":{"text":"Di un altro","createdAt":"{{{at}}}"},"indexedAt":"{{{at}}}"},"reason":{"$type":"app.bsky.feed.defs#reasonRepost"}}
+                ]}
+                """);
+
+        await CreatePostAsync(a, Post("Da WatchStore", DateTime.UtcNow.AddMinutes(-1), [mastodon]));
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        var texts = (await CalendarAsync(a)).EnumerateArray().Select(p => p.GetProperty("text").GetString()).OrderBy(t => t).ToArray();
+        Assert.Equal(["Da WatchStore", "Mio post", "Prima riga\nSeconda & ultima"], texts);
+    }
+
     [Fact]
     public async Task Su_una_Pagina_Facebook_piu_foto_diventano_un_post_solo()
     {

@@ -290,6 +290,9 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
                 }
             }
 
+            // Dopo la pubblicazione, così un post appena uscito non si importa due volte.
+            await scope.ServiceProvider.GetRequiredService<SocialImporter>().ImportDueAsync(DateTime.UtcNow, ct);
+
             if (cleanup)
             {
                 await DeleteOrphanMediaAsync(db, scope.ServiceProvider.GetRequiredService<SocialMediaStorage>(), ct);

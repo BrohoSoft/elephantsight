@@ -33,6 +33,18 @@ public class FakeStoreServer : HttpMessageHandler
         return this;
     }
 
+    /// <summary>Un file (un'immagine di un CDN, per esempio) invece di un JSON.</summary>
+    public FakeStoreServer OnBytes(HttpMethod method, string pathPattern, byte[] content, string contentType)
+    {
+        _routes.Insert(0, (method, new Regex(pathPattern), _ =>
+        {
+            var body = new ByteArrayContent(content);
+            body.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = body };
+        }));
+        return this;
+    }
+
     public IEnumerable<Recorded> Calls(HttpMethod method, string contains) =>
         Requests.Where(r => r.Method == method && r.Url.Contains(contains));
 

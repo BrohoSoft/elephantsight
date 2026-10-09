@@ -56,6 +56,8 @@ public class SocialPostTargetConfiguration : IEntityTypeConfiguration<SocialPost
         // Il giro del worker: i post in attesa di un tenant.
         b.HasIndex(t => new { t.TenantId, t.Status });
         b.HasIndex(t => t.AccountId);
+        // L'importazione cerca se un post della rete c'è già (pubblicato da qui o importato prima).
+        b.HasIndex(t => new { t.TenantId, t.Network, t.ExternalId });
         b.HasOne<SocialAccount>().WithMany().HasForeignKey(t => t.AccountId).OnDelete(DeleteBehavior.SetNull);
         b.HasOne<Tenant>().WithMany().HasForeignKey(t => t.TenantId).OnDelete(DeleteBehavior.Cascade);
     }

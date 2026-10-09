@@ -52,6 +52,9 @@ public class SocialAccount : BaseEntity, ITenantOwned
     public string? StatusMessage { get; private set; }
     public Guid CreatedByUserId { get; private set; }
 
+    /// <summary>L'ultima lettura dei post pubblicati fuori da WatchStore (vedi <see cref="Social.SocialImporter"/>).</summary>
+    public DateTime? LastImportAtUtc { get; private set; }
+
     private SocialAccount() { }
 
     public static SocialAccount Create(Guid tenantId, SocialNetwork network, string externalId, string name, string? handle,
@@ -77,6 +80,8 @@ public class SocialAccount : BaseEntity, ITenantOwned
         Status = SocialAccountStatus.Connected;
         StatusMessage = null;
     }
+
+    public void MarkImported(DateTime nowUtc) => LastImportAtUtc = nowUtc;
 
     /// <summary>Il token rinnovato dal worker.</summary>
     public void RenewToken(string protectedSecret, DateTime expiresAtUtc)
@@ -113,6 +118,13 @@ public class SocialPost : BaseEntity, ITenantOwned
     public string Text { get; private set; } = null!;
     public DateTime ScheduledAtUtc { get; private set; }
     public bool IsDraft { get; private set; }
+
+    /// <summary>
+    /// Pubblicato fuori da WatchStore (Business Suite, l'app, il sito) e
+    /// copiato qui per vederlo sul calendario: si legge e basta.
+    /// </summary>
+    public bool IsImported { get; private set; }
+
     public Guid CreatedByUserId { get; private set; }
 
     public IReadOnlyList<SocialPostTarget> Targets => _targets;
@@ -121,6 +133,12 @@ public class SocialPost : BaseEntity, ITenantOwned
     private SocialPost() { }
 
     public static SocialPost Create(Guid tenantId, Guid createdBy) => new() { TenantId = tenantId, CreatedByUserId = createdBy, Text = "" };
+
+    public static SocialPost Imported(Guid tenantId, string text, DateTime publishedAtUtc, Guid createdBy) => new()
+    {
+        TenantId = tenantId, Text = text.Trim(), ScheduledAtUtc = DateTime.SpecifyKind(publishedAtUtc, DateTimeKind.Utc),
+        IsImported = true, CreatedByUserId = createdBy
+    };
 
     public void Update(string text, DateTime scheduledAtUtc, bool isDraft, Guid? projectId)
     {
@@ -140,7 +158,7 @@ public class SocialPost : BaseEntity, ITenantOwned
     /// Si modifica solo finché nessuna rete l'ha pubblicato né lo sta
     /// pubblicando: dopo, il testo sul calendario non sarebbe più quello uscito.
     /// </summary>
-    public bool IsEditable => _targets.All(t => t.Status is SocialTargetStatus.Pending or SocialTargetStatus.Failed);
+    public bool IsEditable => !IsImported && _targets.All(t => t.Status is SocialTargetStatus.Pending or SocialTargetStatus.Failed);
 }
 
 public enum SocialTargetStatus

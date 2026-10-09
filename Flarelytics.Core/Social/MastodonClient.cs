@@ -80,6 +80,43 @@ public class MastodonClient(HttpClient http, IOptions<SocialOptions> options)
         return (node!["id"]!.GetValue<string>(), node["url"]?.GetValue<string>());
     }
 
+    /// <summary>I post dell'account dal più recente, fino a <paramref name="sinceUtc"/>, senza risposte né condivisioni.</summary>
+    public async Task<List<RemotePost>> RecentPostsAsync(string instance, string token, string accountId, DateTime sinceUtc, CancellationToken ct)
+    {
+        var posts = new List<RemotePost>();
+        string? maxId = null;
+        for (var page = 0; page < 20; page++)
+        {
+            var node = await SendAsync(HttpMethod.Get,
+                $"{instance}/api/v1/accounts/{Uri.EscapeDataString(accountId)}/statuses?exclude_replies=true&exclude_reblogs=true&limit=40" +
+                (maxId is null ? "" : $"&max_id={maxId}"), token, null, ct);
+            var statuses = node?.AsArray() ?? [];
+            if (statuses.Count == 0) break;
+
+            var older = false;
+            foreach (var status in statuses)
+            {
+                var at = DateTime.Parse(status!["created_at"]!.GetValue<string>(), null, System.Globalization.DateTimeStyles.AdjustToUniversal);
+                if (at < sinceUtc) { older = true; continue; }
+                var image = status["media_attachments"]?.AsArray().FirstOrDefault(m => m?["type"]?.GetValue<string>() == "image");
+                posts.Add(new RemotePost(status["id"]!.GetValue<string>(), PlainText(status["content"]?.GetValue<string>() ?? ""), at,
+                    status["url"]?.GetValue<string>(), image?["preview_url"]?.GetValue<string>()));
+            }
+
+            maxId = statuses[^1]!["id"]!.GetValue<string>();
+            if (older) break;
+        }
+        return posts;
+    }
+
+    /// <summary>Mastodon restituisce il testo in HTML: paragrafi e a capo diventano righe, il resto si toglie.</summary>
+    internal static string PlainText(string html)
+    {
+        var text = System.Text.RegularExpressions.Regex.Replace(html, @"<br\s*/?>|</p>\s*<p>", "\n", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+        return System.Net.WebUtility.HtmlDecode(text).Trim();
+    }
+
     private async Task<JsonNode?> SendAsync(HttpMethod method, string uri, string? token, HttpContent? content, CancellationToken ct) =>
         (await SendWithStatusAsync(method, uri, token, content, ct)).Node;
 

@@ -371,6 +371,8 @@ export interface SocialPost {
   projectId: string | null;
   status: SocialPostStatus;
   editable: boolean;
+  /** Pubblicato fuori da WatchStore (Business Suite, l'app…) e copiato qui: si legge e basta. */
+  imported: boolean;
   media: SocialMediaItem[];
   targets: SocialTarget[];
   createdAtUtc: string;

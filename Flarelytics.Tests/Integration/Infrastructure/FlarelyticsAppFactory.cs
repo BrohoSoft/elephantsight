@@ -33,7 +33,7 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
     /// <summary>I client che parlano con le reti social, da attaccare a <see cref="SocialApis"/>.</summary>
     public static readonly string[] SocialClients =
         [nameof(Flarelytics.Core.Social.BlueskyClient), nameof(Flarelytics.Core.Social.MastodonClient), nameof(Flarelytics.Core.Social.MetaGraphClient),
-         nameof(Flarelytics.Core.Social.InstagramLoginClient)];
+         nameof(Flarelytics.Core.Social.InstagramLoginClient), nameof(Flarelytics.Core.Social.RemoteImageClient)];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

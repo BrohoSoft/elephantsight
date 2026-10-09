@@ -78,7 +78,7 @@ export function SocialCalendarPage() {
     <>
       <PageHeader
         title="Calendario social"
-        description="I post programmati su tutti gli account dell'organizzazione. All'ora indicata li pubblica WatchStore."
+        description="I post di tutti gli account dell'organizzazione: quelli programmati qui, che WatchStore pubblica all'ora indicata, e quelli usciti da altre app negli ultimi 90 giorni (tratteggiati)."
         actions={
           <>
             {(projects.data?.length ?? 0) > 0 && (
@@ -164,11 +164,16 @@ export function SocialCalendarPage() {
 
 function PostChip({ post, onOpen, large }: { post: SocialPost; onOpen: () => void; large?: boolean }) {
   const networks = [...new Set(post.targets.map((t) => t.network))];
-  const status = postStatus[post.status];
+  const status = post.imported ? { label: "Pubblicato altrove", tone: "ok" as const } : postStatus[post.status];
   return (
     <button type="button" title={`${status.label}: ${post.text}`}
       onClick={(e) => { e.stopPropagation(); onOpen(); }}
-      className={clsx("block w-full rounded border-l-2 text-left transition-opacity hover:opacity-80", chipTone[post.status], large ? "px-3 py-2" : "px-1.5 py-1")}>
+      className={clsx(
+        "block w-full rounded border-l-2 text-left transition-opacity hover:opacity-80",
+        // I post importati: stesso colore dei pubblicati, ma tratteggiati, perché non sono passati da qui.
+        post.imported ? "border border-l-2 border-dashed border-ok/40 border-l-ok bg-transparent text-fg" : chipTone[post.status],
+        large ? "px-3 py-2" : "px-1.5 py-1",
+      )}>
       <span className="flex items-center gap-1">
         <span className="font-mono text-[11px] text-muted">{timeFormat.format(new Date(post.scheduledAtUtc))}</span>
         {networks.map((n) => <NetworkGlyph key={n} network={n} className="size-3 text-muted" />)}
