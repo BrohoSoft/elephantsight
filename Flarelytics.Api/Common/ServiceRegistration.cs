@@ -38,6 +38,7 @@ public static class ServiceRegistration
 
     public static void ConfigureAuthentication(this WebApplicationBuilder builder)
     {
+        MoveOldJwtKey(builder.Configuration);
         builder.Services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.Section)
             .PostConfigure(o => o.Key = string.IsNullOrWhiteSpace(o.Key) ? GeneratedJwtKey(builder.Configuration) ?? o.Key : o.Key)
             .ValidateDataAnnotations().ValidateOnStart();
@@ -71,6 +72,25 @@ public static class ServiceRegistration
         builder.Services.AddAuthorization();
     }
 
+    // Non ".key": KeyRing prende ogni *.key della cartella come versione della
+    // chiave master, e questa (48 byte) gli impedirebbe di partire.
+    private const string JwtKeyFile = "jwt.secret";
+
+    /// <summary>
+    /// Le prime versioni la chiamavano jwt.key, che dal secondo avvio bloccava
+    /// KeyRing. Si rinomina subito, prima che qualcuno costruisca KeyRing:
+    /// la generazione della chiave invece è pigra e arriverebbe tardi.
+    /// </summary>
+    private static void MoveOldJwtKey(IConfiguration configuration)
+    {
+        var directory = configuration["Secrets:KeysDirectory"];
+        if (string.IsNullOrWhiteSpace(directory)) return;
+
+        var oldPath = Path.Combine(directory, "jwt.key");
+        var path = Path.Combine(directory, JwtKeyFile);
+        if (File.Exists(oldPath) && !File.Exists(path)) File.Move(oldPath, path);
+    }
+
     /// <summary>
     /// La chiave di firma dei token, quando la configurazione non la dà:
     /// generata al primo avvio accanto alla chiave master, così chi installa
@@ -86,7 +106,7 @@ public static class ServiceRegistration
         var directory = configuration["Secrets:KeysDirectory"];
         if (string.IsNullOrWhiteSpace(directory) || !configuration.GetValue("Secrets:CreateKeyIfMissing", false)) return null;
 
-        var path = Path.Combine(directory, "jwt.key");
+        var path = Path.Combine(directory, JwtKeyFile);
         if (!File.Exists(path))
         {
             Directory.CreateDirectory(directory);
