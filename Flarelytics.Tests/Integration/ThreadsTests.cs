@@ -154,6 +154,50 @@ public class ThreadsTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Il_carosello_si_crea_solo_quando_gli_elementi_sono_pronti_e_un_attesa_lunga_riprende_senza_ricrearli()
+    {
+        var a = await _app.SignUpAsync();
+        var threads = await ConnectThreadsAsync(a);
+        var counter = 0;
+        Net.On(HttpMethod.Post, $"^{Api}/7001/threads$", _ => $$"""{"id":"c{{++counter}}"}""");
+        PublishingWorks();
+        // Il secondo elemento resta in elaborazione più a lungo di un giro del worker.
+        var slow = true;
+        Net.On(HttpMethod.Get, $"^{Api}/c2$", _ => slow ? """{"status":"IN_PROGRESS"}""" : """{"status":"FINISHED"}""");
+
+        var post = await CreatePostAsync(a, "Due radar", threads, await UploadImageAsync(a), await UploadImageAsync(a));
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        // Elementi creati, carosello no: Threads lo rifiuterebbe con elementi non pronti.
+        Assert.Equal(2, Net.Calls(HttpMethod.Post, "/7001/threads").Count(c => !c.Url.Contains("publish")));
+        var target = await TargetAsync(a, post);
+        Assert.Equal("Pending", target.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, target.GetProperty("error").ValueKind);
+
+        slow = false;
+        await MakeTargetsDueAsync(a);
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        // Al giro dopo: niente elementi nuovi, il carosello con quelli di prima, e pubblicato.
+        var containers = Net.Calls(HttpMethod.Post, "/7001/threads").Where(c => !c.Url.Contains("publish")).Select(c => QueryHelpers.ParseQuery(c.Body)).ToList();
+        Assert.Equal(3, containers.Count);
+        Assert.Equal("c1,c2", containers[2]["children"]);
+        Assert.Equal("Published", (await TargetAsync(a, post)).GetProperty("status").GetString());
+
+        // E i messaggi di Meta si chiedono in italiano.
+        Assert.All(Net.Calls(HttpMethod.Post, "graph.threads.net/v1.0/7001/threads"), c => Assert.Contains("locale=it_IT", c.Url));
+    }
+
+    /// <summary>Il prossimo controllo di un'elaborazione è fra 30 secondi: per il test, adesso.</summary>
+    private async Task MakeTargetsDueAsync(Account a)
+    {
+        using var scope = _app.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<TenantContext>().Set(a.OrgId);
+        await scope.ServiceProvider.GetRequiredService<FlarelyticsDbContext>().Database
+            .ExecuteSqlRawAsync("""UPDATE "SocialPostTarget" SET "NextAttemptAtUtc" = now() - interval '1 minute' WHERE "NextAttemptAtUtc" IS NOT NULL""");
+    }
+
+    [Fact]
     public async Task Oltre_500_caratteri_non_si_programma()
     {
         var a = await _app.SignUpAsync();

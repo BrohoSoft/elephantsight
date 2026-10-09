@@ -174,12 +174,20 @@ public class MetaGraphClient(HttpClient http, IOptions<SocialOptions> options)
         DateTimeOffset.Parse(System.Text.RegularExpressions.Regex.Replace(value, @"([+-]\d{2})(\d{2})$", "$1:$2"),
             System.Globalization.CultureInfo.InvariantCulture).UtcDateTime;
 
+    /// <summary>
+    /// I messaggi d'errore in italiano. Senza, Meta li traduce nella lingua che
+    /// ricava dalla posizione del server (in un datacenter di Francoforte
+    /// arrivavano in tedesco). Vale per Graph API, Instagram e Threads.
+    /// </summary>
+    internal static string WithLocale(string uri) =>
+        uri.Contains("locale=") ? uri : uri + (uri.Contains('?') ? "&" : "?") + "locale=it_IT";
+
     private Task<JsonNode?> SendFormAsync(string uri, string token, IEnumerable<KeyValuePair<string, string>> fields, CancellationToken ct) =>
         SendAsync(HttpMethod.Post, uri, token, new FormUrlEncodedContent(fields), ct);
 
     private async Task<JsonNode?> SendAsync(HttpMethod method, string uri, string? token, HttpContent? content, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(method, uri) { Content = content };
+        using var request = new HttpRequestMessage(method, WithLocale(uri)) { Content = content };
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var response = await http.SendAsync(request, ct);
