@@ -2,10 +2,10 @@ import clsx from "clsx";
 import { ArrowLeft, ArrowRight, ImagePlus, Video, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import type { SocialAccount, SocialMediaItem } from "../api/types";
-import { useOrg } from "../components/org";
+import type { Project, SocialAccount, SocialMediaItem } from "../api/types";
+import { canManageOrg, useOrg } from "../components/org";
 import { NetworkGlyph } from "../components/SocialIcons";
-import { Button, Input, Spinner } from "../components/ui";
+import { Button, Field, Input, Select, Spinner } from "../components/ui";
 import { accountLabel } from "./rules";
 import { formatDuration, uploadMedia } from "./upload";
 
@@ -14,18 +14,58 @@ import { formatDuration, uploadMedia } from "./upload";
  * la scelta degli account e le immagini o il video.
  */
 
+/**
+ * Gli account usabili in un post: senza progetto tutti, in un progetto quelli
+ * collegati a quel progetto. Quelli già scelti restano visibili (per poterli
+ * togliere) anche se non sono più collegati.
+ */
+export const accountsFor = (accounts: SocialAccount[], projectId: string, selected: string[]) =>
+  projectId ? accounts.filter((a) => a.projectIds.includes(projectId) || selected.includes(a.id)) : accounts;
+
+/** Il problema di un account fuori dal progetto del post (il server lo rifiuta anche in bozza). */
+export const projectProblems = (account: SocialAccount, projectId: string) =>
+  projectId && !account.projectIds.includes(projectId) ? ["non è collegato a questo progetto"] : [];
+
+/**
+ * Il progetto del post: viene prima di tutto, perché decide quali account si
+ * possono usare. "Nessuno" (un post dell'organizzazione) solo per chi vede
+ * tutti i progetti.
+ */
+export function ProjectField({ projects, value, onChange, allowNone, readOnly }: {
+  projects: Project[];
+  value: string;
+  onChange: (projectId: string) => void;
+  allowNone: boolean;
+  readOnly: boolean;
+}) {
+  if (projects.length === 0 && allowNone) return null;
+  return (
+    <Field label="Progetto" hint="Il post compare nel calendario del progetto, e usa gli account collegati al progetto.">
+      <Select disabled={readOnly} value={value} onChange={(e) => onChange(e.target.value)}>
+        {allowNone ? <option value="">Nessuno (dell'organizzazione)</option> : !value && <option value="">Scegli il progetto</option>}
+        {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </Select>
+    </Field>
+  );
+}
+
 /** Gli account come pulsanti da accendere. Uno da ricollegare si può togliere ma non scegliere. */
-export function AccountPicker({ accounts, selected, onToggle, readOnly }: {
+export function AccountPicker({ accounts, selected, onToggle, readOnly, inProject }: {
   accounts: SocialAccount[];
   selected: string[];
   onToggle: (id: string) => void;
   readOnly: boolean;
+  /** Il post è di un progetto: il messaggio senza account parla di collegarli al progetto. */
+  inProject?: boolean;
 }) {
   const org = useOrg();
   if (accounts.length === 0) {
     return (
       <p className="text-[0.8125rem] text-muted">
-        Nessun account collegato. <Link to={`/o/${org.id}/social/accounts`} className="text-brand-fg hover:underline">Collegane uno</Link>.
+        {inProject ? "Nessun account collegato a questo progetto." : "Nessun account collegato."}{" "}
+        {canManageOrg(org)
+          ? <Link to={`/o/${org.id}/social/accounts`} className="text-brand-fg hover:underline">{inProject ? "Collegane uno al progetto" : "Collegane uno"}</Link>
+          : "Chiedi a chi gestisce l'organizzazione di collegarne uno."}
       </p>
     );
   }

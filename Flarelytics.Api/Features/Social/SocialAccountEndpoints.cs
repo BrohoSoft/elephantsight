@@ -38,10 +38,13 @@ public static class SocialAccountEndpoints
 
     public static void MapSocialAccounts(this IEndpointRouteBuilder api)
     {
-        var social = api.MapOrgGroup("/social");
+        var social = api.MapOrgGroup("/social").RequireSection(AppSections.Social);
         social.MapGet("/accounts", List);
+        social.MapGet("/accounts/{accountId:guid}/tiktok-creator", TikTokCreator).RequireOrgRole(OrgRole.Admin);
 
-        var admin = social.MapGroup("").RequireOrgRole(OrgRole.Admin);
+        // Collegare, scollegare e assegnare ai progetti: account dell'organizzazione, li gestisce chi la vede tutta.
+        var admin = social.MapGroup("").RequireOrgRole(OrgRole.Admin).RequireFullAccess();
+        admin.MapPut("/accounts/{accountId:guid}/projects", SetProjects).Validating<SetAccountProjectsRequest>();
         admin.MapPost("/accounts/bluesky", ConnectBluesky).Validating<ConnectBlueskyRequest>();
         admin.MapPost("/accounts/mastodon", ConnectMastodon).Validating<ConnectMastodonRequest>();
         admin.MapDelete("/accounts/{accountId:guid}", Delete);
@@ -55,16 +58,36 @@ public static class SocialAccountEndpoints
 
         admin.MapPost("/tiktok/start", StartTikTok);
         admin.MapPost("/tiktok/complete", CompleteTikTok).Validating<CompleteMetaRequest>();
-        admin.MapGet("/accounts/{accountId:guid}/tiktok-creator", TikTokCreator);
 
         admin.MapPost("/threads/start", StartThreads);
         admin.MapPost("/threads/complete", CompleteThreads).Validating<CompleteMetaRequest>();
     }
 
-    private static async Task<IResult> List(FlarelyticsDbContext db, CancellationToken ct)
+    /// <summary>Gli account dell'organizzazione; chi vede solo alcuni progetti vede quelli collegati ai suoi.</summary>
+    private static async Task<IResult> List(CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
-        var accounts = await db.Set<SocialAccount>().AsNoTracking().OrderBy(a => a.Network).ThenBy(a => a.Name).ToListAsync(ct);
-        return Results.Ok(accounts.Select(SocialAccountResponse.From));
+        var accounts = await VisibleAccounts(db, org).AsNoTracking().OrderBy(a => a.Network).ThenBy(a => a.Name).ToListAsync(ct);
+        return Results.Ok(accounts.Select(a => SocialAccountResponse.From(a, org)));
+    }
+
+    /// <summary>Gli account che il membro vede: tutti, o quelli collegati ad almeno un suo progetto.</summary>
+    public static IQueryable<SocialAccount> VisibleAccounts(FlarelyticsDbContext db, CurrentOrg org)
+    {
+        var query = db.Set<SocialAccount>().AsQueryable();
+        if (org.VisibleProjects is { } ids) query = query.Where(a => a.ProjectIds.Any(p => ids.Contains(p)));
+        return query;
+    }
+
+    /// <summary>I progetti in cui l'account si può usare (sostituisce l'elenco). I post già programmati non cambiano.</summary>
+    private static async Task<IResult> SetProjects(Guid accountId, SetAccountProjectsRequest req, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
+    {
+        var account = await db.Set<SocialAccount>().SingleOrDefaultAsync(a => a.Id == accountId, ct) ?? throw ApiProblem.NotFound("Account");
+        var ids = req.ProjectIds.Distinct().ToList();
+        if (await db.Set<Project>().CountAsync(p => ids.Contains(p.Id), ct) != ids.Count) throw ApiProblem.NotFound("Progetto");
+
+        account.SetProjects(ids);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialAccountResponse.From(account, org));
     }
 
     private static async Task<IResult> ConnectBluesky(ConnectBlueskyRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
@@ -77,7 +100,7 @@ public static class SocialAccountEndpoints
         var account = await UpsertAsync(db, org.TenantId, SocialNetwork.Bluesky, session.Did, service, principal.UserId(), ct);
         account.Reconnect(Protect(protector, account, req.AppPassword.Trim()), session.Handle, session.Handle, null);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(SocialAccountResponse.From(account));
+        return Results.Ok(SocialAccountResponse.From(account, org));
     }
 
     private static async Task<IResult> ConnectMastodon(ConnectMastodonRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
@@ -92,7 +115,7 @@ public static class SocialAccountEndpoints
         var account = await UpsertAsync(db, org.TenantId, SocialNetwork.Mastodon, $"{me.Id}@{host}", instance, principal.UserId(), ct);
         account.Reconnect(Protect(protector, account, token), me.Name, $"@{me.Username}@{host}", maxCharacters);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(SocialAccountResponse.From(account));
+        return Results.Ok(SocialAccountResponse.From(account, org));
     }
 
     /// <summary>
@@ -178,7 +201,7 @@ public static class SocialAccountEndpoints
         }
 
         await db.SaveChangesAsync(ct);
-        return Results.Ok(added.Select(SocialAccountResponse.From));
+        return Results.Ok(added.Select(a => SocialAccountResponse.From(a, org)));
     }
 
     // --- Instagram Login (account senza Pagina Facebook) ---
@@ -211,7 +234,7 @@ public static class SocialAccountEndpoints
         account.Reconnect(Protect(protector, account, token.AccessToken), string.IsNullOrWhiteSpace(profile.Name) ? profile.Username : profile.Name,
             "@" + profile.Username, null, token.ExpiresAtUtc, InstagramLoginClient.Host);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(SocialAccountResponse.From(account));
+        return Results.Ok(SocialAccountResponse.From(account, org));
     }
 
     // --- TikTok ---
@@ -243,7 +266,7 @@ public static class SocialAccountEndpoints
             string.IsNullOrWhiteSpace(creator.Nickname) ? creator.Username : creator.Nickname,
             string.IsNullOrWhiteSpace(creator.Username) ? null : "@" + creator.Username, null, tokens.ExpiresAtUtc);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(SocialAccountResponse.From(account));
+        return Results.Ok(SocialAccountResponse.From(account, org));
     }
 
     /// <summary>
@@ -251,9 +274,9 @@ public static class SocialAccountEndpoints
     /// mostri mentre si prepara un post (chi pubblica, quali visibilità sono
     /// permesse, cosa ha disattivato, la durata massima).
     /// </summary>
-    private static async Task<IResult> TikTokCreator(Guid accountId, FlarelyticsDbContext db, TikTokClient tiktok, FieldProtector protector, CancellationToken ct)
+    private static async Task<IResult> TikTokCreator(Guid accountId, CurrentOrg org, FlarelyticsDbContext db, TikTokClient tiktok, FieldProtector protector, CancellationToken ct)
     {
-        var account = await db.Set<SocialAccount>().SingleOrDefaultAsync(a => a.Id == accountId && a.Network == SocialNetwork.TikTok, ct)
+        var account = await VisibleAccounts(db, org).SingleOrDefaultAsync(a => a.Id == accountId && a.Network == SocialNetwork.TikTok, ct)
             ?? throw ApiProblem.NotFound("Account");
 
         var bytes = protector.Unprotect(account.ProtectedSecret, account.SecretContext);
@@ -301,7 +324,7 @@ public static class SocialAccountEndpoints
         account.Reconnect(Protect(protector, account, token.AccessToken), string.IsNullOrWhiteSpace(profile.Name) ? profile.Username : profile.Name,
             "@" + profile.Username, null, token.ExpiresAtUtc);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(SocialAccountResponse.From(account));
+        return Results.Ok(SocialAccountResponse.From(account, org));
     }
 
     /// <summary>Lo <c>state</c> del login: firmato, a scadenza, e partito da questo utente in questa organizzazione.</summary>
@@ -363,11 +386,20 @@ public static class SocialAccountEndpoints
     }
 }
 
+/// <param name="ProjectIds">I progetti in cui l'account si usa (a chi vede solo alcuni progetti, solo i suoi).</param>
 public record SocialAccountResponse(Guid Id, SocialNetwork Network, string Name, string? Handle, string? ServerUrl,
-    SocialAccountStatus Status, string? StatusMessage, NetworkLimits Limits, DateTime CreatedAtUtc)
+    SocialAccountStatus Status, string? StatusMessage, NetworkLimits Limits, IReadOnlyList<Guid> ProjectIds, DateTime CreatedAtUtc)
 {
-    public static SocialAccountResponse From(SocialAccount a) =>
-        new(a.Id, a.Network, a.Name, a.Handle, a.ServerUrl, a.Status, a.StatusMessage, SocialRules.For(a), a.CreatedAtUtc);
+    public static SocialAccountResponse From(SocialAccount a, CurrentOrg org) =>
+        new(a.Id, a.Network, a.Name, a.Handle, a.ServerUrl, a.Status, a.StatusMessage, SocialRules.For(a),
+            a.ProjectIds.Where(id => org.CanSee(id)).ToList(), a.CreatedAtUtc);
+}
+
+public record SetAccountProjectsRequest(IReadOnlyList<Guid> ProjectIds);
+
+public class SetAccountProjectsRequestValidator : AbstractValidator<SetAccountProjectsRequest>
+{
+    public SetAccountProjectsRequestValidator() => RuleFor(x => x.ProjectIds).NotNull().Must(p => p.Count <= 200);
 }
 
 public record MetaCandidateResponse(string Key, SocialNetwork Network, string Name, string? Handle, bool AlreadyConnected);

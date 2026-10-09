@@ -107,7 +107,8 @@ public class SocialImporter(
         foreach (var item in remote.Where(p => !known.Contains(p.ExternalId)).DistinctBy(p => p.ExternalId))
         {
             var text = item.Text.Length > 10000 ? item.Text[..10000] : item.Text;
-            var post = SocialPost.Imported(account.TenantId, text, item.PublishedAtUtc, account.CreatedByUserId);
+            var post = SocialPost.Imported(account.TenantId, text, item.PublishedAtUtc, account.CreatedByUserId,
+                account.ProjectIds.Count == 1 ? account.ProjectIds[0] : null);
             db.Add(post);
 
             var target = SocialPostTarget.For(post, account);

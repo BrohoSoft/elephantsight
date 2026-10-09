@@ -3,8 +3,8 @@ import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Plus, Repeat } fro
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { canAdmin, useProjects, useRecurringOccurrences, useSocialAccounts, useSocialPosts, useSocialRecurring } from "../../api/hooks";
-import type { RecurringPost, SocialAccount, SocialPost } from "../../api/types";
-import { useOrg } from "../../components/org";
+import type { Project, RecurringPost, SocialAccount, SocialPost } from "../../api/types";
+import { canManageOrg, useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
 import { Badge, Button, EmptyState, PageHeader, PageLoader, Select } from "../../components/ui";
 import { BulkAccounts } from "../../social/BulkAccounts";
@@ -43,12 +43,16 @@ type Entry = { kind: "post"; at: Date; post: SocialPost } | { kind: "next"; at: 
  * Il calendario dei post: il mese, con i post di ogni giorno. Un clic su un
  * giorno vuoto apre un post nuovo per quel giorno, un clic su un post lo apre.
  * Sul telefono la griglia diventa un elenco dei giorni con qualcosa.
+ *
+ * Fuori dai progetti mostra tutto quello che il membro vede (con un filtro per
+ * progetto); dentro un progetto (<code>project</code>) solo i post di quel
+ * progetto, e i post nuovi nascono lì.
  */
-export function SocialCalendarPage() {
+export function SocialCalendarPage({ project }: { project?: Project } = {}) {
   const org = useOrg();
   const admin = canAdmin(org.role);
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useState(project?.id ?? "");
   const [editing, setEditing] = useState<{ post?: SocialPost; date?: Date } | null>(null);
   // Un post ricorrente da modificare, o (template) la copia da cui crearne uno nuovo.
   const [editingRecurring, setEditingRecurring] = useState<{ recurring?: RecurringPost; template?: RecurringPost } | null>(null);
@@ -101,11 +105,13 @@ export function SocialCalendarPage() {
   return (
     <>
       <PageHeader
-        title="Calendario social"
-        description="I post di tutti gli account dell'organizzazione: quelli programmati qui, che ElephantSight pubblica all'ora indicata, le prossime uscite dei post ricorrenti e quelli usciti da altre app negli ultimi 90 giorni (tratteggiati)."
+        title={project ? `Calendario social · ${project.name}` : "Calendario social"}
+        description={project
+          ? "I post di questo progetto: quelli programmati qui, le prossime uscite dei post ricorrenti e quelli usciti da altre app (tratteggiati). Il calendario di tutta l'organizzazione è in Social → Calendario."
+          : "I post di tutti i progetti che vedi: quelli programmati qui, che ElephantSight pubblica all'ora indicata, le prossime uscite dei post ricorrenti e quelli usciti da altre app negli ultimi 90 giorni (tratteggiati)."}
         actions={
           <>
-            {(projects.data?.length ?? 0) > 0 && (
+            {!project && (projects.data?.length ?? 0) > 0 && (
               <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44" aria-label="Progetto">
                 <option value="">Tutti i progetti</option>
                 {projects.data!.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -117,11 +123,13 @@ export function SocialCalendarPage() {
         }
       />
 
-      {accounts.data!.length === 0 && (
+      {(project ? !accounts.data!.some((a) => a.projectIds.includes(project.id)) : accounts.data!.length === 0) && (
         <div className="mb-6 rounded-lg border border-dashed border-line-strong">
-          <EmptyState icon={<CalendarDays className="size-5" />} title="Nessun account social collegato"
-            action={<Link to={`/o/${org.id}/social/accounts`}><Button variant="primary">Collega un account</Button></Link>}>
-            Bluesky, Mastodon, Instagram, Pagine Facebook, TikTok e Threads. Puoi già scrivere bozze, ma per pubblicare serve almeno un account.
+          <EmptyState icon={<CalendarDays className="size-5" />} title={project ? "Nessun account social collegato a questo progetto" : "Nessun account social collegato"}
+            action={canManageOrg(org) && <Link to={`/o/${org.id}/social/accounts`}><Button variant="primary">{project ? "Collega un account al progetto" : "Collega un account"}</Button></Link>}>
+            {project
+              ? "Un account si collega a uno o più progetti da Account social: lo stesso account può servire a più progetti, con post diversi."
+              : "Bluesky, Mastodon, Instagram, Pagine Facebook, TikTok e Threads. Puoi già scrivere bozze, ma per pubblicare serve almeno un account."}
           </EmptyState>
         </div>
       )}
@@ -198,10 +206,10 @@ export function SocialCalendarPage() {
       </div>
 
       {editing && (
-        <PostEditor post={editing.post} initialDate={editing.date} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />
+        <PostEditor post={editing.post} initialDate={editing.date} defaultProjectId={projectId || undefined} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />
       )}
       {editingRecurring && (
-        <RecurringEditor key={editingRecurring.recurring?.id ?? "copia"} recurring={editingRecurring.recurring} template={editingRecurring.template}
+        <RecurringEditor key={editingRecurring.recurring?.id ?? "copia"} recurring={editingRecurring.recurring} template={editingRecurring.template} defaultProjectId={projectId || undefined}
           accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditingRecurring(null)}
           onDuplicate={(copy) => setEditingRecurring({ template: copy })} />
       )}

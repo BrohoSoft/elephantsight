@@ -86,6 +86,9 @@ public static partial class Frontend
 
         // Le rotte del pannello (/o/…/projects) non sono file: ricevono
         // index.html. Quelle dell'API che non esistono restano 404.
+        // Solo GET e HEAD: altrimenti una POST senza corpo a una rotta che vuole
+        // JSON (scartata dal routing per il Content-Type) finiva qui con un 404,
+        // prima ancora del controllo dell'accesso, invece del 401 o del 415.
         app.MapFallback(async http =>
         {
             if (http.Request.Path.StartsWithSegments("/api"))
@@ -97,6 +100,6 @@ public static partial class Frontend
             http.Response.Headers.CacheControl = "no-cache";
             http.Response.ContentType = "text/html; charset=utf-8";
             await http.Response.SendFileAsync(Path.Combine(root, "index.html"));
-        });
+        }).WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
     }
 }

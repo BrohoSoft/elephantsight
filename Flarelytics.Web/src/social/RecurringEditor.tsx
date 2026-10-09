@@ -5,10 +5,10 @@ import { useState } from "react";
 import { errorMessage, request } from "../api/client";
 import { keys } from "../api/hooks";
 import { defaultPostOptions, type PostOptions, type Project, type RecurrenceFrequency, type RecurringPost, type SocialAccount, type SocialMediaItem, type Weekday } from "../api/types";
-import { formatDateTime, useOrg } from "../components/org";
+import { canSeeProject, formatDateTime, useOrg } from "../components/org";
 import { NetworkGlyph } from "../components/SocialIcons";
-import { Alert, Button, Field, Input, Modal, Segmented, Select, Textarea } from "../components/ui";
-import { AccountPicker, MediaField, mediaHint } from "./EditorParts";
+import { Alert, Button, Field, Input, Modal, Segmented, Textarea } from "../components/ui";
+import { AccountPicker, accountsFor, MediaField, mediaHint, ProjectField, projectProblems } from "./EditorParts";
 import { commercialIncomplete, NetworkOptions } from "./NetworkOptions";
 import { browserTimeZone, describeRule, duplicateTemplate, weekdays } from "./recurrence";
 import { accountLabel, countCharacters, optionProblems, problems } from "./rules";
@@ -28,8 +28,10 @@ const weekdayOf = (date: string): Weekday =>
  * server all'ora giusta, quindi una modifica vale per tutte quelle future.
  * Con <code>template</code> è un post nuovo che parte da una copia (vedi duplicateTemplate).
  */
-export function RecurringEditor({ recurring, template, accounts, projects, admin, onClose, onDuplicate }: {
+export function RecurringEditor({ recurring, template, defaultProjectId, accounts, projects, admin, onClose, onDuplicate }: {
   recurring?: RecurringPost;
+  /** Il progetto di un post ricorrente nuovo (dalla pagina di un progetto). */
+  defaultProjectId?: string;
   /** Un post nuovo che parte da questi valori: "Duplica". */
   template?: RecurringPost;
   /** Chiude questo editor e ne apre uno nuovo con la copia. */
@@ -50,7 +52,8 @@ export function RecurringEditor({ recurring, template, accounts, projects, admin
   const [media, setMedia] = useState<SocialMediaItem[]>(source?.media ?? []);
   const [options, setOptions] = useState<PostOptions>(source?.options ?? defaultPostOptions);
   const [commercial, setCommercial] = useState(!!(source?.options.tikTokBrandOrganic || source?.options.tikTokBrandedContent));
-  const [projectId, setProjectId] = useState(source?.projectId ?? "");
+  const allowNone = canSeeProject(org, null);
+  const [projectId, setProjectId] = useState(source?.projectId ?? defaultProjectId ?? (allowNone ? "" : projects[0]?.id ?? ""));
   const [frequency, setFrequency] = useState<RecurrenceFrequency>(source?.frequency ?? "Daily");
   const [interval, setIntervalText] = useState(String(source?.interval ?? 1));
   const [startDate, setStartDate] = useState(source?.startDate ?? today());
@@ -65,14 +68,21 @@ export function RecurringEditor({ recurring, template, accounts, projects, admin
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
+  const usable = accountsFor(accounts, projectId, selected);
   const chosen = accounts.filter((a) => selected.includes(a.id));
   const issues = chosen
-    .map((a) => ({ account: a, problems: [...problems(text, media, a.limits), ...optionProblems(a.network, options)] }))
+    .map((a) => ({ account: a, problems: [...problems(text, media, a.limits), ...optionProblems(a.network, options), ...projectProblems(a, projectId)] }))
     .filter((x) => x.problems.length > 0);
   const incomplete = chosen.some((a) => a.network === "TikTok") && commercialIncomplete(options, commercial);
   const intervalNumber = Number(interval);
   const ruleInvalid = !Number.isInteger(intervalNumber) || intervalNumber < 1 || intervalNumber > 365 || (frequency === "Weekly" && days.length === 0)
     || !time || !startDate || (!!endDate && endDate < startDate);
+
+  /** Un altro progetto: restano scelti solo gli account collegati anche a quello. */
+  const changeProject = (id: string) => {
+    setProjectId(id);
+    if (id) setSelected((s) => s.filter((x) => accounts.find((a) => a.id === x)?.projectIds.includes(id)));
+  };
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const toggleDay = (d: Weekday) => setDays((s) => (s.includes(d) ? s.filter((x) => x !== d) : [...s, d]));
@@ -153,7 +163,7 @@ export function RecurringEditor({ recurring, template, accounts, projects, admin
       {readOnly ? <Button variant="primary" onClick={onClose}>Chiudi</Button> : (
         <>
           <Button variant="ghost" onClick={onClose}>Annulla</Button>
-          <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete || ruleInvalid} onClick={save}>
+          <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete || ruleInvalid || (!allowNone && !projectId)} onClick={save}>
             {recurring ? "Salva" : "Crea"}
           </Button>
         </>
@@ -170,8 +180,10 @@ export function RecurringEditor({ recurring, template, accounts, projects, admin
         ? "Un post ricorrente nuovo, con gli stessi valori e una copia delle immagini: cambia testo, foto o regola e crealo. L'originale non cambia."
         : "Esce da solo all'ora indicata, ogni volta con questo contenuto. Le modifiche valgono per tutte le uscite future; quelle già uscite restano sul calendario."}>
       <div className="space-y-5">
+        <ProjectField projects={projects} value={projectId} onChange={changeProject} allowNone={allowNone} readOnly={readOnly} />
+
         <Field label="Dove">
-          <AccountPicker accounts={accounts} selected={selected} onToggle={toggle} readOnly={readOnly} />
+          <AccountPicker accounts={usable} selected={selected} onToggle={toggle} readOnly={readOnly} inProject={!!projectId} />
         </Field>
 
         <div className="space-y-2">
@@ -246,15 +258,6 @@ export function RecurringEditor({ recurring, template, accounts, projects, admin
             <p className="text-xs text-muted">Prossime uscite (con la regola salvata): {recurring.upcoming.map((d) => formatDateTime(d)).join(" · ")}</p>
           )}
         </fieldset>
-
-        {projects.length > 0 && (
-          <Field label="Progetto (facoltativo)" hint="Per filtrare il calendario per app.">
-            <Select disabled={readOnly} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">Nessuno</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-          </Field>
-        )}
 
         {error ? <Alert tone="bad">{errorMessage(error)}</Alert> : null}
       </div>

@@ -5,6 +5,8 @@ import { useInstance, useMe } from "./api/hooks";
 import { useAuth } from "./auth/AuthContext";
 import { AppShell, lastOrg } from "./components/AppShell";
 import { EmptyState, PageLoader } from "./components/ui";
+import { canManageOrg, hasSocial, hasStore, homePath, isFull, useOrg } from "./components/org";
+import type { OrgSummary } from "./api/types";
 import { AccountPage } from "./pages/Account";
 import { useTheme } from "./theme";
 import { AcceptInvitePage } from "./pages/auth/AcceptInvite";
@@ -74,6 +76,17 @@ function OrgGuard({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Una pagina che il membro non vede (sezione spenta, o gestione
+ * dell'organizzazione senza accesso completo): si va alla sua prima pagina.
+ * Il server rifiuterebbe comunque; così non si apre una pagina piena di errori.
+ */
+function Allowed({ when, children }: { when: (org: OrgSummary) => boolean; children: ReactNode }) {
+  const org = useOrg();
+  if (!when(org)) return <Navigate to={homePath(org)} replace />;
+  return <>{children}</>;
+}
+
 export function App() {
   // Sempre montato: con la preferenza "Sistema" il tema deve seguire il
   // sistema operativo anche quando nessun selettore è a schermo.
@@ -104,24 +117,24 @@ export function App() {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<Home />} />
         <Route path="/account" element={<AccountPage />} />
-        <Route path="/o/:orgId" element={<OrgGuard><OverviewPage /></OrgGuard>} />
+        <Route path="/o/:orgId" element={<OrgGuard><Allowed when={hasStore}><OverviewPage /></Allowed></OrgGuard>} />
         <Route path="/o/:orgId/projects" element={<OrgGuard><ProjectsPage /></OrgGuard>} />
         <Route path="/o/:orgId/projects/:projectId" element={<OrgGuard><ProjectDetailPage /></OrgGuard>} />
         <Route path="/o/:orgId/projects/:projectId/:tab" element={<OrgGuard><ProjectDetailPage /></OrgGuard>} />
-        <Route path="/o/:orgId/reviews" element={<OrgGuard><ReviewsPage /></OrgGuard>} />
-        <Route path="/o/:orgId/credentials" element={<OrgGuard><CredentialsPage /></OrgGuard>} />
-        <Route path="/o/:orgId/social" element={<OrgGuard><SocialCalendarPage /></OrgGuard>} />
-        <Route path="/o/:orgId/social/accounts" element={<OrgGuard><SocialAccountsPage /></OrgGuard>} />
-        <Route path="/o/:orgId/social/inbox" element={<OrgGuard><SocialInboxPage /></OrgGuard>} />
-        <Route path="/o/:orgId/social/recurring" element={<OrgGuard><SocialRecurringPage /></OrgGuard>} />
-        <Route path="/o/:orgId/api-keys" element={<OrgGuard><ApiKeysPage /></OrgGuard>} />
+        <Route path="/o/:orgId/reviews" element={<OrgGuard><Allowed when={hasStore}><ReviewsPage /></Allowed></OrgGuard>} />
+        <Route path="/o/:orgId/credentials" element={<OrgGuard><Allowed when={(o) => hasStore(o) && isFull(o)}><CredentialsPage /></Allowed></OrgGuard>} />
+        <Route path="/o/:orgId/social" element={<OrgGuard><Allowed when={hasSocial}><SocialCalendarPage /></Allowed></OrgGuard>} />
+        <Route path="/o/:orgId/social/accounts" element={<OrgGuard><Allowed when={hasSocial}><SocialAccountsPage /></Allowed></OrgGuard>} />
+        <Route path="/o/:orgId/social/inbox" element={<OrgGuard><Allowed when={hasSocial}><SocialInboxPage /></Allowed></OrgGuard>} />
+        <Route path="/o/:orgId/social/recurring" element={<OrgGuard><Allowed when={hasSocial}><SocialRecurringPage /></Allowed></OrgGuard>} />
+        <Route path="/o/:orgId/api-keys" element={<OrgGuard><Allowed when={canManageOrg}><ApiKeysPage /></Allowed></OrgGuard>} />
         {/* I ritorni dai login di Facebook, Instagram, TikTok e Threads: indirizzi fissi, registrati nelle app. */}
         <Route path="/social/meta/callback" element={<MetaCallbackPage />} />
         <Route path="/social/instagram/callback" element={<SingleAccountCallbackPage provider="instagram" />} />
         <Route path="/social/tiktok/callback" element={<SingleAccountCallbackPage provider="tiktok" />} />
         <Route path="/social/threads/callback" element={<SingleAccountCallbackPage provider="threads" />} />
-        <Route path="/o/:orgId/members" element={<OrgGuard><MembersPage /></OrgGuard>} />
-        <Route path="/o/:orgId/settings" element={<OrgGuard><OrgSettingsPage /></OrgGuard>} />
+        <Route path="/o/:orgId/members" element={<OrgGuard><Allowed when={canManageOrg}><MembersPage /></Allowed></OrgGuard>} />
+        <Route path="/o/:orgId/settings" element={<OrgGuard><Allowed when={canManageOrg}><OrgSettingsPage /></Allowed></OrgGuard>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

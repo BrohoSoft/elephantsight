@@ -23,10 +23,19 @@ export interface SecondFactorChallenge {
   twoFactorRequired: true;
 }
 
+/** Cosa vede un membro oltre al ruolo: tutti i progetti o alcuni, e le sezioni (MemberAccess in C#). */
+export interface MemberAccess {
+  allProjects: boolean;
+  projectIds: string[];
+  store: boolean;
+  social: boolean;
+}
+
 export interface OrgSummary {
   id: string;
   name: string;
   role: OrgRole;
+  access: MemberAccess;
 }
 
 export interface Me {
@@ -89,6 +98,7 @@ export interface Member {
   email: string;
   fullName: string;
   role: OrgRole;
+  access: MemberAccess;
   joinedAtUtc: string;
 }
 
@@ -96,6 +106,7 @@ export interface Invitation {
   id: string;
   email: string;
   role: OrgRole;
+  access: MemberAccess;
   createdAtUtc: string;
   expiresAtUtc: string;
 }
@@ -166,6 +177,7 @@ export interface CreatedInvitation {
   id: string;
   email: string;
   role: OrgRole;
+  access: MemberAccess;
   expiresAtUtc: string;
   link: string;
   emailSent: boolean;
@@ -351,6 +363,8 @@ export interface SocialAccount {
   status: SocialAccountStatus;
   statusMessage: string | null;
   limits: NetworkLimits;
+  /** I progetti in cui l'account si usa (solo quelli che il membro vede). */
+  projectIds: string[];
   createdAtUtc: string;
 }
 

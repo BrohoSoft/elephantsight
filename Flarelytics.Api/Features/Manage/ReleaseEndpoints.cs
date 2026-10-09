@@ -1,3 +1,4 @@
+using Flarelytics.Core.Database.Entities;
 using Flarelytics.Api.Features.Orgs;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Management;
@@ -17,7 +18,7 @@ public static class ReleaseEndpoints
 {
     public static void MapReleases(this IEndpointRouteBuilder api)
     {
-        api.MapOrgGroup("/projects/{projectId:guid}").MapGet("/releases", Get);
+        api.MapOrgGroup("/projects/{projectId:guid}").RequireSection(AppSections.Store).MapGet("/releases", Get);
     }
 
     private static async Task<IResult> Get(Guid projectId, FlarelyticsDbContext db, ReleasesService releases, CancellationToken ct)

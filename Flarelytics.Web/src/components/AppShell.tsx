@@ -5,7 +5,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useApiMutation, keys, useMe, useSocialInbox } from "../api/hooks";
 import { errorMessage } from "../api/client";
-import type { Me } from "../api/types";
+import type { Me, OrgSummary } from "../api/types";
+import { canManageOrg, hasSocial, hasStore, homePath, isFull } from "./org";
 import { useAuth } from "../auth/AuthContext";
 import { Logo } from "./Logo";
 import { ProjectSwitcher, ProjectSidebarNav, projectSections } from "./ProjectNav";
@@ -44,7 +45,7 @@ export function AppShell() {
         {/* Dentro un progetto tutta la barra diventa del progetto: chiavi,
             membri e impostazioni dell'organizzazione stanno nella vista globale. */}
         {org && projectId ? (
-          <ProjectSidebarNav orgId={org.id} orgName={org.name} projectId={projectId} section={tab} />
+          <ProjectSidebarNav org={org} projectId={projectId} section={tab} />
         ) : (
         <>
         <div className="border-b border-line p-2">
@@ -52,21 +53,30 @@ export function AppShell() {
         </div>
         {navOrg && (
           <nav className="flex-1 space-y-0.5 p-2">
-            <NavItem to={`/o/${navOrg.id}`} end icon={<LayoutDashboard className="size-4" />}>Panoramica</NavItem>
+            {/* Il menu segue l'accesso del membro (progetti e sezioni); il server ricontrolla comunque. */}
+            {hasStore(navOrg) && <NavItem to={`/o/${navOrg.id}`} end icon={<LayoutDashboard className="size-4" />}>Panoramica</NavItem>}
             <NavItem to={`/o/${navOrg.id}/projects`} icon={<FolderKanban className="size-4" />}>Progetti</NavItem>
-            <NavItem to={`/o/${navOrg.id}/reviews`} icon={<MessageSquare className="size-4" />}>Recensioni</NavItem>
-            <NavItem to={`/o/${navOrg.id}/credentials`} icon={<KeyRound className="size-4" />}>Chiavi degli store</NavItem>
-            <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Social</p>
-            <NavItem to={`/o/${navOrg.id}/social`} end icon={<CalendarDays className="size-4" />}>Calendario</NavItem>
-            <NavItem to={`/o/${navOrg.id}/social/inbox`} icon={<Inbox className="size-4" />}>
-              Da programmare <InboxCount orgId={navOrg.id} />
-            </NavItem>
-            <NavItem to={`/o/${navOrg.id}/social/recurring`} icon={<Repeat className="size-4" />}>Post ricorrenti</NavItem>
-            <NavItem to={`/o/${navOrg.id}/social/accounts`} icon={<AtSign className="size-4" />}>Account social</NavItem>
-            <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
-            <NavItem to={`/o/${navOrg.id}/members`} icon={<Users className="size-4" />}>Membri</NavItem>
-            <NavItem to={`/o/${navOrg.id}/api-keys`} icon={<KeySquare className="size-4" />}>Chiavi API</NavItem>
-            <NavItem to={`/o/${navOrg.id}/settings`} icon={<Settings className="size-4" />}>Impostazioni</NavItem>
+            {hasStore(navOrg) && <NavItem to={`/o/${navOrg.id}/reviews`} icon={<MessageSquare className="size-4" />}>Recensioni</NavItem>}
+            {hasStore(navOrg) && isFull(navOrg) && <NavItem to={`/o/${navOrg.id}/credentials`} icon={<KeyRound className="size-4" />}>Chiavi degli store</NavItem>}
+            {hasSocial(navOrg) && (
+              <>
+                <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Social</p>
+                <NavItem to={`/o/${navOrg.id}/social`} end icon={<CalendarDays className="size-4" />}>Calendario</NavItem>
+                <NavItem to={`/o/${navOrg.id}/social/inbox`} icon={<Inbox className="size-4" />}>
+                  Da programmare <InboxCount orgId={navOrg.id} />
+                </NavItem>
+                <NavItem to={`/o/${navOrg.id}/social/recurring`} icon={<Repeat className="size-4" />}>Post ricorrenti</NavItem>
+                <NavItem to={`/o/${navOrg.id}/social/accounts`} icon={<AtSign className="size-4" />}>Account social</NavItem>
+              </>
+            )}
+            {canManageOrg(navOrg) && (
+              <>
+                <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
+                <NavItem to={`/o/${navOrg.id}/members`} icon={<Users className="size-4" />}>Membri</NavItem>
+                <NavItem to={`/o/${navOrg.id}/api-keys`} icon={<KeySquare className="size-4" />}>Chiavi API</NavItem>
+                <NavItem to={`/o/${navOrg.id}/settings`} icon={<Settings className="size-4" />}>Impostazioni</NavItem>
+              </>
+            )}
           </nav>
         )}
         </>
@@ -77,7 +87,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileBar me={me.data} orgId={navOrg?.id} projectId={org ? projectId : undefined} section={tab} />
+        <MobileBar me={me.data} org={navOrg} projectId={org ? projectId : undefined} section={tab} />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-8">
           <Outlet context={org} />
         </main>
@@ -271,18 +281,19 @@ function UserMenu({ me }: { me: Me }) {
 }
 
 /** Sotto i 768px la barra laterale non c'è: le stesse cose stanno in una barra in alto. */
-function MobileBar({ me, orgId, projectId, section }: { me: Me; orgId?: string; projectId?: string; section?: string }) {
+function MobileBar({ me, org, projectId, section }: { me: Me; org?: OrgSummary; projectId?: string; section?: string }) {
   const link = ({ isActive }: { isActive: boolean }) => clsx("rounded px-2 py-1 whitespace-nowrap", isActive ? "bg-hover text-fg" : "text-muted");
+  const orgId = org?.id;
 
   if (orgId && projectId) {
     return (
       <div className="border-b border-line bg-panel md:hidden">
         <div className="flex items-center gap-2 px-3 py-2">
-          <NavLink to={`/o/${orgId}`} className="rounded p-1.5 text-muted hover:text-fg" aria-label="Vista globale"><ArrowLeft className="size-4" /></NavLink>
+          <NavLink to={homePath(org!)} className="rounded p-1.5 text-muted hover:text-fg" aria-label="Vista globale"><ArrowLeft className="size-4" /></NavLink>
           <div className="min-w-0 flex-1"><ProjectSwitcher orgId={orgId} projectId={projectId} section={section} /></div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[0.8125rem]">
-          {projectSections(`/o/${orgId}/projects/${projectId}`).map((s) => <NavLink key={s.to} to={s.to} end={s.end} className={link}>{s.label}</NavLink>)}
+          {projectSections(`/o/${orgId}/projects/${projectId}`, org!).map((s) => <NavLink key={s.to} to={s.to} end={s.end} className={link}>{s.label}</NavLink>)}
         </nav>
       </div>
     );
@@ -296,21 +307,21 @@ function MobileBar({ me, orgId, projectId, section }: { me: Me; orgId?: string; 
           <OrgSwitcher me={me} currentId={orgId} />
         </div>
       </div>
-      {orgId && (
+      {org && (
         <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[0.8125rem]">
-          {[
-            ["", "Panoramica"],
-            ["/projects", "Progetti"],
-            ["/reviews", "Recensioni"],
-            ["/credentials", "Chiavi"],
-            ["/social", "Calendario"],
-            ["/social/inbox", "Da programmare"],
-            ["/social/recurring", "Ricorrenti"],
-            ["/social/accounts", "Social"],
-            ["/members", "Membri"],
-            ["/api-keys", "Chiavi API"],
-            ["/settings", "Impostazioni"],
-          ].map(([path, label]) => (
+          {([
+            ["", "Panoramica", hasStore(org)],
+            ["/projects", "Progetti", true],
+            ["/reviews", "Recensioni", hasStore(org)],
+            ["/credentials", "Chiavi", hasStore(org) && isFull(org)],
+            ["/social", "Calendario", hasSocial(org)],
+            ["/social/inbox", "Da programmare", hasSocial(org)],
+            ["/social/recurring", "Ricorrenti", hasSocial(org)],
+            ["/social/accounts", "Social", hasSocial(org)],
+            ["/members", "Membri", canManageOrg(org)],
+            ["/api-keys", "Chiavi API", canManageOrg(org)],
+            ["/settings", "Impostazioni", canManageOrg(org)],
+          ] as const).filter(([, , visible]) => visible).map(([path, label]) => (
             <NavLink key={path} to={`/o/${orgId}${path}`} end={path === "" || path === "/social"} className={link}>{label}</NavLink>
           ))}
           <NavLink to="/account" className={link}>Account</NavLink>

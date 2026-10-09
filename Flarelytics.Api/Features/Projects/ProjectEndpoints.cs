@@ -29,8 +29,9 @@ public static partial class ProjectEndpoints
         projects.MapGet("", List);
         projects.MapGet("/{projectId:guid}", Get);
 
-        // Le modifiche: almeno admin.
-        var write = projects.MapGroup("").RequireOrgRole(OrgRole.Admin);
+        // Le modifiche: almeno admin, e con tutta l'organizzazione (le app si
+        // collegano con le chiavi degli store, che sono di tutti i progetti).
+        var write = projects.MapGroup("").RequireOrgRole(OrgRole.Admin).RequireFullAccess();
         write.MapPost("", Create).Validating<ProjectRequest>();
         write.MapPut("/{projectId:guid}", Update).Validating<ProjectRequest>();
         write.MapDelete("/{projectId:guid}", Delete);
@@ -38,9 +39,12 @@ public static partial class ProjectEndpoints
         write.MapDelete("/{projectId:guid}/apps/{store}", UnlinkApp);
     }
 
-    private static async Task<IResult> List(FlarelyticsDbContext db, CancellationToken ct)
+    /// <summary>I progetti che il membro vede.</summary>
+    private static async Task<IResult> List(CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
+        var visible = org.VisibleProjects;
         var projects = await db.Set<Project>().AsNoTracking()
+            .Where(p => visible == null || visible.Contains(p.Id))
             .Include(p => p.Apps).ThenInclude(a => a.Credential)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
@@ -82,12 +86,22 @@ public static partial class ProjectEndpoints
     /// <summary>
     /// Cancella il progetto con tutto quello che è suo, anche fuori dal
     /// database: i file di firma cifrati e le build in attesa di caricamento.
+    /// Esce anche dagli account social e dall'accesso di membri e inviti; i
+    /// post restano, senza progetto.
     /// </summary>
     private static async Task<IResult> Delete(Guid projectId, FlarelyticsDbContext db, SecretVault vault, UploadStorage uploads, CancellationToken ct)
     {
         var project = await LoadAsync(db, projectId, ct);
         var files = await db.Set<ProjectSecretFile>().Where(f => f.ProjectId == projectId).Select(f => f.Id).ToListAsync(ct);
         var pending = await db.Set<BuildUpload>().Where(u => u.ProjectId == projectId && u.StoragePath != null).Select(u => u.StoragePath).ToListAsync(ct);
+
+        foreach (var account in await db.Set<SocialAccount>().Where(a => a.ProjectIds.Contains(projectId)).ToListAsync(ct))
+            account.ForgetProject(projectId);
+        // Membri e inviti non sono del tenant (vedi Membership): il filtro sul tenant va messo a mano.
+        foreach (var m in await db.Set<Membership>().Where(m => m.TenantId == project.TenantId && m.ProjectIds.Contains(projectId)).ToListAsync(ct))
+            m.ForgetProject(projectId);
+        foreach (var i in await db.Set<Invitation>().Where(i => i.TenantId == project.TenantId && i.ProjectIds.Contains(projectId)).ToListAsync(ct))
+            i.ForgetProject(projectId);
 
         db.Remove(project);
         await db.SaveChangesAsync(ct);

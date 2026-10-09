@@ -1,9 +1,9 @@
-import { AtSign, Trash2 } from "lucide-react";
+import { AtSign, FolderKanban, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { errorMessage, request } from "../../api/client";
-import { canAdmin, keys, useApiMutation, useInstance, useSocialAccounts } from "../../api/hooks";
-import type { SocialAccount, SocialNetwork } from "../../api/types";
-import { formatDate, useOrg } from "../../components/org";
+import { keys, useApiMutation, useInstance, useProjects, useSocialAccounts } from "../../api/hooks";
+import type { Project, SocialAccount, SocialNetwork } from "../../api/types";
+import { canManageOrg, formatDate, useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
 import { Alert, Badge, Button, CopyButton, EmptyState, Field, Input, Modal, Mono, PageHeader, PageLoader, Panel } from "../../components/ui";
 import { accountLabel, networkName } from "../../social/rules";
@@ -26,14 +26,17 @@ export function SocialAccountsPage() {
   const org = useOrg();
   const accounts = useSocialAccounts(org.id);
   const instance = useInstance();
-  const admin = canAdmin(org.role);
+  // Gli account sono dell'organizzazione: li collega, li scollega e li assegna ai progetti chi la gestisce.
+  const admin = canManageOrg(org);
+  const projects = useProjects(org.id);
   const [connecting, setConnecting] = useState<"Bluesky" | "Mastodon" | null>(null);
 
-  if (accounts.isPending || instance.isPending) return <PageLoader />;
+  if (accounts.isPending || instance.isPending || projects.isPending) return <PageLoader />;
 
   return (
     <>
-      <PageHeader title="Account social" description="Gli account su cui ElephantSight pubblica i post del calendario. Password e token sono cifrati e non escono più dal server." />
+      <PageHeader title="Account social"
+        description="Gli account dell'organizzazione su cui ElephantSight pubblica. Ognuno si collega a uno o più progetti: lo stesso account può servire a progetti diversi, con post diversi. Password e token sono cifrati e non escono più dal server." />
 
       {admin && (
         <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -59,7 +62,7 @@ export function SocialAccountsPage() {
       ) : (
         <Panel>
           <ul className="divide-y divide-line">
-            {accounts.data!.map((a) => <AccountRow key={a.id} account={a} admin={admin} />)}
+            {accounts.data!.map((a) => <AccountRow key={a.id} account={a} admin={admin} projects={projects.data ?? []} />)}
           </ul>
         </Panel>
       )}
@@ -329,9 +332,11 @@ function ThreadsCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: 
   );
 }
 
-function AccountRow({ account: a, admin }: { account: SocialAccount; admin: boolean }) {
+function AccountRow({ account: a, admin, projects }: { account: SocialAccount; admin: boolean; projects: Project[] }) {
   const org = useOrg();
   const [confirm, setConfirm] = useState(false);
+  const [editingProjects, setEditingProjects] = useState(false);
+  const linked = projects.filter((p) => a.projectIds.includes(p.id));
   const remove = useApiMutation(() => ({ path: `/orgs/${org.id}/social/accounts/${a.id}`, method: "DELETE" }), [keys.socialAccounts(org.id), keys.socialPosts(org.id)]);
 
   return (
@@ -347,6 +352,15 @@ function AccountRow({ account: a, admin }: { account: SocialAccount; admin: bool
           {networkName[a.network]}{a.network === "Instagram" && (a.serverUrl ? " (accesso con Instagram)" : " (tramite Pagina Facebook)")} · {a.limits.maxCharacters} caratteri, fino a {a.limits.maxImages} immagini · collegato il {formatDate(a.createdAtUtc)}
         </p>
         {a.statusMessage && <p className="mt-1 text-xs text-bad">{a.statusMessage}</p>}
+        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+          <FolderKanban className="size-3 text-faint" />
+          {linked.length === 0
+            ? <span className="text-warn">Nessun progetto: si usa solo nei post senza progetto.</span>
+            : linked.map((p) => <Badge key={p.id}>{p.name}</Badge>)}
+          {admin && projects.length > 0 && (
+            <button type="button" className="text-brand-fg hover:underline" onClick={() => setEditingProjects(true)}>Cambia progetti</button>
+          )}
+        </p>
       </div>
       {admin && (confirm ? (
         <div className="flex gap-1.5">
@@ -357,6 +371,7 @@ function AccountRow({ account: a, admin }: { account: SocialAccount; admin: bool
         <Button size="sm" variant="ghost" icon={<Trash2 className="size-3" />} aria-label={`Scollega ${accountLabel(a)}`} onClick={() => setConfirm(true)} />
       ))}
       {confirm && <p className="w-full text-xs text-muted">I post già usciti restano sul calendario; quelli programmati non partiranno più su questo account.</p>}
+      {editingProjects && <AccountProjectsModal account={a} projects={projects} onClose={() => setEditingProjects(false)} />}
     </li>
   );
 }
@@ -397,6 +412,36 @@ function MastodonModal({ onClose }: { onClose: () => void }) {
         <Field label="Token di accesso"><Input type="password" autoComplete="off" className="font-mono" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} /></Field>
         {connect.error && <Alert tone="bad">{errorMessage(connect.error)}</Alert>}
       </form>
+    </Modal>
+  );
+}
+
+/**
+ * I progetti in cui si usa un account. Un post di un progetto può usare solo
+ * gli account collegati a quel progetto; i post già programmati non cambiano.
+ */
+function AccountProjectsModal({ account: a, projects, onClose }: { account: SocialAccount; projects: Project[]; onClose: () => void }) {
+  const org = useOrg();
+  const [chosen, setChosen] = useState<string[]>(a.projectIds);
+  const save = useApiMutation(() => ({ path: `/orgs/${org.id}/social/accounts/${a.id}/projects`, method: "PUT", body: { projectIds: chosen } }),
+    [keys.socialAccounts(org.id)]);
+  const toggle = (id: string) => setChosen((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  return (
+    <Modal open onOpenChange={(o) => !o && onClose()} title={`Progetti di ${accountLabel(a)}`}
+      description="Lo stesso account può servire a più progetti: per esempio un profilo personale che promuove anche un'app. Ogni progetto ha i suoi post."
+      footer={<><Button variant="ghost" onClick={onClose}>Annulla</Button><Button variant="primary" loading={save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>Salva</Button></>}>
+      <ul className="space-y-1">
+        {projects.map((p) => (
+          <li key={p.id}>
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[0.8125rem] text-fg hover:bg-hover/50">
+              <input type="checkbox" className="accent-brand" checked={chosen.includes(p.id)} onChange={() => toggle(p.id)} />
+              {p.name}
+            </label>
+          </li>
+        ))}
+      </ul>
+      {save.error && <div className="mt-3"><Alert tone="bad">{errorMessage(save.error)}</Alert></div>}
     </Modal>
   );
 }

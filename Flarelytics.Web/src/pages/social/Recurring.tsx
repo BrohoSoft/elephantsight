@@ -1,7 +1,7 @@
 import { Copy, Pause, Play, Plus, Repeat } from "lucide-react";
 import { useState } from "react";
 import { canAdmin, keys, useApiMutation, useProjects, useSocialAccounts, useSocialRecurring } from "../../api/hooks";
-import type { RecurringPost, SocialAccount } from "../../api/types";
+import type { Project, RecurringPost, SocialAccount } from "../../api/types";
 import { formatDateTime, useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
 import { Alert, Badge, Button, EmptyState, PageHeader, PageLoader, Panel } from "../../components/ui";
@@ -17,10 +17,10 @@ import { MediaThumb } from "./Inbox";
  * giorno, certi giorni della settimana, una volta al mese). Ogni uscita
  * diventa un post del calendario, con il suo esito.
  */
-export function SocialRecurringPage() {
+export function SocialRecurringPage({ project }: { project?: Project } = {}) {
   const org = useOrg();
   const admin = canAdmin(org.role);
-  const recurring = useSocialRecurring(org.id);
+  const recurring = useSocialRecurring(org.id, project?.id);
   const accounts = useSocialAccounts(org.id);
   const projects = useProjects(org.id);
   // Si apre per modificare (recurring), per creare da una copia (template) o da zero.
@@ -32,7 +32,7 @@ export function SocialRecurringPage() {
   return (
     <>
       <PageHeader
-        title="Post ricorrenti"
+        title={project ? `Post ricorrenti · ${project.name}` : "Post ricorrenti"}
         description="Contenuti che ElephantSight pubblica da solo a intervalli regolari. Ogni uscita compare nel calendario come un post, con il suo esito; le prossime sono segnate con il simbolo della ripetizione."
         actions={admin && <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setEditing({})}>Nuovo post ricorrente</Button>}
       />
@@ -50,7 +50,8 @@ export function SocialRecurringPage() {
         <Panel>
           <ul className="divide-y divide-line">
             {recurring.data!.map((r) => (
-              <RecurringRow key={r.id} recurring={r} accounts={accounts.data!} admin={admin} onOpen={() => setEditing({ recurring: r })} onDuplicate={duplicate} />
+              <RecurringRow key={r.id} recurring={r} accounts={accounts.data!} admin={admin}
+                projectName={project ? undefined : projects.data?.find((p) => p.id === r.projectId)?.name} onOpen={() => setEditing({ recurring: r })} onDuplicate={duplicate} />
             ))}
           </ul>
         </Panel>
@@ -59,14 +60,16 @@ export function SocialRecurringPage() {
       {editing && (
         // La chiave rimonta l'editor quando da un post si passa alla sua copia.
         <RecurringEditor key={editing.recurring?.id ?? (editing.template ? "copia" : "nuovo")} recurring={editing.recurring} template={editing.template}
-          accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} onDuplicate={duplicate} />
+          defaultProjectId={project?.id} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} onDuplicate={duplicate} />
       )}
     </>
   );
 }
 
-function RecurringRow({ recurring: r, accounts, admin, onOpen, onDuplicate }: {
+function RecurringRow({ recurring: r, accounts, admin, projectName, onOpen, onDuplicate }: {
   recurring: RecurringPost;
+  /** Nella lista dell'organizzazione: di quale progetto è. */
+  projectName?: string;
   accounts: SocialAccount[];
   admin: boolean;
   onOpen: () => void;
@@ -99,6 +102,7 @@ function RecurringRow({ recurring: r, accounts, admin, onOpen, onDuplicate }: {
     <li className="flex cursor-pointer flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3 hover:bg-hover/40" onClick={onOpen}>
       <MediaThumb media={r.media} />
       <div className="min-w-0 flex-1 space-y-1">
+        {projectName && <Badge>{projectName}</Badge>}
         <p className="line-clamp-2 text-[0.8125rem] text-fg">{r.text || <span className="text-muted">Senza testo</span>}</p>
         <p className="flex items-start gap-1.5 text-xs text-muted">
           <Repeat className="mt-0.5 size-3 shrink-0" /> {describeRule(r)}

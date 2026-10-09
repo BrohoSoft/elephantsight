@@ -27,15 +27,19 @@ public static class MetricsEndpoints
 
     public static void MapMetrics(this IEndpointRouteBuilder api)
     {
-        api.MapOrgGroup().MapGet("/metrics", Get);
+        api.MapOrgGroup().RequireSection(AppSections.Store).MapGet("/metrics", Get);
     }
 
-    private static async Task<IResult> Get(FlarelyticsDbContext db, int? days, Guid? projectId, CancellationToken ct)
+    private static async Task<IResult> Get(FlarelyticsDbContext db, CurrentOrg org, int? days, Guid? projectId, CancellationToken ct)
     {
         var length = days is { } d && AllowedDays.Contains(d) ? d : 30;
+        if (projectId is not null) org.EnsureCanSee(projectId);
+        var visible = org.VisibleProjects;
 
+        // Le app dei progetti che il membro vede: chi ne vede solo alcuni ha la dashboard di quelli.
         var linked = await db.Set<ProjectApp>().AsNoTracking()
             .Where(a => projectId == null || a.ProjectId == projectId)
+            .Where(a => visible == null || visible.Contains(a.ProjectId))
             .Select(a => new { a.ProjectId, a.Store, a.ExternalAppId, a.CredentialId })
             .ToListAsync(ct);
 

@@ -31,7 +31,8 @@ public static partial class CredentialEndpoints
 {
     public static void MapCredentials(this IEndpointRouteBuilder api)
     {
-        var credentials = api.MapOrgGroup("/credentials");
+        // Le chiavi servono a tutti i progetti: le gestisce solo chi li vede tutti.
+        var credentials = api.MapOrgGroup("/credentials").RequireSection(AppSections.Store).RequireFullAccess();
 
         credentials.MapGet("", List);
 

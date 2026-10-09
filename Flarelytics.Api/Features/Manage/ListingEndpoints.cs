@@ -22,7 +22,7 @@ public static class ListingEndpoints
 
     public static void MapListing(this IEndpointRouteBuilder api)
     {
-        var listing = api.MapOrgGroup("/projects/{projectId:guid}/listing");
+        var listing = api.MapOrgGroup("/projects/{projectId:guid}/listing").RequireSection(AppSections.Store);
         listing.MapGet("", Get);
         listing.MapGet("/screenshots", Screenshots);
 

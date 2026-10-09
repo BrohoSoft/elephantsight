@@ -25,7 +25,7 @@ public static class SocialPostEndpoints
 
     public static void MapSocialPosts(this IEndpointRouteBuilder api)
     {
-        var social = api.MapOrgGroup("/social");
+        var social = api.MapOrgGroup("/social").RequireSection(AppSections.Social);
         social.MapGet("/posts", List);
         social.MapGet("/posts/{postId:guid}", Get);
         social.MapGet("/inbox", Inbox);
@@ -48,12 +48,14 @@ public static class SocialPostEndpoints
     }
 
     /// <summary>I post fra due istanti (il mese che il calendario sta mostrando), con i loro esiti.</summary>
+    /// <remarks>Senza progetto: tutti quelli che il membro vede (il calendario dell'organizzazione). Con: il calendario del progetto.</remarks>
     private static async Task<IResult> List(DateTime from, DateTime to, Guid? projectId, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
     {
         if (to <= from || to - from > TimeSpan.FromDays(100)) throw ApiProblem.BadRequest("range", "Un periodo di al massimo 100 giorni.");
         var (start, end) = (DateTime.SpecifyKind(from.ToUniversalTime(), DateTimeKind.Utc), DateTime.SpecifyKind(to.ToUniversalTime(), DateTimeKind.Utc));
+        if (projectId is not null) org.EnsureCanSee(projectId);
 
-        var query = db.Set<SocialPost>().AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
+        var query = Visible(db, org).AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
             .Where(p => !p.IsInbox && p.ScheduledAtUtc >= start && p.ScheduledAtUtc < end);
         if (projectId is { } pid) query = query.Where(p => p.ProjectId == pid);
 
@@ -61,28 +63,39 @@ public static class SocialPostEndpoints
         return Results.Ok(posts.Select(p => SocialPostResponse.From(p, signer)));
     }
 
-    private static async Task<IResult> Get(Guid postId, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct) =>
-        Results.Ok(SocialPostResponse.From(await LoadAsync(db, postId, ct), signer));
+    private static async Task<IResult> Get(Guid postId, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct) =>
+        Results.Ok(SocialPostResponse.From(await LoadAsync(db, org, postId, ct), signer));
+
+    /// <summary>
+    /// I post che il membro vede: tutti, o quelli dei suoi progetti. Un post
+    /// senza progetto è dell'organizzazione e lo vede solo chi vede tutto.
+    /// </summary>
+    public static IQueryable<SocialPost> Visible(FlarelyticsDbContext db, CurrentOrg org)
+    {
+        var query = db.Set<SocialPost>().AsQueryable();
+        if (org.VisibleProjects is { } ids) query = query.Where(p => p.ProjectId != null && ids.Contains(p.ProjectId.Value));
+        return query;
+    }
 
     private static async Task<IResult> Create(SavePostRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
         MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
     {
         var post = SocialPost.Create(org.TenantId, principal.UserId());
         db.Add(post);
-        await ApplyAsync(post, req, db, storage, ct);
+        await ApplyAsync(post, req, org, db, storage, ct);
         await db.SaveChangesAsync(ct);
         return Results.Created($"/api/v1/orgs/{org.TenantId}/social/posts/{post.Id}", SocialPostResponse.From(post, signer));
     }
 
-    private static async Task<IResult> Update(Guid postId, SavePostRequest req, FlarelyticsDbContext db, MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task<IResult> Update(Guid postId, SavePostRequest req, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
     {
-        var post = await LoadAsync(db, postId, ct);
+        var post = await LoadAsync(db, org, postId, ct);
         if (post.IsImported)
             throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da ElephantSight: qui si legge e basta.");
         if (!post.IsEditable)
             throw ApiProblem.Conflict("post_published", "Il post è già uscito (o sta uscendo) su almeno un account: non si modifica più.");
 
-        await ApplyAsync(post, req, db, storage, ct);
+        await ApplyAsync(post, req, org, db, storage, ct);
         await db.SaveChangesAsync(ct);
         return Results.Ok(SocialPostResponse.From(post, signer));
     }
@@ -91,9 +104,9 @@ public static class SocialPostEndpoints
     /// Toglie il post dal calendario. Se è già uscito su qualche rete lì resta:
     /// si cancella solo da qui.
     /// </summary>
-    private static async Task<IResult> Delete(Guid postId, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task<IResult> Delete(Guid postId, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
     {
-        var post = await LoadAsync(db, postId, ct);
+        var post = await LoadAsync(db, org, postId, ct);
         // Un post importato tornerebbe al giro dopo: è una copia di quello sulla rete.
         if (post.IsImported)
             throw ApiProblem.Conflict("post_imported", "È un post pubblicato fuori da ElephantSight: si toglie cancellandolo sulla rete.");
@@ -108,9 +121,9 @@ public static class SocialPostEndpoints
     }
 
     /// <summary>Rimette in coda gli account falliti, per pubblicarli al prossimo giro.</summary>
-    private static async Task<IResult> Retry(Guid postId, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    private static async Task<IResult> Retry(Guid postId, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
     {
-        var post = await LoadAsync(db, postId, ct);
+        var post = await LoadAsync(db, org, postId, ct);
         var failed = post.Targets.Where(t => t.Status == SocialTargetStatus.Failed).ToList();
         if (failed.Count == 0) throw ApiProblem.BadRequest("nothing_to_retry", "Nessun account da riprovare.");
 
@@ -162,11 +175,21 @@ public static class SocialPostEndpoints
     /// attaccano al salvataggio come quelli appena caricati. Quelle mai usate le
     /// cancella il worker dopo un giorno. Nell'ordine della richiesta.
     /// </summary>
-    private static async Task<IResult> CopyMedia(CopyMediaRequest req, FlarelyticsDbContext db, SocialMediaStorage storage, MediaUrlSigner signer,
+    private static async Task<IResult> CopyMedia(CopyMediaRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, MediaUrlSigner signer,
         CancellationToken ct)
     {
         var sources = await db.Set<SocialMedia>().Where(m => req.Ids.Contains(m.Id)).ToListAsync(ct);
         if (sources.Count != req.Ids.Distinct().Count()) throw ApiProblem.NotFound("Immagine");
+
+        // Si copia solo da post e post ricorrenti che il membro vede.
+        if (!org.IsFull)
+        {
+            var postIds = sources.Where(m => m.PostId != null).Select(m => m.PostId!.Value).ToList();
+            var recurringIds = sources.Where(m => m.RecurringPostId != null).Select(m => m.RecurringPostId!.Value).ToList();
+            var visiblePosts = await Visible(db, org).CountAsync(p => postIds.Contains(p.Id), ct);
+            var visibleRecurring = await SocialRecurringEndpoints.Visible(db, org).CountAsync(r => recurringIds.Contains(r.Id), ct);
+            if (visiblePosts != postIds.Distinct().Count() || visibleRecurring != recurringIds.Distinct().Count()) throw ApiProblem.NotFound("Immagine");
+        }
 
         var copies = new List<SocialMedia>();
         foreach (var (id, position) in req.Ids.Select((id, i) => (id, i)))
@@ -192,7 +215,7 @@ public static class SocialPostEndpoints
     /// </summary>
     private static async Task<IResult> Inbox(CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
     {
-        var posts = await db.Set<SocialPost>().AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
+        var posts = await Visible(db, org).AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
             .Where(p => p.IsInbox)
             .OrderBy(p => p.SuggestedAtUtc == null).ThenBy(p => p.SuggestedAtUtc).ThenBy(p => p.CreatedAtUtc)
             .ToListAsync(ct);
@@ -213,12 +236,12 @@ public static class SocialPostEndpoints
     /// non vanno bene per una rete restano in coda con il motivo, gli altri
     /// diventano programmati.
     /// </summary>
-    private static async Task<IResult> Assign(AssignInboxRequest req, FlarelyticsDbContext db, CancellationToken ct)
+    private static async Task<IResult> Assign(AssignInboxRequest req, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
-        var accounts = await db.Set<SocialAccount>().Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
+        var accounts = await SocialAccountEndpoints.VisibleAccounts(db, org).Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
         if (accounts.Count != req.AccountIds.Distinct().Count()) throw ApiProblem.NotFound("Account");
 
-        var posts = await db.Set<SocialPost>().Include(p => p.Targets).Include(p => p.Media)
+        var posts = await Visible(db, org).Include(p => p.Targets).Include(p => p.Media)
             .Where(p => p.IsInbox && req.PostIds.Contains(p.Id)).ToListAsync(ct);
 
         var results = new List<AssignResult>();
@@ -289,15 +312,15 @@ public static class SocialPostEndpoints
     /// nessuna parte, e un post programmato non resta senza account. I testi
     /// diversi per account restano a quelli che li avevano.
     /// </remarks>
-    private static async Task<IResult> ChangeAccounts(ChangeAccountsRequest req, FlarelyticsDbContext db, CancellationToken ct)
+    private static async Task<IResult> ChangeAccounts(ChangeAccountsRequest req, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
         var add = req.AddAccountIds ?? [];
         var remove = req.RemoveAccountIds ?? [];
-        var accounts = await db.Set<SocialAccount>().ToListAsync(ct);
+        var accounts = await SocialAccountEndpoints.VisibleAccounts(db, org).ToListAsync(ct);
         if (add.Concat(remove).Any(id => accounts.All(a => a.Id != id))) throw ApiProblem.NotFound("Account");
 
         var now = DateTime.UtcNow;
-        var query = db.Set<SocialPost>().Include(p => p.Targets).Include(p => p.Media).Where(p => !p.IsImported && !p.IsInbox);
+        var query = Visible(db, org).Include(p => p.Targets).Include(p => p.Media).Where(p => !p.IsImported && !p.IsInbox);
         query = req.AllUpcoming
             ? query.Where(p => p.ScheduledAtUtc >= now)
             : query.Where(p => (req.PostIds ?? new List<Guid>()).Contains(p.Id));
@@ -316,6 +339,11 @@ public static class SocialPostEndpoints
             if (!post.IsEditable)
             {
                 results.Add(new ChangeAccountsResult(post.Id, post.Text, post.ScheduledAtUtc, false, "È già uscito (o sta uscendo) su almeno un account."));
+                continue;
+            }
+            if (post.ProjectId is { } projectId && accounts.Where(a => add.Contains(a.Id)).FirstOrDefault(a => !a.IsInProject(projectId)) is { } outside)
+            {
+                results.Add(new ChangeAccountsResult(post.Id, post.Text, post.ScheduledAtUtc, false, $"{outside.Handle ?? outside.Name} non è collegato al progetto del post."));
                 continue;
             }
             if (!post.IsDraft && next.Count == 0)
@@ -361,8 +389,12 @@ public static class SocialPostEndpoints
     }
 
     /// <summary>Scrive sul post testo, data, account e immagini della richiesta, e lo controlla contro i limiti delle reti.</summary>
-    private static async Task ApplyAsync(SocialPost post, SavePostRequest req, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task ApplyAsync(SocialPost post, SavePostRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
     {
+        // Chi vede solo alcuni progetti scrive solo nei suoi: un post senza progetto è dell'organizzazione.
+        if (req.ProjectId is null && !org.CanSee(null))
+            throw ApiProblem.BadRequest("project_required", "Scegli il progetto del post.");
+        org.EnsureCanSee(req.ProjectId);
         if (req.ProjectId is { } projectId && !await db.Set<Project>().AnyAsync(p => p.Id == projectId, ct))
             throw ApiProblem.NotFound("Progetto");
 
@@ -373,8 +405,9 @@ public static class SocialPostEndpoints
         if (!req.IsDraft) post.LeaveInbox();
 
         // Gli account: si tolgono quelli non più scelti, si aggiungono i nuovi.
-        var accounts = await db.Set<SocialAccount>().Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
+        var accounts = await SocialAccountEndpoints.VisibleAccounts(db, org).Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
         if (accounts.Count != req.AccountIds.Distinct().Count()) throw ApiProblem.NotFound("Account");
+        EnsureInProject(req.ProjectId, accounts);
 
         foreach (var t in post.Targets.Where(t => t.AccountId is not { } id || !req.AccountIds.Contains(id)).ToList())
         {
@@ -420,18 +453,33 @@ public static class SocialPostEndpoints
         if (problems.Count > 0) throw ApiProblem.BadRequest("post_invalid", string.Join(" ", problems));
     }
 
+    /// <summary>Anche in bozza: un post di un progetto usa solo gli account collegati a quel progetto.</summary>
+    public static void EnsureInProject(Guid? projectId, IEnumerable<SocialAccount> accounts)
+    {
+        if (projectId is not { } p) return;
+        var outside = accounts.Where(a => !a.IsInProject(p)).Select(a => a.Handle ?? a.Name).ToList();
+        if (outside.Count > 0)
+            throw ApiProblem.BadRequest("account_not_in_project",
+                $"{string.Join(", ", outside)}: non {(outside.Count == 1 ? "è collegato" : "sono collegati")} a questo progetto. Collegali da Account social.");
+    }
+
     /// <summary>Quello che impedisce di pubblicare il post su ciascun account, in frasi da mostrare.</summary>
     private static List<string> ProblemsFor(SocialPost post, IEnumerable<SocialAccount> accounts, Func<SocialAccount, string?> textOverride,
         PostOptions? options = null) =>
-        ProblemsFor(post.Text, post.Media.OrderBy(m => m.Position).ToList(), accounts, textOverride, options ?? post.Options);
+        ProblemsFor(post.Text, post.Media.OrderBy(m => m.Position).ToList(), post.ProjectId, accounts, textOverride, options ?? post.Options);
 
-    /// <summary>Lo stesso controllo per un contenuto qualsiasi (un post ricorrente non è un <see cref="SocialPost"/>).</summary>
-    public static List<string> ProblemsFor(string text, IReadOnlyList<SocialMedia> ordered, IEnumerable<SocialAccount> accounts,
+    /// <summary>
+    /// Lo stesso controllo per un contenuto qualsiasi (un post ricorrente non è
+    /// un <see cref="SocialPost"/>). In un progetto si usano solo gli account
+    /// collegati a quel progetto.
+    /// </summary>
+    public static List<string> ProblemsFor(string text, IReadOnlyList<SocialMedia> ordered, Guid? projectId, IEnumerable<SocialAccount> accounts,
         Func<SocialAccount, string?> textOverride, PostOptions options)
     {
         return accounts
             .Select(a => (Account: a, Problems: SocialRules.Problems(textOverride(a) ?? text, ordered, SocialRules.For(a))
-                .Concat(SocialRules.OptionProblems(a.Network, options)).ToList()))
+                .Concat(SocialRules.OptionProblems(a.Network, options))
+                .Concat(projectId is { } p && !a.IsInProject(p) ? ["l'account non è collegato al progetto del post"] : []).ToList()))
             .Where(x => x.Problems.Count > 0)
             .Select(x => $"{NetworkName(x.Account.Network)} ({x.Account.Handle ?? x.Account.Name}): {string.Join("; ", x.Problems)}.")
             .ToList();
@@ -443,8 +491,8 @@ public static class SocialPostEndpoints
         _ => n.ToString()
     };
 
-    private static async Task<SocialPost> LoadAsync(FlarelyticsDbContext db, Guid postId, CancellationToken ct) =>
-        await db.Set<SocialPost>().Include(p => p.Targets).Include(p => p.Media).SingleOrDefaultAsync(p => p.Id == postId, ct)
+    private static async Task<SocialPost> LoadAsync(FlarelyticsDbContext db, CurrentOrg org, Guid postId, CancellationToken ct) =>
+        await Visible(db, org).Include(p => p.Targets).Include(p => p.Media).SingleOrDefaultAsync(p => p.Id == postId, ct)
         ?? throw ApiProblem.NotFound("Post");
 }
 

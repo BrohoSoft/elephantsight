@@ -29,7 +29,7 @@ public static class SecretFileEndpoints
 
     public static void MapSecretFiles(this IEndpointRouteBuilder api)
     {
-        var files = api.MapOrgGroup("/projects/{projectId:guid}/files");
+        var files = api.MapOrgGroup("/projects/{projectId:guid}/files").RequireSection(AppSections.Store);
         files.MapGet("", List);
 
         var admin = files.MapGroup("").RequireOrgRole(OrgRole.Admin);

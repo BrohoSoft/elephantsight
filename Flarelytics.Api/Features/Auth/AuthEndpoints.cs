@@ -62,7 +62,7 @@ public static class AuthEndpoints
         var user = User.Create(email, req.Password, req.FullName);
         user.ConfirmEmail(now);
         invitation.Accept(now);
-        db.AddRange(user, Membership.Create(invitation.TenantId, user.Id, invitation.Role));
+        db.AddRange(user, Membership.Create(invitation.TenantId, user.Id, invitation.Role, invitation.Access));
         await db.SaveChangesAsync(ct);
 
         return Results.Created("/api/v1/me", new RegisterResponse(user.Id, invitation.TenantId));

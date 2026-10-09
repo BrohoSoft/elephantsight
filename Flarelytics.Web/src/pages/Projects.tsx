@@ -2,12 +2,12 @@ import { FolderKanban, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { errorMessage } from "../api/client";
-import { canAdmin, keys, useApiMutation, useProjects } from "../api/hooks";
+import { keys, useApiMutation, useProjects } from "../api/hooks";
 import type { Project } from "../api/types";
 import { AppIcon } from "../components/AppIcon";
 import { StoreBadge, StoreGlyph } from "../components/StoreIcons";
 import { Alert, Button, EmptyState, Field, Input, Modal, PageHeader, PageLoader, Textarea } from "../components/ui";
-import { formatDate, useOrg } from "../components/org";
+import { formatDate, useOrg, canManageOrg } from "../components/org";
 
 export function ProjectsPage() {
   const org = useOrg();
@@ -24,7 +24,7 @@ export function ProjectsPage() {
         title="Progetti"
         description={count === 1 ? "1 progetto." : `${count} progetti.`}
         actions={
-          canAdmin(org.role) && (
+          canManageOrg(org) && (
             <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>
               Nuovo progetto
             </Button>
@@ -37,7 +37,7 @@ export function ProjectsPage() {
           <EmptyState
             icon={<FolderKanban className="size-5" />}
             title="Nessun progetto"
-            action={canAdmin(org.role) && <Button variant="primary" onClick={() => setCreating(true)}>Crea il primo progetto</Button>}
+            action={canManageOrg(org) && <Button variant="primary" onClick={() => setCreating(true)}>Crea il primo progetto</Button>}
           >
             Un progetto riunisce la stessa app su App Store e Google Play.
           </EmptyState>

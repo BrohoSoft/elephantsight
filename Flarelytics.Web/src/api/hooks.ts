@@ -170,8 +170,12 @@ export const useSocialPosts = (orgId: string, from: Date, to: Date, projectId?: 
 export const useSocialInbox = (orgId: string) =>
   useQuery({ queryKey: keys.socialInbox(orgId), queryFn: () => request<SocialPost[]>(`/orgs/${orgId}/social/inbox`), refetchInterval: 60_000 });
 
-export const useSocialRecurring = (orgId: string) =>
-  useQuery({ queryKey: keys.socialRecurring(orgId), queryFn: () => request<RecurringPost[]>(`/orgs/${orgId}/social/recurring`) });
+/** I post ricorrenti che il membro vede, o (con projectId) quelli di un progetto. */
+export const useSocialRecurring = (orgId: string, projectId?: string) =>
+  useQuery({
+    queryKey: [...keys.socialRecurring(orgId), projectId ?? "all"],
+    queryFn: () => request<RecurringPost[]>(`/orgs/${orgId}/social/recurring${projectId ? `?projectId=${projectId}` : ""}`),
+  });
 
 /** Le uscite future dei post ricorrenti nel periodo del calendario: calcolate dal server con la regola. */
 export const useRecurringOccurrences = (orgId: string, from: Date, to: Date, projectId?: string) =>

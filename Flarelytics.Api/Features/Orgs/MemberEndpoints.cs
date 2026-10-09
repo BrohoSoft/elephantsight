@@ -22,6 +22,9 @@ namespace Flarelytics.Api.Features.Orgs;
 /// <item>gli admin invitano e rimuovono admin e viewer; solo un owner tocca
 /// gli owner, e solo un owner nomina un owner;</item>
 /// <item>chiunque può uscire da solo;</item>
+/// <item>progetti e sezioni (vedi <see cref="MemberAccess"/>) li sceglie un
+/// admin con accesso completo, anche al momento dell'invito; un owner vede
+/// sempre tutto, e l'accesso di un owner non si restringe;</item>
 /// <item>l'ultimo owner non può né uscire né essere declassato:
 /// un'organizzazione senza owner non avrebbe nessuno che può gestire
 /// l'abbonamento.</item>
@@ -35,11 +38,14 @@ public static class MemberEndpoints
         api.MapPost("/invitations/accept", Accept).RequireAuthorization().Validating<AcceptInvitationRequest>();
 
         var org = api.MapOrgGroup();
-        org.MapGet("/members", ListMembers);
+        // Chi vede solo alcuni progetti non vede gli altri membri (potrebbero
+        // essere clienti diversi): può solo uscire da solo.
+        org.MapGet("/members", ListMembers).RequireFullAccess();
         org.MapPut("/members/{userId:guid}", ChangeRole).RequireOrgRole(OrgRole.Owner).Validating<ChangeRoleRequest>();
+        org.MapPut("/members/{userId:guid}/access", ChangeAccess).RequireOrgRole(OrgRole.Admin).RequireFullAccess().Validating<AccessRequest>();
         org.MapDelete("/members/{userId:guid}", RemoveMember);
 
-        var invitations = org.MapGroup("/invitations").RequireOrgRole(OrgRole.Admin);
+        var invitations = org.MapGroup("/invitations").RequireOrgRole(OrgRole.Admin).RequireFullAccess();
         invitations.MapGet("", ListInvitations);
         invitations.MapPost("", Invite).Validating<InviteRequest>();
         invitations.MapDelete("/{invitationId:guid}", RevokeInvitation);
@@ -53,10 +59,11 @@ public static class MemberEndpoints
             .Where(m => m.TenantId == org.TenantId)
             .Join(db.Set<User>(), m => m.UserId, u => u.Id, (m, u) => new { m, u })
             .OrderByDescending(x => x.m.Role).ThenBy(x => x.u.FullName)
-            .Select(x => new MemberResponse(x.u.Id, x.u.Email, x.u.FullName, x.m.Role, x.m.CreatedAtUtc))
+            .Select(x => new { x.u.Id, x.u.Email, x.u.FullName, x.m.Role, x.m.AllProjects, x.m.ProjectIds, x.m.Sections, x.m.CreatedAtUtc })
             .ToListAsync(ct);
 
-        return Results.Ok(members);
+        return Results.Ok(members.Select(x => new MemberResponse(x.Id, x.Email, x.FullName, x.Role,
+            AccessResponse.From(new MemberAccess(x.AllProjects, x.ProjectIds, x.Sections)), x.CreatedAtUtc)));
     }
 
     private static async Task<IResult> ChangeRole(
@@ -75,6 +82,28 @@ public static class MemberEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>Progetti e sezioni di un membro. Quello di un owner non si restringe.</summary>
+    private static async Task<IResult> ChangeAccess(
+        Guid userId, AccessRequest req, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
+    {
+        var membership = await FindMembershipAsync(db, org, userId, ct);
+        if (membership.Role == OrgRole.Owner)
+            throw ApiProblem.Conflict("owner_access", "Un owner vede sempre tutta l'organizzazione: per limitarlo, prima cambia il suo ruolo.");
+
+        membership.SetAccess(await ValidAccessAsync(req, db, ct));
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>L'accesso della richiesta, con progetti che esistono davvero in questa organizzazione.</summary>
+    private static async Task<MemberAccess> ValidAccessAsync(AccessRequest req, FlarelyticsDbContext db, CancellationToken ct)
+    {
+        var ids = req.AllProjects ? [] : (req.ProjectIds ?? []).Distinct().ToList();
+        if (ids.Count > 0 && await db.Set<Project>().CountAsync(p => ids.Contains(p.Id), ct) != ids.Count)
+            throw ApiProblem.NotFound("Progetto");
+        return new MemberAccess(req.AllProjects, ids, req.Sections);
+    }
+
     private static async Task<IResult> RemoveMember(
         Guid userId, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
@@ -83,7 +112,7 @@ public static class MemberEndpoints
 
         if (!leaving)
         {
-            if (org.Role < OrgRole.Admin)
+            if (org.Role < OrgRole.Admin || !org.IsFull)
                 throw ApiProblem.Forbidden("Solo admin e owner possono rimuovere altri membri.");
             if (membership.Role == OrgRole.Owner && org.Role < OrgRole.Owner)
                 throw ApiProblem.Forbidden("Solo un owner può rimuovere un altro owner.");
@@ -102,10 +131,9 @@ public static class MemberEndpoints
         var pending = await db.Set<Invitation>().AsNoTracking()
             .Where(i => i.TenantId == org.TenantId && i.AcceptedAtUtc == null && i.RevokedAtUtc == null && i.ExpiresAtUtc > now)
             .OrderBy(i => i.Email)
-            .Select(i => new InvitationResponse(i.Id, i.Email, i.Role, i.CreatedAtUtc, i.ExpiresAtUtc))
             .ToListAsync(ct);
 
-        return Results.Ok(pending);
+        return Results.Ok(pending.Select(i => new InvitationResponse(i.Id, i.Email, i.Role, AccessResponse.From(i.Access), i.CreatedAtUtc, i.ExpiresAtUtc)));
     }
 
     /// <summary>
@@ -145,8 +173,9 @@ public static class MemberEndpoints
         var inviter = await db.Set<User>().AsNoTracking().SingleAsync(u => u.Id == inviterId, ct);
         var tenant = await db.Set<Tenant>().AsNoTracking().SingleAsync(t => t.Id == org.TenantId, ct);
 
+        var access = req.Access is { } a ? await ValidAccessAsync(a, db, ct) : MemberAccess.Full;
         var token = SecureToken.Create();
-        var invitation = Invitation.Create(org.TenantId, email, req.Role, inviterId, token, now);
+        var invitation = Invitation.Create(org.TenantId, email, req.Role, inviterId, token, now, access);
         db.Add(invitation);
         await db.SaveChangesAsync(ct);
 
@@ -154,7 +183,7 @@ public static class MemberEndpoints
         var link = $"{auth.Value.PublicAppUrl.TrimEnd('/')}/accept-invite?token={Uri.EscapeDataString(token)}";
 
         return Results.Created($"/api/v1/orgs/{org.TenantId}/invitations/{invitation.Id}",
-            new CreatedInvitationResponse(invitation.Id, invitation.Email, invitation.Role, invitation.ExpiresAtUtc, link, sent));
+            new CreatedInvitationResponse(invitation.Id, invitation.Email, invitation.Role, AccessResponse.From(invitation.Access), invitation.ExpiresAtUtc, link, sent));
     }
 
     private static async Task<IResult> RevokeInvitation(Guid invitationId, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
@@ -203,7 +232,7 @@ public static class MemberEndpoints
         invitation.Accept(now);
         if (!await db.Set<Membership>().AnyAsync(m => m.TenantId == invitation.TenantId && m.UserId == userId, ct))
         {
-            db.Add(Membership.Create(invitation.TenantId, userId, invitation.Role));
+            db.Add(Membership.Create(invitation.TenantId, userId, invitation.Role, invitation.Access));
         }
 
         // Il link è arrivato a quella casella: vale come conferma dell'email.
@@ -243,13 +272,25 @@ public static class Invitations
     }
 }
 
-public record MemberResponse(Guid UserId, string Email, string FullName, OrgRole Role, DateTime JoinedAtUtc);
+/// <summary>Cosa vede un membro: tutti i progetti o quelli elencati, e le sezioni (Store, Social).</summary>
+public record AccessResponse(bool AllProjects, IReadOnlyList<Guid> ProjectIds, bool Store, bool Social)
+{
+    public static AccessResponse From(MemberAccess a) =>
+        new(a.AllProjects, a.ProjectIds, a.Sections.HasFlag(AppSections.Store), a.Sections.HasFlag(AppSections.Social));
+}
+
+/// <param name="Sections">Store, Social o "Store, Social".</param>
+public record AccessRequest(bool AllProjects, IReadOnlyList<Guid>? ProjectIds, AppSections Sections);
+
+public record MemberResponse(Guid UserId, string Email, string FullName, OrgRole Role, AccessResponse Access, DateTime JoinedAtUtc);
 public record ChangeRoleRequest(OrgRole Role);
-public record InviteRequest(string Email, OrgRole Role);
-public record InvitationResponse(Guid Id, string Email, OrgRole Role, DateTime CreatedAtUtc, DateTime ExpiresAtUtc);
+
+/// <param name="Access">Null = tutto (come prima). Per un owner si ignora: vede sempre tutto.</param>
+public record InviteRequest(string Email, OrgRole Role, AccessRequest? Access = null);
+public record InvitationResponse(Guid Id, string Email, OrgRole Role, AccessResponse Access, DateTime CreatedAtUtc, DateTime ExpiresAtUtc);
 /// <param name="Link">Il link da mandare. Si vede solo adesso: a database c'è solo il suo hash.</param>
 /// <param name="EmailSent">False se l'installazione non ha l'email configurata: il link va mandato a mano.</param>
-public record CreatedInvitationResponse(Guid Id, string Email, OrgRole Role, DateTime ExpiresAtUtc, string Link, bool EmailSent);
+public record CreatedInvitationResponse(Guid Id, string Email, OrgRole Role, AccessResponse Access, DateTime ExpiresAtUtc, string Link, bool EmailSent);
 public record InvitationPreview(string OrganizationName, string Email, OrgRole Role, string InvitedBy, bool AccountExists);
 public record AcceptInvitationRequest(string Token);
 public record AcceptInvitationResponse(Guid OrganizationId);
@@ -265,6 +306,19 @@ public class InviteRequestValidator : AbstractValidator<InviteRequest>
     {
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(255);
         RuleFor(x => x.Role).IsInEnum();
+        RuleFor(x => x.Access!).SetValidator(new AccessRequestValidator()).When(x => x.Access is not null);
+    }
+}
+
+public class AccessRequestValidator : AbstractValidator<AccessRequest>
+{
+    public AccessRequestValidator()
+    {
+        RuleFor(x => x.Sections).Must(s => s != AppSections.None && (s & ~AppSections.All) == 0)
+            .WithName("sections").WithMessage("Scegli almeno una sezione fra Store e Social.");
+        RuleFor(x => x.ProjectIds).Must(p => p is { Count: > 0 }).When(x => !x.AllProjects)
+            .WithName("projectIds").WithMessage("Scegli almeno un progetto, o tutti.");
+        RuleFor(x => x.ProjectIds).Must(p => p is null || p.Count <= 200);
     }
 }
 

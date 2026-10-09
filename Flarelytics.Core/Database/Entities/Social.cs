@@ -54,6 +54,14 @@ public class SocialAccount : BaseEntity, ITenantOwned
     public string? StatusMessage { get; private set; }
     public Guid CreatedByUserId { get; private set; }
 
+    /// <summary>
+    /// I progetti in cui l'account si può usare. Un account è
+    /// dell'organizzazione e si condivide: lo stesso Threads può servire a
+    /// promuovere un'app e a pubblicare per sé, con post diversi in due
+    /// progetti. Un post di un progetto usa solo gli account collegati a quel progetto.
+    /// </summary>
+    public List<Guid> ProjectIds { get; private set; } = [];
+
     /// <summary>L'ultima lettura dei post pubblicati fuori da ElephantSight (vedi <see cref="Social.SocialImporter"/>).</summary>
     public DateTime? LastImportAtUtc { get; private set; }
 
@@ -84,6 +92,12 @@ public class SocialAccount : BaseEntity, ITenantOwned
     }
 
     public void MarkImported(DateTime nowUtc) => LastImportAtUtc = nowUtc;
+
+    public void SetProjects(IEnumerable<Guid> projectIds) => ProjectIds = projectIds.Distinct().ToList();
+
+    public void ForgetProject(Guid projectId) => ProjectIds = ProjectIds.Where(id => id != projectId).ToList();
+
+    public bool IsInProject(Guid projectId) => ProjectIds.Contains(projectId);
 
     /// <summary>Il token rinnovato dal worker.</summary>
     public void RenewToken(string protectedSecret, DateTime expiresAtUtc)
@@ -185,10 +199,11 @@ public class SocialPost : BaseEntity, ITenantOwned
     /// <summary>Programmato: esce dalla coda ed entra nel calendario come un post qualsiasi.</summary>
     public void LeaveInbox() => IsInbox = false;
 
-    public static SocialPost Imported(Guid tenantId, string text, DateTime publishedAtUtc, Guid createdBy) => new()
+    /// <param name="projectId">Il progetto dell'account, se ne ha uno solo; con più progetti non si sa a quale appartenga e resta dell'organizzazione.</param>
+    public static SocialPost Imported(Guid tenantId, string text, DateTime publishedAtUtc, Guid createdBy, Guid? projectId = null) => new()
     {
         TenantId = tenantId, Text = text.Trim(), ScheduledAtUtc = DateTime.SpecifyKind(publishedAtUtc, DateTimeKind.Utc),
-        IsImported = true, CreatedByUserId = createdBy
+        IsImported = true, CreatedByUserId = createdBy, ProjectId = projectId
     };
 
     public void Update(string text, DateTime scheduledAtUtc, bool isDraft, Guid? projectId)

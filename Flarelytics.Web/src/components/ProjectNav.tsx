@@ -1,24 +1,39 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { ArrowLeft, Check, ChevronsUpDown, FileKey2, LayoutDashboard, MessageSquare, Package, Settings, Store as StoreIcon } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, ChevronsUpDown, FileKey2, LayoutDashboard, MessageSquare, Package, Repeat, Settings, Store as StoreIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router";
 import { useProjects } from "../api/hooks";
-import type { Project } from "../api/types";
+import type { OrgSummary, Project } from "../api/types";
+import { canManageOrg, hasSocial, hasStore, homePath } from "./org";
 import { AppIcon } from "./AppIcon";
 import { StoreGlyph } from "./StoreIcons";
 
 const menuItem =
   "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[0.8125rem] text-muted outline-none data-[highlighted]:bg-hover data-[highlighted]:text-fg";
 
-/** Le sezioni di un progetto: le stesse nella barra laterale e in quella per il telefono. */
-export const projectSections = (base: string) => [
-  { to: base, label: "Panoramica", icon: <LayoutDashboard className="size-4" />, end: true },
-  { to: `${base}/releases`, label: "Versioni e build", icon: <Package className="size-4" /> },
-  { to: `${base}/reviews`, label: "Recensioni", icon: <MessageSquare className="size-4" /> },
-  { to: `${base}/listing`, label: "Pagina dello store", icon: <StoreIcon className="size-4" /> },
-  { to: `${base}/files`, label: "File di firma", icon: <FileKey2 className="size-4" /> },
-  { to: `${base}/settings`, label: "Impostazioni", icon: <Settings className="size-4" /> },
+/**
+ * Le sezioni di un progetto: le stesse nella barra laterale e in quella per il
+ * telefono, secondo le sezioni che il membro vede. Senza Store la panoramica è
+ * il calendario del progetto.
+ */
+export const projectSections = (base: string, org: OrgSummary) => [
+  ...(hasStore(org)
+    ? [
+        { to: base, label: "Panoramica", icon: <LayoutDashboard className="size-4" />, end: true },
+        { to: `${base}/releases`, label: "Versioni e build", icon: <Package className="size-4" /> },
+        { to: `${base}/reviews`, label: "Recensioni", icon: <MessageSquare className="size-4" /> },
+        { to: `${base}/listing`, label: "Pagina dello store", icon: <StoreIcon className="size-4" /> },
+        { to: `${base}/files`, label: "File di firma", icon: <FileKey2 className="size-4" /> },
+      ]
+    : []),
+  ...(hasSocial(org)
+    ? [
+        { to: hasStore(org) ? `${base}/social` : base, label: "Calendario social", icon: <CalendarDays className="size-4" />, end: !hasStore(org) },
+        { to: `${base}/recurring`, label: "Post ricorrenti", icon: <Repeat className="size-4" /> },
+      ]
+    : []),
+  ...(hasStore(org) || canManageOrg(org) ? [{ to: `${base}/settings`, label: "Impostazioni", icon: <Settings className="size-4" /> }] : []),
 ];
 
 /** I due segni degli store: pieni se l'app è collegata, sbiaditi se no. */
@@ -70,19 +85,20 @@ export function ProjectSwitcher({ orgId, projectId, section }: { orgId: string; 
 }
 
 /** La barra laterale dentro un progetto: si torna alla vista globale, si cambia progetto, si naviga fra le sue sezioni. */
-export function ProjectSidebarNav({ orgId, orgName, projectId, section }: { orgId: string; orgName: string; projectId: string; section?: string }) {
+export function ProjectSidebarNav({ org, projectId, section }: { org: OrgSummary; projectId: string; section?: string }) {
+  const { id: orgId, name: orgName } = org;
   const base = `/o/${orgId}/projects/${projectId}`;
   return (
     <>
       <div className="space-y-2 border-b border-line p-2">
-        <NavLink to={`/o/${orgId}`} className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover hover:text-fg">
+        <NavLink to={homePath(org)} className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover hover:text-fg">
           <ArrowLeft className="size-3.5" />
           <span className="truncate">Vista globale · {orgName}</span>
         </NavLink>
         <ProjectSwitcher orgId={orgId} projectId={projectId} section={section} />
       </div>
       <nav className="flex-1 space-y-0.5 p-2">
-        {projectSections(base).map((s) => <SectionLink key={s.to} to={s.to} icon={s.icon} end={s.end}>{s.label}</SectionLink>)}
+        {projectSections(base, org).map((s) => <SectionLink key={s.to} to={s.to} icon={s.icon} end={s.end}>{s.label}</SectionLink>)}
       </nav>
     </>
   );

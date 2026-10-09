@@ -28,7 +28,7 @@ public static class BuildEndpoints
 
     public static void MapBuilds(this IEndpointRouteBuilder api)
     {
-        var builds = api.MapOrgGroup("/projects/{projectId:guid}/builds");
+        var builds = api.MapOrgGroup("/projects/{projectId:guid}/builds").RequireSection(AppSections.Store);
         builds.MapGet("/uploads", List);
         builds.MapPost("/uploads", Upload).RequireOrgRole(OrgRole.Admin).DisableAntiforgery();
     }

@@ -25,7 +25,7 @@ public static class SocialRecurringEndpoints
 {
     public static void MapSocialRecurring(this IEndpointRouteBuilder api)
     {
-        var social = api.MapOrgGroup("/social");
+        var social = api.MapOrgGroup("/social").RequireSection(AppSections.Social);
         social.MapGet("/recurring", List);
         social.MapGet("/recurring/occurrences", Occurrences);
 
@@ -36,14 +36,24 @@ public static class SocialRecurringEndpoints
         admin.MapDelete("/recurring/{recurringId:guid}", Delete);
     }
 
-    private static async Task<IResult> List(FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    /// <summary>I post ricorrenti che il membro vede: tutti, o quelli dei suoi progetti (vedi <see cref="SocialPostEndpoints.Visible"/>).</summary>
+    public static IQueryable<SocialRecurringPost> Visible(FlarelyticsDbContext db, CurrentOrg org)
     {
-        var list = await db.Set<SocialRecurringPost>().AsNoTracking().Include(r => r.Media)
+        var query = db.Set<SocialRecurringPost>().AsQueryable();
+        if (org.VisibleProjects is { } ids) query = query.Where(r => r.ProjectId != null && ids.Contains(r.ProjectId.Value));
+        return query;
+    }
+
+    private static async Task<IResult> List(Guid? projectId, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    {
+        if (projectId is not null) org.EnsureCanSee(projectId);
+        var list = await Visible(db, org).AsNoTracking().Include(r => r.Media)
+            .Where(r => projectId == null || r.ProjectId == projectId)
             .OrderBy(r => r.IsPaused).ThenBy(r => r.NextOccurrenceUtc == null).ThenBy(r => r.NextOccurrenceUtc).ThenBy(r => r.CreatedAtUtc)
             .ToListAsync(ct);
 
         // L'ultima uscita di ogni serie, per mostrare com'è andata.
-        var last = await db.Set<SocialPost>().AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
+        var last = await SocialPostEndpoints.Visible(db, org).AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
             .Where(p => p.RecurringPostId != null &&
                         p.ScheduledAtUtc == db.Set<SocialPost>().Where(q => q.RecurringPostId == p.RecurringPostId).Max(q => q.ScheduledAtUtc))
             .ToListAsync(ct);
@@ -52,15 +62,16 @@ public static class SocialRecurringEndpoints
     }
 
     /// <summary>Le uscite future fra due istanti, per il calendario. Quelle passate sono già post veri.</summary>
-    private static async Task<IResult> Occurrences(DateTime from, DateTime to, Guid? projectId, FlarelyticsDbContext db, CancellationToken ct)
+    private static async Task<IResult> Occurrences(DateTime from, DateTime to, Guid? projectId, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
+        if (projectId is not null) org.EnsureCanSee(projectId);
         if (to <= from || to - from > TimeSpan.FromDays(100)) throw ApiProblem.BadRequest("range", "Un periodo di al massimo 100 giorni.");
         var now = DateTime.UtcNow;
         var start = DateTime.SpecifyKind(from.ToUniversalTime(), DateTimeKind.Utc);
         var end = DateTime.SpecifyKind(to.ToUniversalTime(), DateTimeKind.Utc);
         if (start < now) start = now;
 
-        var query = db.Set<SocialRecurringPost>().AsNoTracking().Where(r => !r.IsPaused && r.NextOccurrenceUtc != null);
+        var query = Visible(db, org).AsNoTracking().Where(r => !r.IsPaused && r.NextOccurrenceUtc != null);
         if (projectId is { } pid) query = query.Where(r => r.ProjectId == pid);
 
         var occurrences = (await query.ToListAsync(ct))
@@ -75,33 +86,33 @@ public static class SocialRecurringEndpoints
     {
         var recurring = SocialRecurringPost.Create(org.TenantId, principal.UserId());
         db.Add(recurring);
-        await ApplyAsync(recurring, req, db, storage, ct);
+        await ApplyAsync(recurring, req, org, db, storage, ct);
         await db.SaveChangesAsync(ct);
         return Results.Created($"/api/v1/orgs/{org.TenantId}/social/recurring/{recurring.Id}",
             RecurringPostResponse.From(recurring, signer, null));
     }
 
-    private static async Task<IResult> Update(Guid recurringId, SaveRecurringPostRequest req, FlarelyticsDbContext db, MediaUrlSigner signer,
+    private static async Task<IResult> Update(Guid recurringId, SaveRecurringPostRequest req, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer,
         SocialMediaStorage storage, CancellationToken ct)
     {
-        var recurring = await LoadAsync(db, recurringId, ct);
-        await ApplyAsync(recurring, req, db, storage, ct);
+        var recurring = await LoadAsync(db, org, recurringId, ct);
+        await ApplyAsync(recurring, req, org, db, storage, ct);
         await db.SaveChangesAsync(ct);
         return Results.Ok(RecurringPostResponse.From(recurring, signer, null));
     }
 
-    private static async Task<IResult> SetPaused(Guid recurringId, SetPausedRequest req, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    private static async Task<IResult> SetPaused(Guid recurringId, SetPausedRequest req, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
     {
-        var recurring = await LoadAsync(db, recurringId, ct);
+        var recurring = await LoadAsync(db, org, recurringId, ct);
         recurring.SetPaused(req.Paused, DateTime.UtcNow);
         await db.SaveChangesAsync(ct);
         return Results.Ok(RecurringPostResponse.From(recurring, signer, null));
     }
 
     /// <summary>Le uscite già fatte restano sul calendario, come post normali; i file della serie si cancellano.</summary>
-    private static async Task<IResult> Delete(Guid recurringId, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task<IResult> Delete(Guid recurringId, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
     {
-        var recurring = await LoadAsync(db, recurringId, ct);
+        var recurring = await LoadAsync(db, org, recurringId, ct);
         var media = recurring.Media.ToList();
         db.Remove(recurring);
         await db.SaveChangesAsync(ct);
@@ -110,15 +121,19 @@ public static class SocialRecurringEndpoints
     }
 
     /// <summary>Scrive contenuto, account, file e regola della richiesta, e controlla tutto contro i limiti delle reti.</summary>
-    private static async Task ApplyAsync(SocialRecurringPost recurring, SaveRecurringPostRequest req, FlarelyticsDbContext db, SocialMediaStorage storage,
+    private static async Task ApplyAsync(SocialRecurringPost recurring, SaveRecurringPostRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage,
         CancellationToken ct)
     {
+        if (req.ProjectId is null && !org.CanSee(null))
+            throw ApiProblem.BadRequest("project_required", "Scegli il progetto del post ricorrente.");
+        org.EnsureCanSee(req.ProjectId);
         if (req.ProjectId is { } projectId && !await db.Set<Project>().AnyAsync(p => p.Id == projectId, ct))
             throw ApiProblem.NotFound("Progetto");
 
-        var accounts = await db.Set<SocialAccount>().Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
+        var accounts = await SocialAccountEndpoints.VisibleAccounts(db, org).Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
         if (accounts.Count != req.AccountIds.Distinct().Count()) throw ApiProblem.NotFound("Account");
         if (accounts.Count == 0) throw ApiProblem.BadRequest("no_accounts", "Scegli almeno un account su cui pubblicare.");
+        SocialPostEndpoints.EnsureInProject(req.ProjectId, accounts);
 
         var options = req.Options ?? new PostOptions();
         recurring.Update(req.Text, req.ProjectId, req.AccountIds, options);
@@ -144,7 +159,7 @@ public static class SocialRecurringEndpoints
             if (!recurring.Media.Contains(m)) recurring.AddMedia(m);
         }
 
-        var problems = SocialPostEndpoints.ProblemsFor(recurring.Text, recurring.Media.OrderBy(m => m.Position).ToList(), accounts, _ => null, options);
+        var problems = SocialPostEndpoints.ProblemsFor(recurring.Text, recurring.Media.OrderBy(m => m.Position).ToList(), recurring.ProjectId, accounts, _ => null, options);
         if (problems.Count > 0) throw ApiProblem.BadRequest("post_invalid", string.Join(" ", problems));
 
         var now = DateTime.UtcNow;
@@ -159,8 +174,8 @@ public static class SocialRecurringEndpoints
         req.Frequency == RecurrenceFrequency.Weekly ? (req.DaysOfWeek ?? []).Aggregate(0, (bits, d) => bits | RecurrenceRule.Bit(d)) : 0,
         TimeOnly.ParseExact(req.TimeOfDay, "HH:mm", CultureInfo.InvariantCulture), req.TimeZone, req.StartDate, req.EndDate);
 
-    private static async Task<SocialRecurringPost> LoadAsync(FlarelyticsDbContext db, Guid id, CancellationToken ct) =>
-        await db.Set<SocialRecurringPost>().Include(r => r.Media).SingleOrDefaultAsync(r => r.Id == id, ct)
+    private static async Task<SocialRecurringPost> LoadAsync(FlarelyticsDbContext db, CurrentOrg org, Guid id, CancellationToken ct) =>
+        await Visible(db, org).Include(r => r.Media).SingleOrDefaultAsync(r => r.Id == id, ct)
         ?? throw ApiProblem.NotFound("Post ricorrente");
 }
 

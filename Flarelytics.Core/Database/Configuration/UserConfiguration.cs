@@ -39,6 +39,10 @@ public class MembershipConfiguration : IEntityTypeConfiguration<Membership>
     {
         b.HasIndex(m => new { m.TenantId, m.UserId }).IsUnique();
         b.HasIndex(m => m.UserId);
+        // Niente HasDefaultValue per AllProjects e Sections: EF tratterebbe
+        // false (o None) come "non impostato" e userebbe il default del
+        // database. I default per le righe già esistenti stanno nella migration.
+        b.Ignore(m => m.Access);
 
         b.HasOne(m => m.Tenant).WithMany().HasForeignKey(m => m.TenantId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne<User>().WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -75,6 +79,7 @@ public class InvitationConfiguration : IEntityTypeConfiguration<Invitation>
         b.Property(i => i.TokenHash).HasMaxLength(64);
         b.HasIndex(i => i.TokenHash).IsUnique();
         b.HasIndex(i => new { i.TenantId, i.Email });
+        b.Ignore(i => i.Access);
 
         b.HasOne(i => i.Tenant).WithMany().HasForeignKey(i => i.TenantId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne<User>().WithMany().HasForeignKey(i => i.InvitedByUserId).OnDelete(DeleteBehavior.Cascade);

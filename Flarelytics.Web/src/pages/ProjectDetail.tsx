@@ -1,13 +1,15 @@
 import { Link2, Search, Trash2, Unlink } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, Navigate, useNavigate, useParams } from "react-router";
 import { errorMessage } from "../api/client";
-import { canAdmin, keys, useApiMutation, useCredentialApps, useCredentials, useProject } from "../api/hooks";
+import { keys, useApiMutation, useCredentialApps, useCredentials, useProject } from "../api/hooks";
 import type { Project, ProjectApp, Store } from "../api/types";
 import { AppIcon } from "../components/AppIcon";
 import { StoreBadge, StoreGlyph, storeName } from "../components/StoreIcons";
 import { Alert, Button, EmptyState, Field, Input, Modal, PageHeader, PageLoader, Panel, Select, Spinner, Textarea } from "../components/ui";
-import { useOrg } from "../components/org";
+import { canManageOrg, hasSocial, hasStore, useOrg } from "../components/org";
+import { SocialCalendarPage } from "./social/Calendar";
+import { SocialRecurringPage } from "./social/Recurring";
 import { Dashboard } from "../components/Dashboard";
 import { ReviewList } from "../components/ReviewList";
 import { ListingTab } from "./project/ListingTab";
@@ -36,6 +38,18 @@ export function ProjectDetailPage() {
 
   const p = project.data;
   const section = tab ? SECTIONS[tab] : undefined;
+  const base = `/o/${org.id}/projects/${p.id}`;
+
+  // Il Social del progetto: calendario e post ricorrenti solo di questo
+  // progetto. Senza lo Store è anche la sua panoramica.
+  const socialHome = !tab && !hasStore(org);
+  if (tab === "social" || tab === "recurring" || socialHome) {
+    if (!hasSocial(org)) return <Navigate to={base} replace />;
+    return tab === "recurring" ? <SocialRecurringPage project={p} /> : <SocialCalendarPage key={p.id} project={p} />;
+  }
+  // Le sezioni dello Store (e le impostazioni con le app) non si aprono senza Store.
+  if (tab && tab !== "settings" && !hasStore(org)) return <Navigate to={base} replace />;
+  if (tab === "settings" && !hasStore(org) && !canManageOrg(org)) return <Navigate to={base} replace />;
 
   return (
     <>
@@ -91,7 +105,7 @@ function ProjectOverview({ project: p }: { project: Project }) {
 /** Le app collegate (una per store), nome e descrizione, eliminazione. */
 function ProjectSettings({ project: p }: { project: Project }) {
   const org = useOrg();
-  const admin = canAdmin(org.role);
+  const admin = canManageOrg(org); // collegare app e rinominare: chi gestisce l'organizzazione
   const [linking, setLinking] = useState<Store | null>(null);
 
   return (

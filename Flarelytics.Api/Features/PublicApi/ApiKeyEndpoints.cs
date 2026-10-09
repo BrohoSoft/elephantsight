@@ -21,7 +21,7 @@ public static class ApiKeyEndpoints
 
     public static void MapApiKeys(this IEndpointRouteBuilder api)
     {
-        var keys = api.MapOrgGroup("/api-keys").RequireOrgRole(OrgRole.Admin);
+        var keys = api.MapOrgGroup("/api-keys").RequireOrgRole(OrgRole.Admin).RequireFullAccess();
         keys.MapGet("", List);
         keys.MapPost("", Create).Validating<CreateApiKeyRequest>();
         keys.MapDelete("/{keyId:guid}", Delete);

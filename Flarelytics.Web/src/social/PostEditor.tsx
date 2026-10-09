@@ -6,10 +6,10 @@ import { Link } from "react-router";
 import { errorMessage, request } from "../api/client";
 import { keys } from "../api/hooks";
 import { defaultPostOptions, type PostOptions, type Project, type SocialAccount, type SocialMediaItem, type SocialPost, type SocialPostStatus, type SocialTarget } from "../api/types";
-import { formatDateTime, useOrg } from "../components/org";
+import { canSeeProject, formatDateTime, useOrg } from "../components/org";
 import { NetworkGlyph } from "../components/SocialIcons";
-import { Alert, Badge, Button, Field, Input, Modal, Segmented, Select, Textarea } from "../components/ui";
-import { AccountPicker, MediaField, mediaHint } from "./EditorParts";
+import { Alert, Badge, Button, Field, Input, Modal, Segmented, Textarea } from "../components/ui";
+import { AccountPicker, accountsFor, MediaField, mediaHint, ProjectField, projectProblems } from "./EditorParts";
 import { commercialIncomplete, NetworkOptions } from "./NetworkOptions";
 import { accountLabel, countCharacters, networkName, optionProblems, problems } from "./rules";
 
@@ -33,9 +33,11 @@ const timeInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
  * Scrivere, programmare e seguire un post. Lo stesso componente crea, modifica
  * e, quando il post è già uscito, mostra com'è andata su ogni account.
  */
-export function PostEditor({ post, initialDate, accounts, projects, admin, onClose }: {
+export function PostEditor({ post, initialDate, defaultProjectId, accounts, projects, admin, onClose }: {
   post?: SocialPost;
   initialDate?: Date;
+  /** Il progetto di un post nuovo (dal calendario di un progetto). */
+  defaultProjectId?: string;
   accounts: SocialAccount[];
   projects: Project[];
   admin: boolean;
@@ -58,7 +60,9 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   const [when, setWhen] = useState<"schedule" | "now">("schedule");
   const [date, setDate] = useState(dateInput(start));
   const [time, setTime] = useState(timeInput(start));
-  const [projectId, setProjectId] = useState(post?.projectId ?? "");
+  // Chi vede solo alcuni progetti scrive sempre in uno dei suoi.
+  const allowNone = canSeeProject(org, null);
+  const [projectId, setProjectId] = useState(post?.projectId ?? defaultProjectId ?? (allowNone ? "" : projects[0]?.id ?? ""));
   const [uploading, setUploading] = useState(0);
   const [options, setOptions] = useState<PostOptions>(post?.options ?? defaultPostOptions);
   const [commercial, setCommercial] = useState(!!(post?.options.tikTokBrandOrganic || post?.options.tikTokBrandedContent));
@@ -66,11 +70,18 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   const [error, setError] = useState<unknown>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const usable = accountsFor(accounts, projectId, selected);
   const chosen = accounts.filter((a) => selected.includes(a.id));
   const issues = chosen
-    .map((a) => ({ account: a, problems: [...problems(overrides[a.id] ?? text, media, a.limits), ...optionProblems(a.network, options)] }))
+    .map((a) => ({ account: a, problems: [...problems(overrides[a.id] ?? text, media, a.limits), ...optionProblems(a.network, options), ...projectProblems(a, projectId)] }))
     .filter((x) => x.problems.length > 0);
   const incomplete = chosen.some((a) => a.network === "TikTok") && commercialIncomplete(options, commercial);
+
+  /** Un altro progetto: restano scelti solo gli account collegati anche a quello. */
+  const changeProject = (id: string) => {
+    setProjectId(id);
+    if (id) setSelected((s) => s.filter((x) => accounts.find((a) => a.id === x)?.projectIds.includes(id)));
+  };
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
@@ -137,8 +148,8 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
       ) : (
         <>
           <Button variant="ghost" onClick={onClose}>Annulla</Button>
-          <Button loading={busy === "draft"} disabled={uploading > 0} onClick={() => save(true)}>{post?.inbox ? "Salva in coda" : "Salva bozza"}</Button>
-          <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete} onClick={() => save(false)}>
+          <Button loading={busy === "draft"} disabled={uploading > 0 || (!allowNone && !projectId)} onClick={() => save(true)}>{post?.inbox ? "Salva in coda" : "Salva bozza"}</Button>
+          <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete || (!allowNone && !projectId)} onClick={() => save(false)}>
             {when === "now" ? "Pubblica ora" : "Programma"}
           </Button>
         </>
@@ -164,8 +175,10 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
       <div className="space-y-5">
         {post && post.targets.some((t) => t.status !== "Pending" || t.error) && <TargetList targets={post.targets} />}
 
+        <ProjectField projects={projects} value={projectId} onChange={changeProject} allowNone={allowNone} readOnly={readOnly} />
+
         <Field label="Dove">
-          <AccountPicker accounts={accounts} selected={selected} onToggle={toggle} readOnly={readOnly} />
+          <AccountPicker accounts={usable} selected={selected} onToggle={toggle} readOnly={readOnly} inProject={!!projectId} />
         </Field>
 
         <div className="space-y-2">
@@ -211,15 +224,6 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
             {post.imported ? "Pubblicato il" : post.isDraft ? "Bozza per il" : "Programmato per il"} {formatDateTime(post.scheduledAtUtc)}
             {post.imported && " · importato dalla rete: si modifica o si cancella lì."}
           </p>
-        )}
-
-        {projects.length > 0 && (
-          <Field label="Progetto (facoltativo)" hint="Per filtrare il calendario per app.">
-            <Select disabled={readOnly} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">Nessuno</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-          </Field>
         )}
 
         {error ? <Alert tone="bad">{errorMessage(error)}</Alert> : null}

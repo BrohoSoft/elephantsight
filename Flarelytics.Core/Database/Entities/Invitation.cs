@@ -20,6 +20,14 @@ public class Invitation : BaseEntity
     public Guid TenantId { get; private set; }
     public string Email { get; private set; } = null!;
     public OrgRole Role { get; private set; }
+
+    /// <summary>Cosa vedrà chi accetta: diventa l'accesso della sua <see cref="Membership"/>.</summary>
+    public bool AllProjects { get; private set; } = true;
+
+    public List<Guid> ProjectIds { get; private set; } = [];
+    public AppSections Sections { get; private set; } = AppSections.All;
+
+    public MemberAccess Access => new(AllProjects, ProjectIds, Sections);
     public Guid InvitedByUserId { get; private set; }
     public string TokenHash { get; private set; } = null!;
     public DateTime ExpiresAtUtc { get; private set; }
@@ -30,19 +38,28 @@ public class Invitation : BaseEntity
 
     private Invitation() { }
 
-    public static Invitation Create(Guid tenantId, string email, OrgRole role, Guid invitedBy, string token, DateTime nowUtc) => new()
+    public static Invitation Create(Guid tenantId, string email, OrgRole role, Guid invitedBy, string token, DateTime nowUtc, MemberAccess? access = null)
     {
-        TenantId = tenantId,
-        Email = User.NormalizeEmail(email),
-        Role = role,
-        InvitedByUserId = invitedBy,
-        TokenHash = RefreshToken.Hash(token),
-        ExpiresAtUtc = nowUtc.Add(Lifetime)
-    };
+        var a = role == OrgRole.Owner ? MemberAccess.Full : (access ?? MemberAccess.Full).Normalized();
+        return new Invitation
+        {
+            TenantId = tenantId,
+            Email = User.NormalizeEmail(email),
+            Role = role,
+            InvitedByUserId = invitedBy,
+            TokenHash = RefreshToken.Hash(token),
+            ExpiresAtUtc = nowUtc.Add(Lifetime),
+            AllProjects = a.AllProjects,
+            ProjectIds = a.ProjectIds.ToList(),
+            Sections = a.Sections
+        };
+    }
 
     public bool IsPending(DateTime nowUtc) => AcceptedAtUtc is null && RevokedAtUtc is null && nowUtc < ExpiresAtUtc;
 
     public void Accept(DateTime nowUtc) => AcceptedAtUtc ??= nowUtc;
 
     public void Revoke(DateTime nowUtc) => RevokedAtUtc ??= nowUtc;
+
+    public void ForgetProject(Guid projectId) => ProjectIds = ProjectIds.Where(id => id != projectId).ToList();
 }

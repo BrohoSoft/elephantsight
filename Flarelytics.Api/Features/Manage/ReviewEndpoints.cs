@@ -20,7 +20,7 @@ public static class ReviewEndpoints
 
     public static void MapReviews(this IEndpointRouteBuilder api)
     {
-        var reviews = api.MapOrgGroup("/reviews");
+        var reviews = api.MapOrgGroup("/reviews").RequireSection(AppSections.Store);
         reviews.MapGet("", List);
         reviews.MapPost("/{reviewId:guid}/reply", Reply).RequireOrgRole(OrgRole.Admin).Validating<ReplyRequest>();
     }
@@ -30,10 +30,13 @@ public static class ReviewEndpoints
     /// filtri della pagina e un riepilogo per stelle e per store.
     /// </summary>
     private static async Task<IResult> List(
-        FlarelyticsDbContext db, Guid? projectId, Store? store, int? rating, bool? unanswered, int? page, CancellationToken ct)
+        FlarelyticsDbContext db, CurrentOrg org, Guid? projectId, Store? store, int? rating, bool? unanswered, int? page, CancellationToken ct)
     {
+        if (projectId is not null) org.EnsureCanSee(projectId);
+        var visible = org.VisibleProjects;
         var apps = await db.Set<ProjectApp>().AsNoTracking()
             .Where(a => projectId == null || a.ProjectId == projectId)
+            .Where(a => visible == null || visible.Contains(a.ProjectId))
             .Join(db.Set<Project>(), a => a.ProjectId, p => p.Id, (a, p) => new { a.Store, a.ExternalAppId, ProjectId = p.Id, ProjectName = p.Name })
             .ToListAsync(ct);
 
@@ -81,9 +84,14 @@ public static class ReviewEndpoints
                 .Select(st => new ReviewSyncInfo(st.Store, st.AppId, st.LastSyncedAtUtc, st.LastError)).ToList()));
     }
 
-    private static async Task<IResult> Reply(Guid reviewId, ReplyRequest req, FlarelyticsDbContext db, ReviewsService reviews, CancellationToken ct)
+    private static async Task<IResult> Reply(Guid reviewId, ReplyRequest req, CurrentOrg org, FlarelyticsDbContext db, ReviewsService reviews, CancellationToken ct)
     {
         var review = await db.Set<Review>().SingleOrDefaultAsync(r => r.Id == reviewId, ct) ?? throw ApiProblem.NotFound("Recensione");
+
+        // Si risponde solo alle recensioni delle app dei propri progetti.
+        var visible = org.VisibleProjects;
+        if (visible is not null && !await db.Set<ProjectApp>().AnyAsync(a => a.Store == review.Store && a.ExternalAppId == review.AppId && visible.Contains(a.ProjectId), ct))
+            throw ApiProblem.NotFound("Recensione");
 
         if (review.Store == Store.GooglePlay && req.Text.Trim().Length > GoogleReplyLimit)
         {

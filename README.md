@@ -42,6 +42,9 @@ Per Threads serve un'app Meta con il caso d'uso "Access the Threads API": metti 
 
 I **post ricorrenti** (Social → Post ricorrenti) escono da soli secondo una regola: ogni N giorni, certi giorni della settimana ogni N settimane, o un giorno del mese ogni N mesi, a un'ora del fuso di chi li crea. Ogni uscita diventa un post del calendario, con una copia di immagini e video (un video quotidiano occupa spazio ogni giorno). Un'uscita mancata di più di un'ora perché il server era spento si salta.
 
+### Progetti, membri e permessi
+Ogni membro ha un ruolo (lettore, admin, owner) e vede tutti i progetti o solo alcuni, con le sezioni Store e/o Social: un cliente può vedere solo il suo progetto, e solo il calendario. Si sceglie quando lo inviti e si cambia da Membri. Gli account social sono dell'organizzazione e si collegano a uno o più progetti (Account social → Cambia progetti): lo stesso account può pubblicare per un'app e per te, con post diversi. Il calendario generale mostra tutto quello che vedi, quello del progetto solo i suoi post.
+
 ### Chiavi API (facoltative)
 Da Organizzazione → Chiavi API crei una chiave per ogni programma (un CMS, uno script, un'automazione). Con quella il programma manda post (testo, immagine o carosello in JPEG, data di pubblicazione), anche molti in una chiamata, su `/api/v1/public`: finiscono nella coda **Da programmare**, dove scegli account e ora. La chiave da sola non pubblica niente. La pagina delle chiavi ha gli esempi con `curl`.
 
