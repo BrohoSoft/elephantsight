@@ -1,4 +1,4 @@
-# Flarelytics
+# WatchStore
 
 Le tue app su App Store e Google Play in un pannello solo, iOS e Android affiancati: download e paesi, versioni e build, recensioni con risposta, testi e screenshot della pagina dello store, file di firma cifrati, caricamento delle build. Self-hosted: gira sul tuo server, con le tue chiavi.
 

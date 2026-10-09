@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Il pannello di Flarelytics. Parla solo con l'API, sullo stesso dominio.",
+  "description": "Il pannello di WatchStore. Parla solo con l'API, sullo stesso dominio.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

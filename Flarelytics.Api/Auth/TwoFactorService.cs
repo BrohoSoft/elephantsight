@@ -10,7 +10,7 @@ namespace Flarelytics.Api.Auth;
 /// </summary>
 public class TwoFactorService(FieldProtector protector)
 {
-    public const string Issuer = "Flarelytics";
+    public const string Issuer = "WatchStore";
     private const int RecoveryCodeCount = 10;
 
     /// <summary>Genera un seme nuovo, lo salva cifrato (non ancora attivo) e restituisce quello che serve all'app.</summary>

@@ -168,7 +168,7 @@ public sealed class SecretVault(KeyRing keys, IOptions<SecretsOptions> options)
 
         if (span.Length < Magic.Length + 2 || !span[..Magic.Length].SequenceEqual(Magic) || span[Magic.Length] != FormatVersion)
         {
-            throw new CryptographicException("Il file non è un segreto cifrato da Flarelytics o ha un formato sconosciuto.");
+            throw new CryptographicException("Il file non è un segreto cifrato da WatchStore o ha un formato sconosciuto.");
         }
 
         var versionLength = span[Magic.Length + 1];

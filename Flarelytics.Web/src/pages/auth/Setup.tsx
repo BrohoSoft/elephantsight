@@ -40,7 +40,7 @@ export function SetupPage() {
 
   return (
     <AuthLayout
-      title="Benvenuto in Flarelytics"
+      title="Benvenuto in WatchStore"
       subtitle="Crea l'account amministratore. Gli altri utenti entreranno solo su tuo invito."
     >
       <form onSubmit={submit} className="space-y-4">

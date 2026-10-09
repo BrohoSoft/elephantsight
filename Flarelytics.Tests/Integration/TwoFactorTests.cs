@@ -21,7 +21,7 @@ public class TwoFactorTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var setup = await (await account.Client.PostAsJsonAsync("/api/v1/me/2fa/setup", new { password = TestApi.Password })).ReadJsonAsync();
         var secret = Base32.Decode(setup.GetProperty("secret").GetString()!);
-        Assert.StartsWith("otpauth://totp/Flarelytics:", setup.GetProperty("otpAuthUri").GetString());
+        Assert.StartsWith("otpauth://totp/WatchStore:", setup.GetProperty("otpAuthUri").GetString());
 
         var code = Totp.Code(secret, Totp.StepAt(DateTime.UtcNow));
         var enabled = await account.Client.PostAsJsonAsync("/api/v1/me/2fa/enable", new { code });

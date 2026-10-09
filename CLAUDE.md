@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Cos'è
 
-Flarelytics è uno strumento **self-hosted** (un'immagine Docker + PostgreSQL) per gestire le proprie app su App Store e Google Play da un pannello solo. Un'istanza ha più organizzazioni (tenant); un'organizzazione ha più progetti; ogni progetto collega al massimo un'app App Store e un'app Google Play, attraverso le chiavi degli store caricate dall'utente (il .p8 di Apple, il JSON di un service account Google). Non c'è registrazione libera: il primo utente lo crea l'installer (`/setup`, finché non esistono utenti), gli altri entrano per invito. Niente pagamenti né fatturazione.
+WatchStore (nel codice ancora `Flarelytics`: namespace, progetti, database, volumi) è uno strumento **self-hosted** (un'immagine Docker + PostgreSQL) per gestire le proprie app su App Store e Google Play da un pannello solo. Un'istanza ha più organizzazioni (tenant); un'organizzazione ha più progetti; ogni progetto collega al massimo un'app App Store e un'app Google Play, attraverso le chiavi degli store caricate dall'utente (il .p8 di Apple, il JSON di un service account Google). Non c'è registrazione libera: il primo utente lo crea l'installer (`/setup`, finché non esistono utenti), gli altri entrano per invito. Niente pagamenti né fatturazione.
 
 Stato: account con 2FA, organizzazioni con membri e inviti, chiavi cifrate, dashboard dei download App Store + Google Play, icone, e la gestione delle app: versioni e build, recensioni unificate con risposta, pagina dello store (testi e screenshot), cassaforte dei file di firma, caricamento delle build (.aab su Google Play, .ipa su App Store Connect). La gestione è testata contro store simulati: con chiavi vere serve una chiave Apple Admin/App Manager e un service account Google con permessi di rilascio, scheda e recensioni. Essendo self-hosted, chi installa usa le API per le proprie app: è l'uso consentito dai termini di Apple e Google (compresa la Publishing API di Google, che prima andava evitata).
 
@@ -48,7 +48,7 @@ In sviluppo le email non partono: i link si leggono nel log dell'API. L'SMTP è 
 - Il segreto si usa solo tramite `CredentialSecrets.UseAsync`, che lo azzera dopo l'uso.
 - Al caricamento: parse (`AppleKey`/`GoogleServiceAccount`) → verifica con lo store (`IStoreGateway`) → cifratura → salvataggio. `Rejected` non si salva; `Limited` sì, con l'avviso (i permessi di Google Play arrivano ore dopo l'invito).
 - Gateway senza SDK: JWT ES256 firmato da noi per Apple; JWT RS256 scambiato con un token OAuth per Google (`GoogleAuth`).
-- Google: verifica della chiave ed elenco delle app passano dal bucket GCS `pubsite_prod_…` (le app dai nomi dei file). Il codice è nato quando Flarelytics doveva essere un SaaS e i termini della Play Developer Reporting/Publishing API vietavano di usarle con l'account di un terzo; da self-hosted quelle API si possono usare (servono per build, listing, recensioni).
+- Google: verifica della chiave ed elenco delle app passano dal bucket GCS `pubsite_prod_…` (le app dai nomi dei file). Il codice è nato quando WatchStore doveva essere un SaaS e i termini della Play Developer Reporting/Publishing API vietavano di usarle con l'account di un terzo; da self-hosted quelle API si possono usare (servono per build, listing, recensioni).
 - `ProjectApp.ExternalAppId` è l'Apple ID numerico (non il bundle id) oppure il package name Android.
 
 ### Sincronizzazione e metriche (fase 2)

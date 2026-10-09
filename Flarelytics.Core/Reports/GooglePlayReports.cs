@@ -110,7 +110,7 @@ public class GooglePlayReports(HttpClient http) : IGooglePlayReports
         throw status switch
         {
             HttpStatusCode.Forbidden => new GoogleAccessException(GoogleAccessProblem.NoBucketAccess,
-                "Google risponde che il service account non ha ancora il permesso di leggere i report. Se l'hai appena invitato in Play Console è normale: l'attivazione può richiedere alcune ore, e Flarelytics riprova da solo. Altrimenti controlla in Utenti e autorizzazioni che abbia il permesso di scaricare i report in blocco."),
+                "Google risponde che il service account non ha ancora il permesso di leggere i report. Se l'hai appena invitato in Play Console è normale: l'attivazione può richiedere alcune ore, e WatchStore riprova da solo. Altrimenti controlla in Utenti e autorizzazioni che abbia il permesso di scaricare i report in blocco."),
             HttpStatusCode.NotFound => new GoogleAccessException(GoogleAccessProblem.NoBucketAccess,
                 "Google risponde che il bucket non esiste: copia di nuovo l'indirizzo da Play Console, Scarica report, Statistiche, \"Copia URI di Cloud Storage\"."),
             HttpStatusCode.Unauthorized => new GoogleAccessException(GoogleAccessProblem.InvalidKey, "Google non accetta più il token del service account."),

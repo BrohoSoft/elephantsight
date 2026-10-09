@@ -25,11 +25,11 @@ public class AccountEmails(IEmailSender sender, IOptions<AuthOptions> options)
     /// <returns>Se l'email è partita davvero.</returns>
     public async Task<bool> SendInvitationAsync(string to, string organization, string invitedBy, string token, CancellationToken ct)
     {
-        await sender.SendAsync(new EmailMessage(to, $"{invitedBy} ti ha invitato su Flarelytics",
+        await sender.SendAsync(new EmailMessage(to, $"{invitedBy} ti ha invitato su WatchStore",
             $"""
             Ciao,
 
-            {invitedBy} ti ha invitato a entrare in "{organization}" su Flarelytics.
+            {invitedBy} ti ha invitato a entrare in "{organization}" su WatchStore.
             Per accettare apri questo link:
             {AppUrl}/accept-invite?token={Uri.EscapeDataString(token)}
 

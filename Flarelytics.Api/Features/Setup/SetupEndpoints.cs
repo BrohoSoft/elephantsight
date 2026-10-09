@@ -55,7 +55,7 @@ public static class SetupEndpoints
 
         if (await db.Set<User>().AnyAsync(ct))
         {
-            throw ApiProblem.Conflict("setup_done", "Flarelytics è già installato: accedi con il tuo account.");
+            throw ApiProblem.Conflict("setup_done", "WatchStore è già installato: accedi con il tuo account.");
         }
 
         var user = User.Create(req.Email, req.Password, req.FullName);
