@@ -48,10 +48,14 @@ public static partial class Frontend
         app.Use(async (http, next) =>
         {
             var name = Path.GetFileName(http.Request.Path.Value ?? "");
-            if (HttpMethods.IsGet(http.Request.Method) && VerificationName().IsMatch(name) && File.Exists(Path.Combine(directory, name)))
+            // Anche HEAD: alcuni verificatori chiedono prima solo le intestazioni.
+            var method = http.Request.Method;
+            if ((HttpMethods.IsGet(method) || HttpMethods.IsHead(method)) && VerificationName().IsMatch(name) && File.Exists(Path.Combine(directory, name)))
             {
+                var path = Path.Combine(directory, name);
                 http.Response.ContentType = name.EndsWith(".html") ? "text/html; charset=utf-8" : "text/plain; charset=utf-8";
-                await http.Response.SendFileAsync(Path.Combine(directory, name));
+                http.Response.ContentLength = new FileInfo(path).Length;
+                if (HttpMethods.IsGet(method)) await http.Response.SendFileAsync(path);
                 return;
             }
             await next();

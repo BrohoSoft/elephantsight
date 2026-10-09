@@ -30,6 +30,9 @@ public class SiteVerificationTests(PostgresFixture postgres) : IAsyncLifetime
             Assert.Equal("tiktok-developers-site-verification=AbC123", await response.Content.ReadAsStringAsync());
         }
 
+        var head = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, "/terms/tiktokAbC123.txt"));
+        Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+
         Assert.NotEqual(HttpStatusCode.OK, (await client.GetAsync("/tiktock/verify/tiktokAltro.txt")).StatusCode);
         Assert.NotEqual(HttpStatusCode.OK, (await client.GetAsync("/x/..%2F..%2Fkeys%2Fv1.key")).StatusCode);
     }
