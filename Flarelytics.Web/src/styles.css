@@ -136,3 +136,15 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+/*
+ * Le righe delle liste e delle tabelle (tutte fatte con divide-y): si
+ * evidenziano al passaggio del mouse, così si vede su quale riga si sta per
+ * agire. Una regola sola, così vale anche per le liste che verranno.
+ */
+:is(ul, ol, tbody).divide-y > :is(li, tr) {
+  transition: background-color 120ms ease;
+}
+:is(ul, ol, tbody).divide-y > :is(li, tr):hover {
+  background-color: color-mix(in srgb, var(--hover) 55%, transparent);
+}
