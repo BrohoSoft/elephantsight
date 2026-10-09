@@ -125,6 +125,22 @@ public class SocialPost : BaseEntity, ITenantOwned
     /// </summary>
     public bool IsImported { get; private set; }
 
+    /// <summary>
+    /// Arrivato da un programma esterno con una chiave API e in attesa nella
+    /// coda "Da programmare": non sta sul calendario finché qualcuno non sceglie
+    /// account e ora. Il worker non lo tocca (è anche una bozza).
+    /// </summary>
+    public bool IsInbox { get; private set; }
+
+    /// <summary>La data proposta da chi l'ha mandato, se l'ha proposta: si usa quando lo si programma.</summary>
+    public DateTime? SuggestedAtUtc { get; private set; }
+
+    /// <summary>La chiave con cui è arrivato (null se cancellata, o se creato dal pannello).</summary>
+    public Guid? ApiKeyId { get; private set; }
+
+    /// <summary>Un riferimento scelto da chi manda il post (l'id nel suo CMS): mandarlo due volte non crea un doppione.</summary>
+    public string? ExternalRef { get; private set; }
+
     public Guid CreatedByUserId { get; private set; }
 
     public IReadOnlyList<SocialPostTarget> Targets => _targets;
@@ -133,6 +149,19 @@ public class SocialPost : BaseEntity, ITenantOwned
     private SocialPost() { }
 
     public static SocialPost Create(Guid tenantId, Guid createdBy) => new() { TenantId = tenantId, CreatedByUserId = createdBy, Text = "" };
+
+    public static SocialPost FromApi(Guid tenantId, Guid apiKeyId, Guid createdBy, string text, DateTime? suggestedAtUtc,
+        string? externalRef, Guid? projectId, DateTime nowUtc) => new()
+    {
+        TenantId = tenantId, ApiKeyId = apiKeyId, CreatedByUserId = createdBy, Text = text.Trim(), ProjectId = projectId,
+        SuggestedAtUtc = suggestedAtUtc is { } s ? DateTime.SpecifyKind(s.ToUniversalTime(), DateTimeKind.Utc) : null,
+        // La data c'è sempre (vedi sopra): finché è in coda vale quella proposta, o il momento dell'arrivo.
+        ScheduledAtUtc = suggestedAtUtc is { } at ? DateTime.SpecifyKind(at.ToUniversalTime(), DateTimeKind.Utc) : nowUtc,
+        IsDraft = true, IsInbox = true, ExternalRef = string.IsNullOrWhiteSpace(externalRef) ? null : externalRef.Trim()
+    };
+
+    /// <summary>Programmato: esce dalla coda ed entra nel calendario come un post qualsiasi.</summary>
+    public void LeaveInbox() => IsInbox = false;
 
     public static SocialPost Imported(Guid tenantId, string text, DateTime publishedAtUtc, Guid createdBy) => new()
     {

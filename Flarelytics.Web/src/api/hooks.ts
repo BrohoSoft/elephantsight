@@ -11,6 +11,7 @@ import type {
   SecretFile,
   SocialAccount,
   SocialPost,
+  ApiKeyItem,
   Store,
   StoreReleases,
   Invitation,
@@ -40,6 +41,8 @@ export const keys = {
   uploads: (orgId: string, projectId: string) => ["org", orgId, "projects", projectId, "uploads"] as const,
   socialAccounts: (orgId: string) => ["org", orgId, "social", "accounts"] as const,
   socialPosts: (orgId: string) => ["org", orgId, "social", "posts"] as const,
+  socialInbox: (orgId: string) => ["org", orgId, "social", "inbox"] as const,
+  apiKeys: (orgId: string) => ["org", orgId, "api-keys"] as const,
 };
 
 export const useMe = (enabled = true) => useQuery({ queryKey: keys.me, queryFn: () => request<Me>("/me"), enabled });
@@ -159,3 +162,10 @@ export const useSocialPosts = (orgId: string, from: Date, to: Date, projectId?: 
     refetchInterval: (q) =>
       q.state.data?.some((p) => p.status === "Publishing" || (p.status === "Scheduled" && Date.parse(p.scheduledAtUtc) <= Date.now() + 60_000)) ? 10_000 : false,
   });
+
+/** La coda "Da programmare": si ricarica ogni minuto, i post arrivano dall'esterno. */
+export const useSocialInbox = (orgId: string) =>
+  useQuery({ queryKey: keys.socialInbox(orgId), queryFn: () => request<SocialPost[]>(`/orgs/${orgId}/social/inbox`), refetchInterval: 60_000 });
+
+export const useApiKeys = (orgId: string, enabled: boolean) =>
+  useQuery({ queryKey: keys.apiKeys(orgId), queryFn: () => request<ApiKeyItem[]>(`/orgs/${orgId}/api-keys`), enabled });

@@ -29,6 +29,7 @@ public static class SocialPostEndpoints
         var social = api.MapOrgGroup("/social");
         social.MapGet("/posts", List);
         social.MapGet("/posts/{postId:guid}", Get);
+        social.MapGet("/inbox", Inbox);
 
         var admin = social.MapGroup("").RequireOrgRole(OrgRole.Admin);
         admin.MapPost("/posts", Create).Validating<SavePostRequest>();
@@ -36,6 +37,7 @@ public static class SocialPostEndpoints
         admin.MapDelete("/posts/{postId:guid}", Delete);
         admin.MapPost("/posts/{postId:guid}/retry", Retry);
         admin.MapPost("/media", UploadMedia).DisableAntiforgery();
+        admin.MapPost("/inbox/assign", Assign).Validating<AssignInboxRequest>();
 
         // Anonima: la usa Instagram, che scarica l'immagine da sé, e i tag
         // <img> del pannello, che non possono mandare l'access token. La firma
@@ -50,7 +52,7 @@ public static class SocialPostEndpoints
         var (start, end) = (DateTime.SpecifyKind(from.ToUniversalTime(), DateTimeKind.Utc), DateTime.SpecifyKind(to.ToUniversalTime(), DateTimeKind.Utc));
 
         var query = db.Set<SocialPost>().AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
-            .Where(p => p.ScheduledAtUtc >= start && p.ScheduledAtUtc < end);
+            .Where(p => !p.IsInbox && p.ScheduledAtUtc >= start && p.ScheduledAtUtc < end);
         if (projectId is { } pid) query = query.Where(p => p.ProjectId == pid);
 
         var posts = await query.OrderBy(p => p.ScheduledAtUtc).ToListAsync(ct);
@@ -121,23 +123,103 @@ public static class SocialPostEndpoints
     /// davvero un JPEG e se ne leggono le dimensioni.
     /// </summary>
     private static async Task<IResult> UploadMedia(HttpRequest request, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        SocialMediaStorage storage, MediaUrlSigner signer, CancellationToken ct)
+        SocialMediaStorage storage, MediaUrlSigner signer, CancellationToken ct) =>
+        Results.Ok(SocialMediaResponse.From(await SaveMediaAsync(request, org.TenantId, principal.UserId(), db, storage, ct), signer));
+
+    /// <summary>Il campo <c>file</c> del multipart, salvato come immagine non ancora attaccata a un post. Lo usa anche l'API pubblica.</summary>
+    public static async Task<SocialMedia> SaveMediaAsync(HttpRequest request, Guid tenantId, Guid userId, FlarelyticsDbContext db,
+        SocialMediaStorage storage, CancellationToken ct)
     {
+        if (!request.HasFormContentType) throw ApiProblem.BadRequest("file_missing", "Manda l'immagine come multipart/form-data, nel campo file.");
         var form = await request.ReadFormAsync(ct);
-        var file = form.Files.GetFile("file") ?? throw ApiProblem.BadRequest("file_missing", "Manca l'immagine.");
+        var file = form.Files.GetFile("file") ?? throw ApiProblem.BadRequest("file_missing", "Manca l'immagine (campo file).");
         if (file.Length is 0 or > MaxImageBytes) throw ApiProblem.BadRequest("file_size", "L'immagine deve pesare meno di 10 MB.");
 
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer, ct);
         var content = buffer.ToArray();
         if (!JpegInfo.TryReadSize(content, out var width, out var height))
-            throw ApiProblem.BadRequest("file_type", "Serve un'immagine JPEG.");
+            throw ApiProblem.BadRequest("file_type", "Serve un'immagine JPEG (Instagram accetta solo quelle).");
 
-        var media = SocialMedia.Create(org.TenantId, Path.GetFileName(file.FileName), content.Length, width, height, principal.UserId());
-        await storage.WriteAsync(org.TenantId, media.Id, content, ct);
+        var media = SocialMedia.Create(tenantId, Path.GetFileName(file.FileName), content.Length, width, height, userId);
+        await storage.WriteAsync(tenantId, media.Id, content, ct);
         db.Add(media);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(SocialMediaResponse.From(media, signer));
+        return media;
+    }
+
+    /// <summary>
+    /// La coda "Da programmare": i post arrivati con una chiave API e non
+    /// ancora assegnati. Dalla data proposta più vicina; quelli senza data in fondo.
+    /// </summary>
+    private static async Task<IResult> Inbox(CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    {
+        var posts = await db.Set<SocialPost>().AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
+            .Where(p => p.IsInbox)
+            .OrderBy(p => p.SuggestedAtUtc == null).ThenBy(p => p.SuggestedAtUtc).ThenBy(p => p.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        // Le chiavi non sono del tenant (vedi ApiKey): il filtro sul tenant va messo a mano.
+        var keyIds = posts.Where(p => p.ApiKeyId != null).Select(p => p.ApiKeyId!.Value).Distinct().ToList();
+        var keyNames = await db.Set<ApiKey>().Where(k => k.TenantId == org.TenantId && keyIds.Contains(k.Id)).ToDictionaryAsync(k => k.Id, k => k.Name, ct);
+
+        return Results.Ok(posts.Select(p => SocialPostResponse.From(p, signer) with
+        {
+            Source = p.ApiKeyId is { } id ? keyNames.GetValueOrDefault(id) : null
+        }));
+    }
+
+    /// <summary>
+    /// Assegna più post della coda agli stessi account, all'ora indicata o a
+    /// quella proposta da ciascuno. Ogni post si controlla da solo: quelli che
+    /// non vanno bene per una rete restano in coda con il motivo, gli altri
+    /// diventano programmati.
+    /// </summary>
+    private static async Task<IResult> Assign(AssignInboxRequest req, FlarelyticsDbContext db, CancellationToken ct)
+    {
+        var accounts = await db.Set<SocialAccount>().Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
+        if (accounts.Count != req.AccountIds.Distinct().Count()) throw ApiProblem.NotFound("Account");
+
+        var posts = await db.Set<SocialPost>().Include(p => p.Targets).Include(p => p.Media)
+            .Where(p => p.IsInbox && req.PostIds.Contains(p.Id)).ToListAsync(ct);
+
+        var results = new List<AssignResult>();
+        foreach (var id in req.PostIds.Distinct())
+        {
+            var post = posts.SingleOrDefault(p => p.Id == id);
+            if (post is null)
+            {
+                results.Add(new AssignResult(id, false, "Non è più nella coda."));
+                continue;
+            }
+
+            var when = req.ScheduledAtUtc ?? post.SuggestedAtUtc;
+            if (when is null)
+            {
+                results.Add(new AssignResult(id, false, "Non ha una data proposta: scegline una."));
+                continue;
+            }
+
+            var problems = ProblemsFor(post, accounts, _ => null);
+            if (problems.Count > 0)
+            {
+                results.Add(new AssignResult(id, false, string.Join(" ", problems)));
+                continue;
+            }
+
+            post.Update(post.Text, when.Value, isDraft: false, post.ProjectId);
+            foreach (var a in accounts.Where(a => post.Targets.All(t => t.AccountId != a.Id)))
+            {
+                var target = SocialPostTarget.For(post, a);
+                post.AddTarget(target);
+                db.Add(target);
+            }
+            post.LeaveInbox();
+            results.Add(new AssignResult(id, true, null));
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(results);
     }
 
     private static IResult ServeMedia(string file, long? e, string? s, MediaUrlSigner signer, SocialMediaStorage storage)
@@ -157,6 +239,9 @@ public static class SocialPostEndpoints
             throw ApiProblem.NotFound("Progetto");
 
         post.Update(req.Text, req.ScheduledAtUtc, req.IsDraft, req.ProjectId);
+        // Un post della coda programmato dal pannello diventa un post qualsiasi;
+        // salvato come bozza resta in coda.
+        if (!req.IsDraft) post.LeaveInbox();
 
         // Gli account: si tolgono quelli non più scelti, si aggiungono i nuovi.
         var accounts = await db.Set<SocialAccount>().Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
@@ -201,13 +286,19 @@ public static class SocialPostEndpoints
         if (post.IsDraft) return;
 
         if (post.Targets.Count == 0) throw ApiProblem.BadRequest("no_accounts", "Scegli almeno un account su cui pubblicare.");
+        var problems = ProblemsFor(post, accounts, a => post.Targets.Single(t => t.AccountId == a.Id).TextOverride);
+        if (problems.Count > 0) throw ApiProblem.BadRequest("post_invalid", string.Join(" ", problems));
+    }
+
+    /// <summary>Quello che impedisce di pubblicare il post su ciascun account, in frasi da mostrare.</summary>
+    private static List<string> ProblemsFor(SocialPost post, IEnumerable<SocialAccount> accounts, Func<SocialAccount, string?> textOverride)
+    {
         var ordered = post.Media.OrderBy(m => m.Position).ToList();
-        var problems = post.Targets
-            .Select(t => (Account: accounts.Single(a => a.Id == t.AccountId), Problems: SocialRules.Problems(t.TextOverride ?? post.Text, ordered, SocialRules.For(accounts.Single(a => a.Id == t.AccountId)))))
+        return accounts
+            .Select(a => (Account: a, Problems: SocialRules.Problems(textOverride(a) ?? post.Text, ordered, SocialRules.For(a))))
             .Where(x => x.Problems.Count > 0)
             .Select(x => $"{NetworkName(x.Account.Network)} ({x.Account.Handle ?? x.Account.Name}): {string.Join("; ", x.Problems)}.")
             .ToList();
-        if (problems.Count > 0) throw ApiProblem.BadRequest("post_invalid", string.Join(" ", problems));
     }
 
     private static string NetworkName(SocialNetwork n) => n switch
@@ -221,14 +312,20 @@ public static class SocialPostEndpoints
         ?? throw ApiProblem.NotFound("Post");
 }
 
-public enum SocialPostStatus { Draft, Scheduled, Publishing, Published, PartiallyFailed, Failed }
+public enum SocialPostStatus { Draft, Scheduled, Publishing, Published, PartiallyFailed, Failed, Inbox }
 
 /// <param name="Imported">Pubblicato fuori da WatchStore e copiato qui: si legge e basta.</param>
+/// <param name="Inbox">Arrivato con una chiave API e in attesa nella coda "Da programmare".</param>
+/// <param name="SuggestedAtUtc">La data proposta da chi l'ha mandato.</param>
+/// <param name="Source">Il nome della chiave API da cui è arrivato (solo nell'elenco della coda).</param>
 public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, SocialPostStatus Status, bool Editable, bool Imported,
-    IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc)
+    bool Inbox, DateTime? SuggestedAtUtc, string? ExternalRef, IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc)
 {
+    public string? Source { get; init; }
+
     public static SocialPostResponse From(SocialPost p, MediaUrlSigner signer) => new(
         p.Id, p.Text, p.ScheduledAtUtc, p.IsDraft, p.ProjectId, StatusOf(p), p.IsEditable, p.IsImported,
+        p.IsInbox, p.SuggestedAtUtc, p.ExternalRef,
         p.Media.OrderBy(m => m.Position).Select(m => SocialMediaResponse.From(m, signer)).ToList(),
         p.Targets.OrderBy(t => t.Network).ThenBy(t => t.AccountName).Select(SocialTargetResponse.From).ToList(),
         p.CreatedAtUtc);
@@ -237,6 +334,7 @@ public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, 
     private static SocialPostStatus StatusOf(SocialPost p)
     {
         var t = p.Targets;
+        if (p.IsInbox) return SocialPostStatus.Inbox;
         if (p.IsDraft) return SocialPostStatus.Draft;
         if (t.Count > 0 && t.All(x => x.Status == SocialTargetStatus.Published)) return SocialPostStatus.Published;
         if (t.Any(x => x.Status == SocialTargetStatus.Publishing)) return SocialPostStatus.Publishing;
@@ -263,6 +361,20 @@ public record SocialMediaResponse(Guid Id, int Width, int Height, long SizeBytes
 }
 
 public record SavePostMedia(Guid Id, string? AltText);
+
+/// <param name="ScheduledAtUtc">Un'ora per tutti; null = ciascuno all'ora che ha proposto.</param>
+public record AssignInboxRequest(IReadOnlyList<Guid> PostIds, IReadOnlyList<Guid> AccountIds, DateTime? ScheduledAtUtc);
+
+public record AssignResult(Guid PostId, bool Scheduled, string? Problem);
+
+public class AssignInboxRequestValidator : AbstractValidator<AssignInboxRequest>
+{
+    public AssignInboxRequestValidator()
+    {
+        RuleFor(x => x.PostIds).NotEmpty().Must(p => p.Count <= 200);
+        RuleFor(x => x.AccountIds).NotEmpty().WithMessage("Scegli almeno un account.").Must(a => a.Count <= 50);
+    }
+}
 
 /// <param name="Overrides">Testi diversi per account: id dell'account → testo.</param>
 public record SavePostRequest(string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, IReadOnlyList<Guid> AccountIds,

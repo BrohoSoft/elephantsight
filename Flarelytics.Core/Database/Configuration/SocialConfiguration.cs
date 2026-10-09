@@ -29,8 +29,12 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
     public void Configure(EntityTypeBuilder<SocialPost> b)
     {
         b.Property(p => p.Text).HasMaxLength(10000);
+        b.Property(p => p.ExternalRef).HasMaxLength(200);
 
         b.HasIndex(p => new { p.TenantId, p.ScheduledAtUtc });
+        b.HasIndex(p => new { p.TenantId, p.IsInbox });
+        b.HasIndex(p => new { p.TenantId, p.ExternalRef }).IsUnique().HasFilter("\"ExternalRef\" IS NOT NULL");
+        b.HasOne<ApiKey>().WithMany().HasForeignKey(p => p.ApiKeyId).OnDelete(DeleteBehavior.SetNull);
         b.HasOne<Tenant>().WithMany().HasForeignKey(p => p.TenantId).OnDelete(DeleteBehavior.Cascade);
         // Cancellato il progetto, il post resta sul calendario senza etichetta.
         b.HasOne<Project>().WithMany().HasForeignKey(p => p.ProjectId).OnDelete(DeleteBehavior.SetNull);

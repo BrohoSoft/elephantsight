@@ -348,7 +348,7 @@ export interface SocialMediaItem {
 }
 
 export type SocialTargetStatus = "Pending" | "Publishing" | "Published" | "Failed";
-export type SocialPostStatus = "Draft" | "Scheduled" | "Publishing" | "Published" | "PartiallyFailed" | "Failed";
+export type SocialPostStatus = "Draft" | "Scheduled" | "Publishing" | "Published" | "PartiallyFailed" | "Failed" | "Inbox";
 
 export interface SocialTarget {
   id: string;
@@ -373,6 +373,13 @@ export interface SocialPost {
   editable: boolean;
   /** Pubblicato fuori da WatchStore (Business Suite, l'app…) e copiato qui: si legge e basta. */
   imported: boolean;
+  /** Arrivato con una chiave API, in attesa nella coda "Da programmare". */
+  inbox: boolean;
+  /** La data proposta da chi l'ha mandato. */
+  suggestedAtUtc: string | null;
+  externalRef: string | null;
+  /** Il nome della chiave API da cui è arrivato (solo nella coda). */
+  source?: string | null;
   media: SocialMediaItem[];
   targets: SocialTarget[];
   createdAtUtc: string;
@@ -389,4 +396,25 @@ export interface MetaCandidate {
 export interface MetaCandidates {
   candidates: MetaCandidate[];
   selection: string;
+}
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  prefix: string;
+  createdBy: string | null;
+  createdAtUtc: string;
+  lastUsedAtUtc: string | null;
+}
+
+export interface CreatedApiKey {
+  key: ApiKeyItem;
+  /** La chiave da copiare: non si potrà più rileggere. */
+  secret: string;
+}
+
+export interface AssignResult {
+  postId: string;
+  scheduled: boolean;
+  problem: string | null;
 }

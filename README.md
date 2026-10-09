@@ -36,6 +36,9 @@ Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero pa
 ### Social (facoltativo)
 Bluesky e Mastodon si collegano dal pannello (Account social) con una password per app o un token. Per Instagram e le Pagine Facebook serve un'app Meta della tua installazione (il pannello spiega come crearla). Due modi, anche insieme: con l'accesso a Facebook (Pagine, e Instagram collegati a una Pagina) aggiungi a `.env` `META_APP_ID` e `META_APP_SECRET`; con l'accesso a Instagram (account Instagram professionali senza Pagina) `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET`, cioè l'Instagram App ID del prodotto Instagram, non quello dell'app Meta. Instagram scarica le immagini da `PUBLIC_URL`, che quindi deve essere raggiungibile da internet: se davanti c'è Cloudflare Access, lascia libero `/api/v1/social/media/` (gli indirizzi sono firmati e scadono dopo un'ora).
 
+### Chiavi API (facoltative)
+Da Organizzazione → Chiavi API crei una chiave per ogni programma (un CMS, uno script, un'automazione). Con quella il programma manda post (testo, immagini JPEG, una data proposta) su `/api/v1/public`: finiscono nella coda **Da programmare**, dove scegli account e ora. La chiave da sola non pubblica niente. La pagina delle chiavi ha gli esempi con `curl`.
+
 ## Backup
 
 | Cosa | Dove | Perché |

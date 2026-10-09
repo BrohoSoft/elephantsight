@@ -111,3 +111,17 @@ public class AppIconConfiguration : IEntityTypeConfiguration<AppIcon>
         b.HasIndex(i => new { i.Store, i.AppId }).IsUnique();
     }
 }
+
+public class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
+{
+    public void Configure(EntityTypeBuilder<ApiKey> b)
+    {
+        b.Property(k => k.Name).HasMaxLength(100);
+        b.Property(k => k.Prefix).HasMaxLength(12);
+        b.Property(k => k.KeyHash).HasMaxLength(64);
+
+        b.HasIndex(k => k.KeyHash).IsUnique();
+        b.HasIndex(k => k.TenantId);
+        b.HasOne<Tenant>().WithMany().HasForeignKey(k => k.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

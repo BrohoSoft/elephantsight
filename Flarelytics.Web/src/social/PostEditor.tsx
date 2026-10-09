@@ -21,6 +21,7 @@ export const postStatus: Record<SocialPostStatus, { label: string; tone: Tone }>
   Published: { label: "Pubblicato", tone: "ok" },
   PartiallyFailed: { label: "In parte non riuscito", tone: "warn" },
   Failed: { label: "Non riuscito", tone: "bad" },
+  Inbox: { label: "Da programmare", tone: "neutral" },
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -42,7 +43,10 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   const org = useOrg();
   const queryClient = useQueryClient();
   const readOnly = !admin || (post !== undefined && !post.editable);
-  const start = post ? new Date(post.scheduledAtUtc) : initialDate ?? new Date(Date.now() + 3_600_000);
+  // Un post della coda parte dalla data proposta; senza, da fra un'ora.
+  const start = post?.inbox
+    ? (post.suggestedAtUtc ? new Date(post.suggestedAtUtc) : new Date(Math.ceil((Date.now() + 3_600_000) / 900_000) * 900_000))
+    : post ? new Date(post.scheduledAtUtc) : initialDate ?? new Date(Date.now() + 3_600_000);
 
   const [text, setText] = useState(post?.text ?? "");
   const [selected, setSelected] = useState<string[]>(post?.targets.flatMap((t) => (t.accountId ? [t.accountId] : [])) ?? []);
@@ -105,7 +109,10 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
     };
     try {
       await request(post ? `/orgs/${org.id}/social/posts/${post.id}` : `/orgs/${org.id}/social/posts`, { method: post ? "PUT" : "POST", body });
-      await queryClient.invalidateQueries({ queryKey: keys.socialPosts(org.id) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: keys.socialPosts(org.id) }),
+        queryClient.invalidateQueries({ queryKey: keys.socialInbox(org.id) }),
+      ]);
       onClose();
     } catch (e) {
       setError(e);
@@ -119,7 +126,10 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
     setError(null);
     try {
       await request(`/orgs/${org.id}/social/posts/${post!.id}${kind === "retry" ? "/retry" : ""}`, { method: kind === "retry" ? "POST" : "DELETE" });
-      await queryClient.invalidateQueries({ queryKey: keys.socialPosts(org.id) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: keys.socialPosts(org.id) }),
+        queryClient.invalidateQueries({ queryKey: keys.socialInbox(org.id) }),
+      ]);
       onClose();
     } catch (e) {
       setError(e);
@@ -146,7 +156,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
       ) : (
         <>
           <Button variant="ghost" onClick={onClose}>Annulla</Button>
-          <Button loading={busy === "draft"} disabled={uploading > 0} onClick={() => save(true)}>Salva bozza</Button>
+          <Button loading={busy === "draft"} disabled={uploading > 0} onClick={() => save(true)}>{post?.inbox ? "Salva in coda" : "Salva bozza"}</Button>
           <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0} onClick={() => save(false)}>
             {when === "now" ? "Pubblica ora" : "Programma"}
           </Button>
@@ -157,10 +167,12 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
 
   return (
     <Modal open onOpenChange={(o) => !o && onClose()} wide footer={footer}
-      title={post ? (readOnly ? "Post" : "Modifica post") : "Nuovo post"}
+      title={post?.inbox ? "Post da programmare" : post ? (readOnly ? "Post" : "Modifica post") : "Nuovo post"}
       description={post && (post.imported
         ? <Badge tone="ok">Pubblicato fuori da WatchStore</Badge>
-        : <Badge tone={postStatus[post.status].tone}>{postStatus[post.status].label}</Badge>)}>
+        : post.inbox
+          ? <span>Arrivato {post.source ? <>da <b className="text-fg">{post.source}</b></> : "con una chiave API"}{post.suggestedAtUtc ? `, proposto per il ${formatDateTime(post.suggestedAtUtc)}` : ", senza data proposta"}. Scegli gli account e programmalo.</span>
+          : <Badge tone={postStatus[post.status].tone}>{postStatus[post.status].label}</Badge>)}>
       <div className="space-y-5">
         {post && post.targets.some((t) => t.status !== "Pending" || t.error) && <TargetList targets={post.targets} />}
 

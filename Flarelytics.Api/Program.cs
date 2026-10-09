@@ -7,6 +7,7 @@ using Flarelytics.Api.Features.Manage;
 using Flarelytics.Api.Features.Metrics;
 using Flarelytics.Api.Features.Orgs;
 using Flarelytics.Api.Features.Projects;
+using Flarelytics.Api.Features.PublicApi;
 using Flarelytics.Api.Features.Setup;
 using Flarelytics.Api.Features.Social;
 using Flarelytics.Core;
@@ -85,6 +86,8 @@ api.MapSecretFiles();
 api.MapBuilds();
 api.MapSocialAccounts();
 api.MapSocialPosts();
+api.MapApiKeys();
+api.MapPublicApi();
 
 // Il pannello, se l'immagine lo contiene (wwwroot): ogni percorso che non è
 // un file e non è l'API riceve index.html, e la rotta la gestisce React.

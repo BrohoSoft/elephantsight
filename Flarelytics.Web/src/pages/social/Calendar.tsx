@@ -31,6 +31,7 @@ const chipTone: Record<SocialPost["status"], string> = {
   Published: "border-l-ok bg-ok/10 text-fg",
   PartiallyFailed: "border-l-warn bg-warn/10 text-fg",
   Failed: "border-l-bad bg-bad/10 text-fg",
+  Inbox: "border-l-line-strong bg-panel-2 text-muted", // non sta sul calendario, ma il tipo lo vuole
 };
 
 /**

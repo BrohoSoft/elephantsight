@@ -48,6 +48,7 @@ public static class ServiceRegistration
         builder.Services.AddScoped<RefreshTokenService>();
         builder.Services.AddSingleton<RefreshCookie>();
         builder.Services.AddScoped<CurrentOrg>();
+        builder.Services.AddScoped<Features.PublicApi.CurrentApiKey>();
 
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
 
@@ -66,7 +67,18 @@ public static class ServiceRegistration
                     IssuerSigningKey = TokenService.SigningKey(jwt.Value),
                     ClockSkew = TimeSpan.FromSeconds(30)
                 };
-                o.Events = new JwtBearerEvents { OnTokenValidated = RejectStaleStamp };
+                o.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = RejectStaleStamp,
+                    // Le chiavi API ("Bearer wsk_…") non sono JWT: le controlla
+                    // ApiKeyFilter sulle rotte /public. Senza questo il gestore
+                    // proverebbe a leggerle come token e riempirebbe il log.
+                    OnMessageReceived = c =>
+                    {
+                        if (Features.PublicApi.ApiKeyFilter.ReadKey(c.Request) is not null) c.NoResult();
+                        return Task.CompletedTask;
+                    }
+                };
             });
 
         builder.Services.AddAuthorization();
@@ -151,6 +163,7 @@ public static class ServiceRegistration
                     http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     _ => new FixedWindowRateLimiterOptions { PermitLimit = limit, Window = TimeSpan.FromMinutes(1) });
             });
+            o.AddPolicy(Features.PublicApi.ApiKeyFilter.RateLimitPolicy, Features.PublicApi.ApiKeyFilter.Partition);
         });
     }
 
