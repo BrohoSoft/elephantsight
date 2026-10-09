@@ -237,31 +237,44 @@ public class SocialPublisher(
 
     /// <summary>
     /// Threads, come Instagram: il container (uno per elemento, più quello del
-    /// carosello), l'attesa che Threads scarichi i file, la pubblicazione. Il
-    /// container si salva subito, così un riavvio a metà non ne crea un secondo.
+    /// carosello), l'attesa che Threads scarichi i file, la pubblicazione.
     /// </summary>
+    /// <remarks>
+    /// <para>In un carosello ogni elemento deve essere pronto (FINISHED) prima di
+    /// creare il carosello: altrimenti Threads lo rifiuta dicendo che gli
+    /// elementi "non sono validi o sono scaduti".</para>
+    ///
+    /// <para><see cref="SocialPostTarget.ProgressState"/> dice a che punto si è:
+    /// <c>children:id,id</c> mentre gli elementi si preparano, poi l'id del
+    /// container da pubblicare. Così un riavvio, o un'attesa più lunga di un
+    /// giro, riparte da lì invece di creare tutto due volte.</para>
+    /// </remarks>
     private async Task<(string?, string?)> PublishThreadsAsync(SocialAccount account, string token, SocialPostTarget target, string text,
         List<SocialMedia> media, CancellationToken ct)
     {
-        var container = target.ProgressState;
-        if (container is not null)
+        const string ChildrenPrefix = "children:";
+        var progress = target.ProgressState;
+
+        if (progress is not null && !progress.StartsWith(ChildrenPrefix))
         {
-            switch ((await threads.ContainerStatusAsync(container, token, ct)).Status)
+            switch ((await threads.ContainerStatusAsync(progress, token, ct)).Status)
             {
                 case "PUBLISHED":
                     return (null, null); // era uscito prima dell'interruzione
                 case "EXPIRED" or "ERROR":
-                    container = null;
+                    target.SetProgress(null);
+                    progress = null;
                     break;
             }
         }
 
+        KeyValuePair<string, string>[] Item(SocialMedia m) => m.Kind == MediaKind.Video
+            ? [new("media_type", "VIDEO"), new("video_url", PublicImageUrl(m))]
+            : [new("media_type", "IMAGE"), new("image_url", PublicImageUrl(m))];
+
+        string? container = progress is not null && !progress.StartsWith(ChildrenPrefix) ? progress : null;
         if (container is null)
         {
-            KeyValuePair<string, string>[] Item(SocialMedia m) => m.Kind == MediaKind.Video
-                ? [new("media_type", "VIDEO"), new("video_url", PublicImageUrl(m))]
-                : [new("media_type", "IMAGE"), new("image_url", PublicImageUrl(m))];
-
             var fields = new List<KeyValuePair<string, string>>();
             if (media.Count == 0) fields.Add(new("media_type", "TEXT"));
             else if (media.Count == 1)
@@ -271,13 +284,23 @@ public class SocialPublisher(
             }
             else
             {
-                var children = new List<string>();
-                foreach (var m in media)
+                // Gli elementi: creati una volta sola (si salvano subito), poi si aspetta che siano tutti pronti.
+                var children = progress?[ChildrenPrefix.Length..].Split(',').ToList();
+                if (children is null)
                 {
-                    var child = Item(m).Append(new("is_carousel_item", "true")).ToList();
-                    if (m.AltText is { } alt) child.Add(new("alt_text", alt));
-                    children.Add(await threads.CreateContainerAsync(account.ExternalId, token, child, ct));
+                    children = [];
+                    foreach (var m in media)
+                    {
+                        var child = Item(m).Append(new("is_carousel_item", "true")).ToList();
+                        if (m.AltText is { } alt) child.Add(new("alt_text", alt));
+                        children.Add(await threads.CreateContainerAsync(account.ExternalId, token, child, ct));
+                    }
+                    target.SetProgress(ChildrenPrefix + string.Join(',', children));
+                    await db.SaveChangesAsync(ct);
                 }
+
+                foreach (var child in children) await WaitForThreadsAsync(child, token, target, "un elemento del carosello", ct);
+
                 fields.Add(new("media_type", "CAROUSEL"));
                 fields.Add(new("children", string.Join(',', children)));
             }
@@ -289,21 +312,31 @@ public class SocialPublisher(
         }
 
         // Un testo è pronto subito; immagini e video vanno scaricati da Threads.
+        await WaitForThreadsAsync(container, token, target, "il post", ct);
+
+        var mediaId = await threads.PublishAsync(account.ExternalId, token, container, ct);
+        return (mediaId, await threads.PermalinkAsync(mediaId, token, ct));
+    }
+
+    /// <summary>
+    /// Aspetta che un container di Threads sia pronto. Dopo qualche controllo
+    /// si lascia stare e si ripassa al giro dopo (un video può metterci minuti);
+    /// un errore ricomincia da capo al prossimo tentativo.
+    /// </summary>
+    private async Task WaitForThreadsAsync(string containerId, string token, SocialPostTarget target, string what, CancellationToken ct)
+    {
         for (var attempt = 0; ; attempt++)
         {
-            var (status, error) = await threads.ContainerStatusAsync(container, token, ct);
-            if (status is "FINISHED" or null) break;
+            var (status, error) = await threads.ContainerStatusAsync(containerId, token, ct);
+            if (status is "FINISHED" or "PUBLISHED" or null) return;
             if (status is "ERROR" or "EXPIRED")
             {
                 target.SetProgress(null);
-                throw new SocialApiException($"Threads non è riuscito a usare il post ({error ?? status}): controlla che l'indirizzo dell'istanza sia raggiungibile da internet.");
+                throw new SocialApiException($"Threads non è riuscito a usare {what} ({error ?? status}): controlla che l'indirizzo dell'istanza sia raggiungibile da internet.");
             }
             if (attempt == 10) throw new StillProcessingException();
             await Task.Delay(options.Value.PollDelay, ct);
         }
-
-        var mediaId = await threads.PublishAsync(account.ExternalId, token, container, ct);
-        return (mediaId, await threads.PermalinkAsync(mediaId, token, ct));
     }
 
     /// <summary>

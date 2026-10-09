@@ -132,7 +132,8 @@ public class ThreadsClient(HttpClient http, IOptions<SocialOptions> options)
 
     private async Task<JsonNode?> SendAsync(HttpMethod method, string uri, string? token, HttpContent? content, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(method, uri) { Content = content };
+        // Messaggi d'errore in italiano, non nella lingua della posizione del server (vedi MetaGraphClient.WithLocale).
+        using var request = new HttpRequestMessage(method, MetaGraphClient.WithLocale(uri)) { Content = content };
         if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var response = await http.SendAsync(request, ct);

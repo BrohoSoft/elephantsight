@@ -81,7 +81,8 @@ public class InstagramLoginClient(HttpClient http, IOptions<SocialOptions> optio
 
     private async Task<JsonNode?> SendAsync(HttpMethod method, string uri, HttpContent? content, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(method, uri) { Content = content };
+        // Messaggi d'errore in italiano, non nella lingua della posizione del server (vedi MetaGraphClient.WithLocale).
+        using var request = new HttpRequestMessage(method, MetaGraphClient.WithLocale(uri)) { Content = content };
         using var response = await http.SendAsync(request, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         if (response.IsSuccessStatusCode) return text.Length == 0 ? null : JsonNode.Parse(text);
