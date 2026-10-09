@@ -201,6 +201,83 @@ public class ApiKeyTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(0, (await InboxAsync(a)).GetArrayLength());
     }
 
+    private static ByteArrayContent Jpeg(int width, int height, byte[]? raw = null)
+    {
+        var file = new ByteArrayContent(raw ?? TestJpeg.Create(width, height));
+        file.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        return file;
+    }
+
+    /// <summary>Il blocco della settimana: un carosello, una foto, un testo, e tre post sbagliati in modi diversi.</summary>
+    private static MultipartFormDataContent Batch()
+    {
+        var posts = new object[]
+        {
+            new { type = "carousel", text = "La collezione", suggestedAtUtc = DateTime.UtcNow.AddDays(1), externalRef = "w1",
+                  media = new object[] { new { file = "c1", altText = "Prima" }, new { file = "c2" } } },
+            new { type = "image", text = "Una foto", externalRef = "w2", media = new object[] { new { file = "f1" } } },
+            new { type = "text", text = "Solo parole", externalRef = "w3" },
+            new { type = "carousel", text = "Carosello con una foto", externalRef = "w4", media = new object[] { new { file = "f1" } } },
+            new { type = "image", text = "File che non c'è", externalRef = "w5", media = new object[] { new { file = "manca" } } },
+            new { type = "image", text = "Non è un JPEG", externalRef = "w6", media = new object[] { new { file = "png" } } },
+        };
+        return new MultipartFormDataContent
+        {
+            { new StringContent(JsonSerializer.Serialize(posts)), "posts" },
+            { Jpeg(1080, 1350), "c1", "c1.jpg" },
+            { Jpeg(1080, 1080), "c2", "c2.jpg" },
+            { Jpeg(1200, 900), "f1", "f1.jpg" },
+            { Jpeg(0, 0, [0x89, 0x50, 0x4E, 0x47, 1, 2]), "png", "x.png" },
+        };
+    }
+
+    [Fact]
+    public async Task Piu_post_in_una_chiamata_ognuno_col_suo_tipo_e_le_sue_immagini()
+    {
+        var a = await _app.SignUpAsync();
+        var api = ApiClient(await CreateKeyAsync(a));
+
+        var response = await api.PostAsync("/api/v1/public/posts/batch", Batch());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.ReadJsonAsync();
+        Assert.Equal((3, 0, 3), (result.GetProperty("created").GetInt32(), result.GetProperty("existing").GetInt32(), result.GetProperty("rejected").GetInt32()));
+
+        var items = result.GetProperty("results").EnumerateArray().ToList();
+        Assert.Equal(["created", "created", "created", "rejected", "rejected", "rejected"], items.Select(r => r.GetProperty("outcome").GetString()).ToArray());
+        Assert.Contains("da 2 a 10", items[3].GetProperty("error").GetString());
+        Assert.Contains("'manca'", items[4].GetProperty("error").GetString());
+        Assert.Contains("JPEG", items[5].GetProperty("error").GetString());
+
+        // Il carosello: due immagini, nell'ordine mandato, con il testo alternativo.
+        var carousel = items[0].GetProperty("post");
+        Assert.Equal("Inbox", carousel.GetProperty("status").GetString());
+        Assert.Equal([1350, 1080], carousel.GetProperty("media").EnumerateArray().Select(m => m.GetProperty("height").GetInt32()).ToArray());
+        Assert.Equal("Prima", carousel.GetProperty("media")[0].GetProperty("altText").GetString());
+        Assert.Equal(3, (await InboxAsync(a)).GetArrayLength());
+
+        // Sul disco solo le immagini dei post entrati: quelli rifiutati non lasciano file.
+        var stored = Directory.GetFiles(_app.Services.GetRequiredService<SocialMediaStorage>().Root, "*.jpg", SearchOption.AllDirectories);
+        Assert.Equal(3, stored.Length);
+
+        // Rimandare il blocco non crea doppioni.
+        var again = await (await api.PostAsync("/api/v1/public/posts/batch", Batch())).ReadJsonAsync();
+        Assert.Equal((0, 3), (again.GetProperty("created").GetInt32(), again.GetProperty("existing").GetInt32()));
+        Assert.Equal(3, (await InboxAsync(a)).GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Il_tipo_si_controlla_anche_nella_chiamata_singola()
+    {
+        var a = await _app.SignUpAsync();
+        var api = ApiClient(await CreateKeyAsync(a));
+        var image = await UploadAsync(api);
+
+        var wrong = await api.PostAsJsonAsync("/api/v1/public/posts", new { type = "carousel", text = "Una sola", media = new[] { new { id = image } } });
+        Assert.Equal("post_type", await wrong.ProblemCodeAsync());
+        var ok = await api.PostAsJsonAsync("/api/v1/public/posts", new { type = "image", text = "Una sola", media = new[] { new { id = image } } });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+    }
+
     [Fact]
     public async Task La_chiave_di_un_organizzazione_non_vede_i_post_di_un_altra()
     {

@@ -107,25 +107,39 @@ function CreateKeyModal({ onClose }: { onClose: () => void }) {
 /** Come si usa, con l'indirizzo vero di questa installazione negli esempi. */
 function Usage() {
   const base = `${window.location.origin}/api/v1/public`;
-  const upload = `curl -H "Authorization: Bearer $WATCHSTORE_KEY" \\\n  -F "file=@copertina.jpg" \\\n  ${base}/media`;
-  const post = `curl -H "Authorization: Bearer $WATCHSTORE_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{
-    "text": "Nuovo articolo sul blog https://esempio.it/articolo #novita",
-    "suggestedAtUtc": "2026-10-20T08:00:00Z",
-    "media": [{ "id": "<id dell'immagine>", "altText": "La copertina" }],
-    "externalRef": "cms-123"
-  }' \\\n  ${base}/posts`;
+  const batch = `curl -H "Authorization: Bearer $WATCHSTORE_KEY" \\
+  -F 'posts=[
+    { "type": "carousel", "text": "La nuova collezione #novita",
+      "suggestedAtUtc": "2026-10-20T10:00:00+02:00", "externalRef": "piano-42",
+      "media": [ { "file": "foto1", "altText": "Prima" }, { "file": "foto2" } ] },
+    { "type": "image", "text": "Dietro le quinte",
+      "suggestedAtUtc": "2026-10-21T18:00:00+02:00", "externalRef": "piano-43",
+      "media": [ { "file": "foto3" } ] },
+    { "type": "text", "text": "Domani una sorpresa…",
+      "suggestedAtUtc": "2026-10-22T09:00:00+02:00", "externalRef": "piano-44" }
+  ]' \\
+  -F "foto1=@foto1.jpg" -F "foto2=@foto2.jpg" -F "foto3=@foto3.jpg" \\
+  ${base}/posts/batch`;
 
   return (
     <Panel title="Come si usa" description="Tutte le richieste con l'header Authorization: Bearer <chiave>. Al massimo 120 richieste al minuto per chiave.">
       <div className="space-y-4 p-4 text-[13px] text-muted">
-        <ol className="list-decimal space-y-1 pl-5">
-          <li><Mono>POST /media</Mono> con un'immagine <b className="text-fg">JPEG</b> nel campo <Mono>file</Mono> (al massimo 10 MB; per Bluesky meno di 1 MB): restituisce l'<Mono>id</Mono>.</li>
-          <li><Mono>POST /posts</Mono> con testo, immagini, data proposta (facoltativa) e un tuo riferimento (facoltativo: rimandare lo stesso <Mono>externalRef</Mono> non crea doppioni).</li>
-          <li><Mono>GET /posts/&#123;id&#125;</Mono> per sapere com'è andata: <Mono>Inbox</Mono>, <Mono>Scheduled</Mono>, <Mono>Published</Mono> con i link, <Mono>Failed</Mono> con il motivo.</li>
-          <li><Mono>DELETE /posts/&#123;id&#125;</Mono> per ritirarlo, finché è ancora in coda.</li>
-        </ol>
-        <Snippet title="1. Carica un'immagine" code={upload} />
-        <Snippet title="2. Manda il post" code={post} />
+        <p>
+          <Mono>POST /posts/batch</Mono> manda <b className="text-fg">più post in una chiamata</b> (fino a {50}), ognuno con il suo tipo, testo,
+          programmazione e immagini. È un multipart: il campo <Mono>posts</Mono> contiene l'array JSON dei post, gli altri campi sono i file delle immagini,
+          che i post citano per nome in <Mono>media[].file</Mono>.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li><Mono>type</Mono>: <Mono>text</Mono> (nessuna immagine), <Mono>image</Mono> (una), <Mono>carousel</Mono> (da 2 a 10, nell'ordine in cui le elenchi).</li>
+          <li><Mono>suggestedAtUtc</Mono>: quando pubblicarlo, in UTC (<Mono>…Z</Mono>) o con il fuso (<Mono>…+02:00</Mono>).</li>
+          <li><Mono>externalRef</Mono>: il tuo id del post. Rimandando lo stesso blocco, i post già entrati risultano <Mono>existing</Mono> e non si duplicano.</li>
+          <li>Immagini <b className="text-fg">JPEG</b> fino a 10 MB (per Bluesky meno di 1 MB). Ogni post si controlla da solo: la risposta dice per ciascuno <Mono>created</Mono>, <Mono>existing</Mono> o <Mono>rejected</Mono> con il motivo.</li>
+        </ul>
+        <Snippet title="Più post in una chiamata" code={batch} />
+        <p className="text-xs">
+          Per un post alla volta: <Mono>POST /media</Mono> (un JPEG nel campo <Mono>file</Mono>, restituisce l'id) e poi <Mono>POST /posts</Mono> in JSON con
+          {" "}<Mono>media[].id</Mono>. Lo stato di un post con <Mono>GET /posts/&#123;id&#125;</Mono>; finché è in coda si ritira con <Mono>DELETE /posts/&#123;id&#125;</Mono>.
+        </p>
       </div>
     </Panel>
   );
