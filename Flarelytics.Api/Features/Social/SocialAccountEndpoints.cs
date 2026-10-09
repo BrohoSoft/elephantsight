@@ -32,6 +32,7 @@ namespace Flarelytics.Api.Features.Social;
 public static class SocialAccountEndpoints
 {
     public const string MetaCallbackPath = "/social/meta/callback";
+    public const string InstagramCallbackPath = "/social/instagram/callback";
 
     public static void MapSocialAccounts(this IEndpointRouteBuilder api)
     {
@@ -46,6 +47,9 @@ public static class SocialAccountEndpoints
         admin.MapPost("/meta/start", StartMeta);
         admin.MapPost("/meta/complete", CompleteMeta).Validating<CompleteMetaRequest>();
         admin.MapPost("/meta/accounts", AddMetaAccounts).Validating<AddMetaAccountsRequest>();
+
+        admin.MapPost("/instagram/start", StartInstagram);
+        admin.MapPost("/instagram/complete", CompleteInstagram).Validating<CompleteMetaRequest>();
     }
 
     private static async Task<IResult> List(FlarelyticsDbContext db, CancellationToken ct)
@@ -107,7 +111,7 @@ public static class SocialAccountEndpoints
             throw ApiProblem.BadRequest("meta_not_configured", "Per Instagram e Facebook serve un'app Meta: imposta META_APP_ID e META_APP_SECRET e riavvia.");
 
         var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
-        return Results.Ok(new { url = meta.AuthorizeUrl(RedirectUri(options), state) });
+        return Results.Ok(new { url = meta.AuthorizeUrl(MetaRedirectUri(options), state) });
     }
 
     /// <summary>
@@ -119,19 +123,8 @@ public static class SocialAccountEndpoints
     private static async Task<IResult> CompleteMeta(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
         MetaGraphClient meta, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
     {
-        string payload;
-        try
-        {
-            payload = StateProtector(protection).Unprotect(req.State);
-        }
-        catch (System.Security.Cryptography.CryptographicException)
-        {
-            throw ApiProblem.BadRequest("meta_state", "Il collegamento con Facebook è scaduto o non è partito da qui: riprova.");
-        }
-        if (payload != $"{org.TenantId:N}|{principal.UserId():N}")
-            throw ApiProblem.BadRequest("meta_state", "Il collegamento con Facebook è partito da un altro utente o da un'altra organizzazione.");
-
-        var userToken = await meta.ExchangeCodeAsync(req.Code, RedirectUri(options), ct);
+        CheckState(protection, req.State, org, principal, "Facebook");
+        var userToken = await meta.ExchangeCodeAsync(req.Code, MetaRedirectUri(options), ct);
         var pages = await meta.ListPagesAsync(userToken, ct);
 
         var candidates = new List<MetaCandidate>();
@@ -176,14 +169,66 @@ public static class SocialAccountEndpoints
         return Results.Ok(added.Select(SocialAccountResponse.From));
     }
 
+    // --- Instagram Login (account senza Pagina Facebook) ---
+
+    private static IResult StartInstagram(ClaimsPrincipal principal, CurrentOrg org, InstagramLoginClient instagram, IOptions<SocialOptions> options,
+        IDataProtectionProvider protection)
+    {
+        if (!options.Value.Instagram.Enabled)
+            throw ApiProblem.BadRequest("instagram_not_configured", "Per collegare Instagram senza Facebook imposta INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET e riavvia.");
+
+        var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
+        return Results.Ok(new { url = instagram.AuthorizeUrl(InstagramRedirectUri(options), state) });
+    }
+
+    /// <summary>
+    /// Il ritorno dal login di Instagram. Un login è un account solo, quindi
+    /// non c'è niente da scegliere: si collega subito (o si ricollega, se c'era).
+    /// </summary>
+    private static async Task<IResult> CompleteInstagram(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
+        InstagramLoginClient instagram, FieldProtector protector, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
+    {
+        CheckState(protection, req.State, org, principal, "Instagram");
+
+        var token = await instagram.ExchangeCodeAsync(req.Code, InstagramRedirectUri(options), ct);
+        var profile = await instagram.ProfileAsync(token.AccessToken, ct);
+        if (profile.AccountType is "PERSONAL")
+            throw ApiProblem.BadRequest("instagram_personal", "È un account Instagram personale: per pubblicare serve un account professionale (Business o Creator), si cambia dalle impostazioni di Instagram.");
+
+        var account = await UpsertAsync(db, org.TenantId, SocialNetwork.Instagram, profile.UserId, InstagramLoginClient.Host, principal.UserId(), ct);
+        account.Reconnect(Protect(protector, account, token.AccessToken), string.IsNullOrWhiteSpace(profile.Name) ? profile.Username : profile.Name,
+            "@" + profile.Username, null, token.ExpiresAtUtc, InstagramLoginClient.Host);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialAccountResponse.From(account));
+    }
+
+    /// <summary>Lo <c>state</c> del login: firmato, a scadenza, e partito da questo utente in questa organizzazione.</summary>
+    private static void CheckState(IDataProtectionProvider protection, string state, CurrentOrg org, ClaimsPrincipal principal, string network)
+    {
+        string payload;
+        try
+        {
+            payload = StateProtector(protection).Unprotect(state);
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            throw ApiProblem.BadRequest("oauth_state", $"Il collegamento con {network} è scaduto o non è partito da qui: riprova.");
+        }
+        if (payload != $"{org.TenantId:N}|{principal.UserId():N}")
+            throw ApiProblem.BadRequest("oauth_state", $"Il collegamento con {network} è partito da un altro utente o da un'altra organizzazione.");
+    }
+
     /// <summary>Il JSON della scelta, con il token della Pagina. Non lascia mai il server in chiaro.</summary>
     private record MetaCandidate(string Key, SocialNetwork Network, string ExternalId, string Name, string? Handle, string Token);
 
     private static ITimeLimitedDataProtector StateProtector(IDataProtectionProvider p) => p.CreateProtector("social-meta-state").ToTimeLimitedDataProtector();
     private static ITimeLimitedDataProtector SelectionProtector(IDataProtectionProvider p) => p.CreateProtector("social-meta-selection").ToTimeLimitedDataProtector();
 
-    /// <summary>Deve essere identico nella richiesta di login e nello scambio del codice, e registrato nell'app Meta.</summary>
-    public static string RedirectUri(IOptions<SocialOptions> options) => options.Value.PublicUrl!.TrimEnd('/') + MetaCallbackPath;
+    // Gli indirizzi di ritorno devono essere identici nella richiesta di login e
+    // nello scambio del codice, e registrati nell'app. Stanno sul pannello
+    // (AppUrl), dove il browser ha la sessione, non sull'indirizzo delle immagini.
+    public static string MetaRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + MetaCallbackPath;
+    public static string InstagramRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + InstagramCallbackPath;
 
     // --- in comune ---
 

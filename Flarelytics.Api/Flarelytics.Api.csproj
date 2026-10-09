@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+    <!-- In sviluppo le chiavi delle app social (Meta, Instagram) e l'indirizzo
+         del tunnel stanno negli user-secrets, fuori dal repository. -->
+    <UserSecretsId>watchstore-api-dev</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

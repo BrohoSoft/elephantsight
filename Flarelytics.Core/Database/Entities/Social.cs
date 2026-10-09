@@ -44,6 +44,10 @@ public class SocialAccount : BaseEntity, ITenantOwned
     public int? MaxCharacters { get; private set; }
 
     public string ProtectedSecret { get; private set; } = null!;
+
+    /// <summary>Instagram Login: il token dura 60 giorni e il worker lo rinnova prima. Null se non scade.</summary>
+    public DateTime? TokenExpiresAtUtc { get; private set; }
+
     public SocialAccountStatus Status { get; private set; }
     public string? StatusMessage { get; private set; }
     public Guid CreatedByUserId { get; private set; }
@@ -61,14 +65,24 @@ public class SocialAccount : BaseEntity, ITenantOwned
     public string SecretContext => $"social|{TenantId:N}|{Id:N}";
 
     /// <summary>Un nuovo collegamento dello stesso account: nuovo segreto, nomi aggiornati, di nuovo funzionante.</summary>
-    public void Reconnect(string protectedSecret, string name, string? handle, int? maxCharacters)
+    /// <param name="serverUrl">Instagram: con quale login è collegato (vedi <see cref="Social.InstagramLoginClient.Host"/>); per le altre reti non cambia.</param>
+    public void Reconnect(string protectedSecret, string name, string? handle, int? maxCharacters, DateTime? tokenExpiresAtUtc = null, string? serverUrl = null)
     {
         ProtectedSecret = protectedSecret;
+        TokenExpiresAtUtc = tokenExpiresAtUtc;
+        if (Network == SocialNetwork.Instagram) ServerUrl = serverUrl;
         Name = name;
         Handle = handle;
         MaxCharacters = maxCharacters;
         Status = SocialAccountStatus.Connected;
         StatusMessage = null;
+    }
+
+    /// <summary>Il token rinnovato dal worker.</summary>
+    public void RenewToken(string protectedSecret, DateTime expiresAtUtc)
+    {
+        ProtectedSecret = protectedSecret;
+        TokenExpiresAtUtc = expiresAtUtc;
     }
 
     public void MarkBroken(string message)

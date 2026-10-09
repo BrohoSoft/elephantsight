@@ -42,7 +42,9 @@ public static class SetupEndpoints
             SetupRequired: !await db.Set<User>().AnyAsync(ct),
             EmailEnabled: emails.Enabled,
             MetaEnabled: social.Value.Meta.Enabled,
-            MetaRedirectUri: Social.SocialAccountEndpoints.RedirectUri(social),
+            MetaRedirectUri: Social.SocialAccountEndpoints.MetaRedirectUri(social),
+            InstagramEnabled: social.Value.Instagram.Enabled,
+            InstagramRedirectUri: Social.SocialAccountEndpoints.InstagramRedirectUri(social),
             Version: typeof(SetupEndpoints).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
 
     /// <summary>
@@ -81,7 +83,9 @@ public static class SetupEndpoints
 /// <param name="EmailEnabled">Senza SMTP gli inviti si mandano copiando il link, e il recupero password non c'è.</param>
 /// <param name="MetaEnabled">C'è un'app Meta configurata: si possono collegare Instagram e le Pagine Facebook.</param>
 /// <param name="MetaRedirectUri">L'indirizzo da registrare nell'app Meta come URI di reindirizzamento OAuth.</param>
-public record InstanceInfo(bool SetupRequired, bool EmailEnabled, bool MetaEnabled, string MetaRedirectUri, string Version);
+/// <param name="InstagramEnabled">C'è un'app Instagram (Instagram Login): si collegano account Instagram senza Pagina Facebook.</param>
+/// <param name="InstagramRedirectUri">L'indirizzo da registrare nelle impostazioni di Business login di Instagram.</param>
+public record InstanceInfo(bool SetupRequired, bool EmailEnabled, bool MetaEnabled, string MetaRedirectUri, bool InstagramEnabled, string InstagramRedirectUri, string Version);
 
 public record SetupRequest(string Email, string Password, string FullName, string OrganizationName);
 

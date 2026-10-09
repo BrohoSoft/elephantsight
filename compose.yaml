@@ -34,6 +34,10 @@ services:
       # raggiungibile da internet.
       Social__Meta__AppId: ${META_APP_ID:-}
       Social__Meta__AppSecret: ${META_APP_SECRET:-}
+      # Facoltativo: Instagram senza Pagina Facebook ("Instagram Login").
+      # Sono l'Instagram App ID e il suo secret, non quelli dell'app Meta.
+      Social__Instagram__AppId: ${INSTAGRAM_APP_ID:-}
+      Social__Instagram__AppSecret: ${INSTAGRAM_APP_SECRET:-}
     volumes:
       # Le chiavi: quella che cifra le credenziali degli store e quella dei
       # login. Vanno salvate a parte rispetto al resto: senza la chiave master

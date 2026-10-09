@@ -32,7 +32,8 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
 
     /// <summary>I client che parlano con le reti social, da attaccare a <see cref="SocialApis"/>.</summary>
     public static readonly string[] SocialClients =
-        [nameof(Flarelytics.Core.Social.BlueskyClient), nameof(Flarelytics.Core.Social.MastodonClient), nameof(Flarelytics.Core.Social.MetaGraphClient)];
+        [nameof(Flarelytics.Core.Social.BlueskyClient), nameof(Flarelytics.Core.Social.MastodonClient), nameof(Flarelytics.Core.Social.MetaGraphClient),
+         nameof(Flarelytics.Core.Social.InstagramLoginClient)];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -56,6 +57,8 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
         builder.UseSetting("Social:PollDelay", "00:00:00");
         builder.UseSetting("Social:Meta:AppId", "app-meta");
         builder.UseSetting("Social:Meta:AppSecret", "segreto-meta");
+        builder.UseSetting("Social:Instagram:AppId", "app-instagram");
+        builder.UseSetting("Social:Instagram:AppSecret", "segreto-instagram");
 
         builder.ConfigureTestServices(services =>
         {

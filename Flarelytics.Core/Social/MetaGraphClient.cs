@@ -90,22 +90,29 @@ public class MetaGraphClient(HttpClient http, IOptions<SocialOptions> options)
     }
 
     // --- Instagram ---
+    // Gli stessi passi valgono per i due login: cambia solo l'host.
+    // Collegato tramite Facebook: graph.facebook.com con il token della
+    // Pagina. Con Instagram Login: graph.instagram.com con il token dell'utente.
 
-    public async Task<string> CreateInstagramContainerAsync(string igId, string token, IEnumerable<KeyValuePair<string, string>> fields, CancellationToken ct) =>
-        (await SendFormAsync($"{Graph}/{igId}/media", token, fields, ct))!["id"]!.GetValue<string>();
+    /// <summary>L'indirizzo base della Graph API per quell'account Instagram.</summary>
+    public string InstagramBase(Database.Entities.SocialAccount account) =>
+        account.ServerUrl is { Length: > 0 } host ? $"{host}/{Meta.GraphVersion}" : Graph;
+
+    public async Task<string> CreateInstagramContainerAsync(string graphBase, string igId, string token, IEnumerable<KeyValuePair<string, string>> fields, CancellationToken ct) =>
+        (await SendFormAsync($"{graphBase}/{igId}/media", token, fields, ct))!["id"]!.GetValue<string>();
 
     /// <summary>EXPIRED, ERROR, FINISHED, IN_PROGRESS o PUBLISHED.</summary>
-    public async Task<string?> InstagramContainerStatusAsync(string containerId, string token, CancellationToken ct) =>
-        (await SendAsync(HttpMethod.Get, $"{Graph}/{containerId}?fields=status_code", token, null, ct))?["status_code"]?.GetValue<string>();
+    public async Task<string?> InstagramContainerStatusAsync(string graphBase, string containerId, string token, CancellationToken ct) =>
+        (await SendAsync(HttpMethod.Get, $"{graphBase}/{containerId}?fields=status_code", token, null, ct))?["status_code"]?.GetValue<string>();
 
-    public async Task<string> PublishInstagramAsync(string igId, string token, string containerId, CancellationToken ct) =>
-        (await SendFormAsync($"{Graph}/{igId}/media_publish", token, [new("creation_id", containerId)], ct))!["id"]!.GetValue<string>();
+    public async Task<string> PublishInstagramAsync(string graphBase, string igId, string token, string containerId, CancellationToken ct) =>
+        (await SendFormAsync($"{graphBase}/{igId}/media_publish", token, [new("creation_id", containerId)], ct))!["id"]!.GetValue<string>();
 
-    public async Task<string?> InstagramPermalinkAsync(string mediaId, string token, CancellationToken ct)
+    public async Task<string?> InstagramPermalinkAsync(string graphBase, string mediaId, string token, CancellationToken ct)
     {
         try
         {
-            return (await SendAsync(HttpMethod.Get, $"{Graph}/{mediaId}?fields=permalink", token, null, ct))?["permalink"]?.GetValue<string>();
+            return (await SendAsync(HttpMethod.Get, $"{graphBase}/{mediaId}?fields=permalink", token, null, ct))?["permalink"]?.GetValue<string>();
         }
         catch (SocialApiException)
         {

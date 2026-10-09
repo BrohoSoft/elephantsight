@@ -108,12 +108,17 @@ public static class CoreServices
     public static IServiceCollection AddFlarelyticsSocial(this IServiceCollection services)
     {
         services.AddOptions<Social.SocialOptions>().BindConfiguration(Social.SocialOptions.Section)
-            .PostConfigure<IConfiguration>((o, c) => o.PublicUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? c["Auth:PublicAppUrl"] : o.PublicUrl);
+            .PostConfigure<IConfiguration>((o, c) =>
+            {
+                o.AppUrl = (c["Auth:PublicAppUrl"] ?? "").TrimEnd('/');
+                o.PublicUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? o.AppUrl : o.PublicUrl.TrimEnd('/');
+            });
         services.AddSingleton<Social.SocialMediaStorage>();
         services.AddSingleton<Social.MediaUrlSigner>();
         services.AddHttpClient<Social.BlueskyClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddHttpClient<Social.MastodonClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddHttpClient<Social.MetaGraphClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddHttpClient<Social.InstagramLoginClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddScoped<Social.SocialPublisher>();
         return services;
     }

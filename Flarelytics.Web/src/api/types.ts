@@ -145,6 +145,10 @@ export interface InstanceInfo {
   metaEnabled: boolean;
   /** Da registrare nell'app Meta come URI di reindirizzamento OAuth. */
   metaRedirectUri: string;
+  /** C'è un'app Instagram: si collegano account Instagram senza Pagina Facebook. */
+  instagramEnabled: boolean;
+  /** Da registrare nelle impostazioni di Business login di Instagram. */
+  instagramRedirectUri: string;
   version: string;
 }
 

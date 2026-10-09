@@ -30,6 +30,14 @@ public class SocialPublisher(
             return;
         }
 
+        if (account.TokenExpiresAtUtc is { } expires && expires <= DateTime.UtcNow)
+        {
+            account.MarkBroken("L'accesso a Instagram è scaduto: ricollega l'account.");
+            target.Fail(account.StatusMessage!);
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
         target.Start();
         await db.SaveChangesAsync(ct);
 
@@ -123,10 +131,11 @@ public class SocialPublisher(
     /// </summary>
     private async Task<(string?, string?)> PublishInstagramAsync(SocialAccount account, string token, SocialPostTarget target, string text, List<SocialMedia> media, CancellationToken ct)
     {
+        var graph = meta.InstagramBase(account);
         var container = target.ProgressState;
         if (container is not null)
         {
-            switch (await meta.InstagramContainerStatusAsync(container, token, ct))
+            switch (await meta.InstagramContainerStatusAsync(graph, container, token, ct))
             {
                 case "PUBLISHED":
                     return (null, null); // era uscito prima dell'interruzione
@@ -145,7 +154,7 @@ public class SocialPublisher(
                 var fields = new List<KeyValuePair<string, string>> { new("image_url", PublicImageUrl(media[0])) };
                 if (caption is { } c) fields.Add(c);
                 if (media[0].AltText is { } alt) fields.Add(new("alt_text", alt));
-                container = await meta.CreateInstagramContainerAsync(account.ExternalId, token, fields, ct);
+                container = await meta.CreateInstagramContainerAsync(graph, account.ExternalId, token, fields, ct);
             }
             else
             {
@@ -155,13 +164,13 @@ public class SocialPublisher(
                 var children = new List<string>();
                 foreach (var m in media)
                 {
-                    children.Add(await meta.CreateInstagramContainerAsync(account.ExternalId, token,
+                    children.Add(await meta.CreateInstagramContainerAsync(graph, account.ExternalId, token,
                         [new("image_url", PublicImageUrl(m)), new("is_carousel_item", "true")], ct));
                 }
 
                 var fields = new List<KeyValuePair<string, string>> { new("media_type", "CAROUSEL"), new("children", string.Join(',', children)) };
                 if (caption is { } c) fields.Add(c);
-                container = await meta.CreateInstagramContainerAsync(account.ExternalId, token, fields, ct);
+                container = await meta.CreateInstagramContainerAsync(graph, account.ExternalId, token, fields, ct);
             }
 
             target.SetProgress(container);
@@ -170,7 +179,7 @@ public class SocialPublisher(
 
         for (var attempt = 0; ; attempt++)
         {
-            var status = await meta.InstagramContainerStatusAsync(container, token, ct);
+            var status = await meta.InstagramContainerStatusAsync(graph, container, token, ct);
             if (status is "FINISHED" or null) break;
             if (status is "ERROR" or "EXPIRED")
             {
@@ -181,8 +190,8 @@ public class SocialPublisher(
             await Task.Delay(options.Value.PollDelay, ct);
         }
 
-        var mediaId = await meta.PublishInstagramAsync(account.ExternalId, token, container, ct);
-        return (mediaId, await meta.InstagramPermalinkAsync(mediaId, token, ct));
+        var mediaId = await meta.PublishInstagramAsync(graph, account.ExternalId, token, container, ct);
+        return (mediaId, await meta.InstagramPermalinkAsync(graph, mediaId, token, ct));
     }
 
     private async Task<(string?, string?)> PublishFacebookAsync(SocialAccount account, string token, string text, List<SocialMedia> media, CancellationToken ct)
@@ -281,7 +290,11 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
                 }
             }
 
-            if (cleanup) await DeleteOrphanMediaAsync(db, scope.ServiceProvider.GetRequiredService<SocialMediaStorage>(), ct);
+            if (cleanup)
+            {
+                await DeleteOrphanMediaAsync(db, scope.ServiceProvider.GetRequiredService<SocialMediaStorage>(), ct);
+                await RenewTokensAsync(db, scope.ServiceProvider, ct);
+            }
         }
     }
 
@@ -295,6 +308,52 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
         db.RemoveRange(orphans);
         await db.SaveChangesAsync(ct);
         foreach (var m in orphans) storage.Delete(m.TenantId, m.Id);
+    }
+
+    /// <summary>
+    /// I token che scadono (Instagram Login, 60 giorni) si rinnovano quando
+    /// hanno più di una settimana: Instagram lo permette dopo 24 ore, e così
+    /// restano settimane di margine se qualche giro va a vuoto.
+    /// </summary>
+    private async Task RenewTokensAsync(FlarelyticsDbContext db, IServiceProvider services, CancellationToken ct)
+    {
+        var renewBefore = DateTime.UtcNow.AddDays(53);
+        var expiring = await db.Set<SocialAccount>()
+            .Where(a => a.Status == SocialAccountStatus.Connected && a.TokenExpiresAtUtc != null && a.TokenExpiresAtUtc < renewBefore)
+            .ToListAsync(ct);
+        if (expiring.Count == 0) return;
+
+        var instagram = services.GetRequiredService<InstagramLoginClient>();
+        var protector = services.GetRequiredService<FieldProtector>();
+        foreach (var account in expiring)
+        {
+            if (account.TokenExpiresAtUtc <= DateTime.UtcNow)
+            {
+                account.MarkBroken("L'accesso a Instagram è scaduto: ricollega l'account.");
+                continue;
+            }
+
+            var secret = protector.Unprotect(account.ProtectedSecret, account.SecretContext);
+            try
+            {
+                var token = await instagram.RefreshAsync(Encoding.UTF8.GetString(secret), ct);
+                account.RenewToken(protector.Protect(Encoding.UTF8.GetBytes(token.AccessToken), account.SecretContext), token.ExpiresAtUtc);
+            }
+            catch (SocialApiException e) when (e.Unauthorized)
+            {
+                account.MarkBroken(e.Message);
+            }
+            catch (Exception e) when (e is SocialApiException or HttpRequestException)
+            {
+                log.LogWarning("Rinnovo del token di {Account} non riuscito, si riprova fra un'ora: {Message}", account.Id, e.Message);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(secret);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task<List<Guid>> TenantsAsync(CancellationToken ct)

@@ -89,6 +89,39 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
         return (ids["FacebookPage"], ids["Instagram"]);
     }
 
+    private const string InstagramGraph = "https://graph.instagram.com/v26.0";
+
+    /// <summary>Instagram Login: start, ritorno da Instagram con il codice, account collegato subito.</summary>
+    private async Task<Guid> ConnectInstagramLoginAsync(Account a, string accountType = "BUSINESS", HttpStatusCode expected = HttpStatusCode.OK)
+    {
+        Net.On(HttpMethod.Post, "^https://api.instagram.com/oauth/access_token$",
+                """{"data":[{"access_token":"token-breve","user_id":"17841","permissions":"instagram_business_basic,instagram_business_content_publish"}]}""")
+            .On(HttpMethod.Get, "^https://graph.instagram.com/access_token$", """{"access_token":"token-ig","token_type":"bearer","expires_in":5183944}""")
+            .On(HttpMethod.Get, $"^{InstagramGraph}/me$", $$"""{"user_id":"17841","username":"meteo.app","name":"Meteo","account_type":"{{accountType}}"}""");
+
+        var start = await (await a.Client.PostAsync($"/api/v1/orgs/{a.OrgId}/social/instagram/start", null)).ReadJsonAsync();
+        var url = new Uri(start.GetProperty("url").GetString()!);
+        var query = QueryHelpers.ParseQuery(url.Query);
+        Assert.Equal("www.instagram.com", url.Host);
+        Assert.Equal("app-instagram", query["client_id"]);
+        Assert.Equal("http://app.test/social/instagram/callback", query["redirect_uri"]);
+
+        // Instagram aggiunge "#_" in fondo al codice: va tolto prima dello scambio.
+        var complete = await a.Client.PostAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/instagram/complete", new { code = "codice#_", state = query["state"].ToString() });
+        Assert.Equal(expected, complete.StatusCode);
+        if (expected != HttpStatusCode.OK) return Guid.Empty;
+
+        var exchange = QueryHelpers.ParseQuery(Net.Calls(HttpMethod.Post, "api.instagram.com/oauth/access_token").Last().Body);
+        Assert.Equal("codice", exchange["code"]);
+        Assert.Equal("segreto-instagram", exchange["client_secret"]);
+        Assert.Contains("ig_exchange_token", Net.Calls(HttpMethod.Get, "graph.instagram.com/access_token").Last().Url);
+
+        var account = await complete.ReadJsonAsync();
+        Assert.Equal("@meteo.app", account.GetProperty("handle").GetString());
+        Assert.DoesNotContain("token-ig", account.GetRawText());
+        return account.GetProperty("id").GetGuid();
+    }
+
     private async Task<Guid> UploadImageAsync(Account a, int width = 1080, int height = 1080)
     {
         var form = new MultipartFormDataContent();
@@ -277,7 +310,7 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
 
         // L'indirizzo che ha avuto Instagram funziona senza login…
         var imageUrl = new Uri(fields["image_url"]!);
-        Assert.Equal("app.test", imageUrl.Host);
+        Assert.Equal("tunnel.example", imageUrl.Host); // Social:PublicUrl, non l'indirizzo del pannello
         var anonymous = _app.CreateClient();
         var served = await anonymous.GetAsync(imageUrl.PathAndQuery);
         Assert.Equal(HttpStatusCode.OK, served.StatusCode);
@@ -292,6 +325,74 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
         var signer = _app.Services.GetRequiredService<MediaUrlSigner>();
         var expired = signer.PathFor(a.OrgId, image, DateTime.UtcNow.AddMinutes(-1));
         Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync(expired)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Instagram_senza_Pagina_si_collega_con_Instagram_e_pubblica_su_graph_instagram_com()
+    {
+        var a = await _app.SignUpAsync();
+        var instagram = await ConnectInstagramLoginAsync(a);
+        var image = await UploadImageAsync(a);
+        Net.On(HttpMethod.Post, $"^{InstagramGraph}/17841/media$", """{"id":"c7"}""")
+            .On(HttpMethod.Get, $"^{InstagramGraph}/c7$", """{"status_code":"FINISHED"}""")
+            .On(HttpMethod.Post, $"^{InstagramGraph}/17841/media_publish$", """{"id":"m7"}""")
+            .On(HttpMethod.Get, $"^{InstagramGraph}/m7$", """{"permalink":"https://www.instagram.com/p/xyz/"}""");
+
+        var post = await CreatePostAsync(a, Post("Senza Pagina #meteo", DateTime.UtcNow.AddMinutes(-1), [instagram], [image]));
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        var container = Net.Calls(HttpMethod.Post, "graph.instagram.com/v26.0/17841/media").Single(c => !c.Url.Contains("publish"));
+        Assert.Contains("Bearer token-ig", container.Headers);
+        Assert.StartsWith("https://tunnel.example/api/v1/social/media/", QueryHelpers.ParseQuery(container.Body)["image_url"].ToString());
+        Assert.Empty(Net.Calls(HttpMethod.Post, "graph.facebook.com")); // niente Facebook di mezzo
+        Assert.Equal("https://www.instagram.com/p/xyz/", Target(await GetPostAsync(a, post), "Instagram").GetProperty("externalUrl").GetString());
+    }
+
+    [Fact]
+    public async Task Un_account_Instagram_personale_si_rifiuta()
+    {
+        var a = await _app.SignUpAsync();
+        await ConnectInstagramLoginAsync(a, accountType: "PERSONAL", expected: HttpStatusCode.BadRequest);
+        Assert.Equal(0, (await (await a.Client.GetAsync($"/api/v1/orgs/{a.OrgId}/social/accounts")).ReadJsonAsync()).GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Il_token_di_Instagram_si_rinnova_da_solo_e_uno_scaduto_chiede_di_ricollegare()
+    {
+        var a = await _app.SignUpAsync();
+        var instagram = await ConnectInstagramLoginAsync(a);
+        Net.On(HttpMethod.Get, "^https://graph.instagram.com/refresh_access_token$", """{"access_token":"token-rinnovato","token_type":"bearer","expires_in":5183944}""");
+
+        // Un token di un mese fa: ne restano 30 giorni, va rinnovato.
+        await WithAccountAsync(a, instagram, x => x.RenewToken(x.ProtectedSecret, DateTime.UtcNow.AddDays(30)));
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        var refresh = Net.Calls(HttpMethod.Get, "refresh_access_token").Single();
+        Assert.Contains("grant_type=ig_refresh_token", refresh.Url);
+        Assert.Contains("access_token=token-ig", refresh.Url);
+        var renewed = await WithAccountAsync(a, instagram, _ => { });
+        Assert.True(renewed.TokenExpiresAtUtc > DateTime.UtcNow.AddDays(59));
+
+        // Scaduto: il post non parte e l'account va ricollegato.
+        await WithAccountAsync(a, instagram, x => x.RenewToken(x.ProtectedSecret, DateTime.UtcNow.AddMinutes(-1)));
+        var post = await CreatePostAsync(a, Post("Ciao", DateTime.UtcNow.AddMinutes(-1), [instagram], [await UploadImageAsync(a)]));
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        Assert.Contains("scaduto", Target(await GetPostAsync(a, post), "Instagram").GetProperty("error").GetString());
+        Assert.Equal(SocialAccountStatus.NeedsReconnect, (await WithAccountAsync(a, instagram, _ => { })).Status);
+        Assert.Empty(Net.Calls(HttpMethod.Post, "/17841/media"));
+    }
+
+    /// <summary>Legge (e se serve modifica) l'account direttamente nel database, nel tenant giusto.</summary>
+    private async Task<SocialAccount> WithAccountAsync(Account a, Guid accountId, Action<SocialAccount> change)
+    {
+        using var scope = _app.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<TenantContext>().Set(a.OrgId);
+        var db = scope.ServiceProvider.GetRequiredService<FlarelyticsDbContext>();
+        var account = await db.Set<SocialAccount>().SingleAsync(x => x.Id == accountId);
+        change(account);
+        await db.SaveChangesAsync();
+        return account;
     }
 
     [Fact]
@@ -375,7 +476,7 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
         var state = QueryHelpers.ParseQuery(new Uri(start.GetProperty("url").GetString()!).Query)["state"].ToString();
 
         var stolen = await b.Client.PostAsJsonAsync($"/api/v1/orgs/{b.OrgId}/social/meta/complete", new { code = "codice", state });
-        Assert.Equal("meta_state", await stolen.ProblemCodeAsync());
+        Assert.Equal("oauth_state", await stolen.ProblemCodeAsync());
         Assert.Empty(Net.Calls(HttpMethod.Get, "oauth/access_token"));
     }
 

@@ -35,6 +35,8 @@ public sealed class SyncHost : IAsyncDisposable
             ["Sync:RequestDelay"] = "00:00:00",
             ["Sync:BackfillDays"] = backfillDays.ToString(),
             ["Auth:PublicAppUrl"] = "http://app.test",
+            // Come in sviluppo con un tunnel: le immagini da un indirizzo, il pannello da un altro.
+            ["Social:PublicUrl"] = "https://tunnel.example/",
             ["Social:PollDelay"] = "00:00:00"
         }).Build();
 
