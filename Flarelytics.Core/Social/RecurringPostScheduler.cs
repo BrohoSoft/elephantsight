@@ -35,6 +35,7 @@ public class RecurringPostScheduler(FlarelyticsDbContext db, SocialMediaStorage 
             else
             {
                 created = await CreatePostAsync(recurring, at, ct);
+                if (created) log.LogInformation("Creata l'uscita del {At:u} del post ricorrente {Id}: parte adesso", at, recurring.Id);
             }
 
             recurring.Advance(at, created, nowUtc);

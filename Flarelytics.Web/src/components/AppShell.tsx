@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { ArrowLeft, AtSign, CalendarDays, Check, ChevronsUpDown, FolderKanban, Inbox, KeyRound, KeySquare, LayoutDashboard, LogOut, MessageSquare, Plus, Repeat, Settings, UserRound, Users } from "lucide-react";
+import { ArrowLeft, AtSign, CalendarDays, Check, ChevronsUpDown, FolderKanban, Inbox, KeyRound, KeySquare, LayoutDashboard, LogOut, MessageSquare, Plus, Repeat, ScrollText, Settings, UserRound, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useApiMutation, keys, useMe, useSocialInbox } from "../api/hooks";
@@ -74,6 +74,7 @@ export function AppShell() {
                 <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
                 <NavItem to={`/o/${navOrg.id}/members`} icon={<Users className="size-4" />}>Membri</NavItem>
                 <NavItem to={`/o/${navOrg.id}/api-keys`} icon={<KeySquare className="size-4" />}>Chiavi API</NavItem>
+                <NavItem to={`/o/${navOrg.id}/logs`} icon={<ScrollText className="size-4" />}>Log</NavItem>
                 <NavItem to={`/o/${navOrg.id}/settings`} icon={<Settings className="size-4" />}>Impostazioni</NavItem>
               </>
             )}
@@ -320,6 +321,7 @@ function MobileBar({ me, org, projectId, section }: { me: Me; org?: OrgSummary; 
             ["/social/accounts", "Social", hasSocial(org)],
             ["/members", "Membri", canManageOrg(org)],
             ["/api-keys", "Chiavi API", canManageOrg(org)],
+            ["/logs", "Log", canManageOrg(org)],
             ["/settings", "Impostazioni", canManageOrg(org)],
           ] as const).filter(([, , visible]) => visible).map(([path, label]) => (
             <NavLink key={path} to={`/o/${orgId}${path}`} end={path === "" || path === "/social"} className={link}>{label}</NavLink>

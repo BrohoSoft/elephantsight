@@ -3,6 +3,7 @@ using Flarelytics.Api.Features.Account;
 using Flarelytics.Api.Features.Auth;
 using Flarelytics.Api.Features.Credentials;
 using Flarelytics.Api.Features.Icons;
+using Flarelytics.Api.Features.Logs;
 using Flarelytics.Api.Features.Manage;
 using Flarelytics.Api.Features.Metrics;
 using Flarelytics.Api.Features.Orgs;
@@ -16,6 +17,9 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// I log anche a database, per leggerli dal pannello (pagina Log).
+Flarelytics.Core.Logging.StoredLogsExtensions.AddStoredLogs(builder.Logging);
 
 builder.ConfigureApi();
 builder.ConfigureDatabase();
@@ -88,6 +92,7 @@ api.MapBuilds();
 api.MapSocialAccounts();
 api.MapSocialPosts();
 api.MapSocialRecurring();
+api.MapLogs();
 api.MapApiKeys();
 api.MapPublicApi();
 

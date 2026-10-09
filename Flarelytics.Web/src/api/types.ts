@@ -527,3 +527,24 @@ export interface TikTokCreator {
   stitchDisabled: boolean;
   maxVideoSeconds: number;
 }
+
+export type LogLevelName = "Trace" | "Debug" | "Information" | "Warning" | "Error" | "Critical";
+
+/** Un messaggio del log salvato a database (pagina Log). */
+export interface LogItem {
+  id: number;
+  timestampUtc: string;
+  level: LogLevelName;
+  /** Social, Store o Sistema. */
+  area: string;
+  category: string;
+  message: string;
+  exception: string | null;
+  /** Di sistema, di nessuna organizzazione (li vede solo l'owner). */
+  system: boolean;
+}
+
+export interface LogPage {
+  items: LogItem[];
+  hasMore: boolean;
+}

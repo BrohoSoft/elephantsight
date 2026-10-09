@@ -198,6 +198,24 @@ public class ThreadsTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Un_segreto_che_non_si_decifra_fa_fallire_il_post_con_il_motivo_senza_fermare_il_giro()
+    {
+        var a = await _app.SignUpAsync();
+        var threads = await ConnectThreadsAsync(a);
+        Net.On(HttpMethod.Get, $"^{Api}/me/threads$", """{"data":[]}""");
+        // Come dopo un cambio della chiave master senza rotazione; il token scade presto, quindi il worker prova anche a rinnovarlo.
+        await WithAccountAsync(a, threads, x => x.RenewToken("v1.non-decifrabile", DateTime.UtcNow.AddDays(30)));
+        var post = await CreatePostAsync(a, "Ciao", threads);
+
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        var target = await TargetAsync(a, post);
+        Assert.Equal("Failed", target.GetProperty("status").GetString());
+        Assert.Contains("decifrare", target.GetProperty("error").GetString());
+        Assert.Equal(SocialAccountStatus.NeedsReconnect, (await WithAccountAsync(a, threads, _ => { })).Status);
+    }
+
+    [Fact]
     public async Task Oltre_500_caratteri_non_si_programma()
     {
         var a = await _app.SignUpAsync();

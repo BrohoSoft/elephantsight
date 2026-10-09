@@ -35,6 +35,7 @@ public class SocialPublisher(
         if (account is null || account.Status == SocialAccountStatus.NeedsReconnect)
         {
             target.Fail(account is null ? "L'account è stato scollegato." : $"L'account va ricollegato. {account.StatusMessage}".Trim());
+            log.LogWarning("Post {Post} non pubblicato su {Network} ({Account}): {Message}", post.Id, target.Network, target.AccountName, target.Error);
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -45,6 +46,7 @@ public class SocialPublisher(
         {
             account.MarkBroken(ExpiredMessage(account.Network));
             target.Fail(account.StatusMessage!);
+            log.LogWarning("Post {Post} non pubblicato su {Network} ({Account}): {Message}", post.Id, account.Network, account.Handle ?? account.Name, account.StatusMessage);
             await db.SaveChangesAsync(ct);
             return;
         }
@@ -69,6 +71,7 @@ public class SocialPublisher(
                 _ => throw new SocialApiException("Rete non supportata.")
             };
             target.Published(externalId, url, DateTime.UtcNow);
+            log.LogInformation("Post {Post} pubblicato su {Network} ({Account}): {Url}", post.Id, account.Network, account.Handle ?? account.Name, url ?? externalId);
         }
         catch (StillProcessingException)
         {
@@ -83,26 +86,45 @@ public class SocialPublisher(
         {
             account.MarkBroken(e.Message);
             target.Fail(e.Message);
+            log.LogWarning("Post {Post}: {Network} ({Account}) non accetta più l'accesso, l'account va ricollegato: {Message}", post.Id, account.Network, account.Handle ?? account.Name, e.Message);
         }
         catch (Exception e) when (IsTransient(e, ct))
         {
             var message = e is SocialApiException ? e.Message : $"Rete non raggiungibile: {e.Message}";
-            log.LogWarning("Pubblicazione {Target} su {Network} da riprovare: {Message}", target.Id, account.Network, message);
-            if (target.Attempts < MaxAttempts) target.RetryLater(message, DateTime.UtcNow.AddMinutes(Math.Pow(2, target.Attempts)));
-            else target.Fail(message);
+            if (target.Attempts < MaxAttempts)
+            {
+                target.RetryLater(message, DateTime.UtcNow.AddMinutes(Math.Pow(2, target.Attempts)));
+                log.LogWarning("Post {Post} su {Network} ({Account}) da riprovare alle {Next:HH:mm} UTC (tentativo {Attempt} di {Max}): {Message}",
+                    post.Id, account.Network, account.Handle ?? account.Name, target.NextAttemptAtUtc, target.Attempts, MaxAttempts, message);
+            }
+            else
+            {
+                target.Fail(message);
+                log.LogWarning("Post {Post} non pubblicato su {Network} ({Account}) dopo {Max} tentativi: {Message}", post.Id, account.Network, account.Handle ?? account.Name, MaxAttempts, message);
+            }
         }
         catch (SocialApiException e)
         {
-            log.LogWarning("Pubblicazione {Target} su {Network} rifiutata: {Message}", target.Id, account.Network, e.Message);
+            log.LogWarning("Post {Post} rifiutato da {Network} ({Account}): {Message}", post.Id, account.Network, account.Handle ?? account.Name, e.Message);
             target.Fail(e.Message);
+        }
+        catch (CryptographicException)
+        {
+            // Il segreto non si decifra (chiave master cambiata senza rotazione): solo ricollegando si rimedia.
+            account.MarkBroken(UnreadableSecret);
+            target.Fail(UnreadableSecret);
+            log.LogError("Post {Post} non pubblicato su {Network} ({Account}): {Message}", post.Id, account.Network, account.Handle ?? account.Name, UnreadableSecret);
         }
         catch (FileNotFoundException)
         {
             target.Fail("Un'immagine o il video del post non c'è più sul server.");
+            log.LogWarning("Post {Post} non pubblicato su {Network}: un'immagine o il video non c'è più sul server", post.Id, account.Network);
         }
 
         await db.SaveChangesAsync(ct);
     }
+
+    public const string UnreadableSecret = "Il segreto salvato per questo account non si riesce a decifrare (la chiave master è cambiata?): ricollega l'account.";
 
     /// <summary>Il token che dura 60 giorni (Instagram Login, Threads) è scaduto: si rifà il login.</summary>
     public static string ExpiredMessage(SocialNetwork network) =>
@@ -580,7 +602,17 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
                 continue;
             }
 
-            var secret = protector.Unprotect(account.ProtectedSecret, account.SecretContext);
+            byte[] secret;
+            try
+            {
+                secret = protector.Unprotect(account.ProtectedSecret, account.SecretContext);
+            }
+            catch (CryptographicException)
+            {
+                account.MarkBroken(SocialPublisher.UnreadableSecret);
+                log.LogError("Account {Account} ({Network}): {Message}", account.Handle ?? account.Name, account.Network, SocialPublisher.UnreadableSecret);
+                continue;
+            }
             try
             {
                 if (account.Network == SocialNetwork.TikTok)

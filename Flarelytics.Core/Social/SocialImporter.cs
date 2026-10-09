@@ -74,6 +74,11 @@ public class SocialImporter(
             {
                 account.MarkBroken(e.Message);
             }
+            catch (CryptographicException)
+            {
+                account.MarkBroken(SocialPublisher.UnreadableSecret);
+                log.LogError("Account {Account} ({Network}): {Message}", account.Handle ?? account.Name, account.Network, SocialPublisher.UnreadableSecret);
+            }
             catch (Exception e) when (e is SocialApiException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
                 // Si riprova al giro dopo: l'importazione è una comodità, non deve fermare niente.

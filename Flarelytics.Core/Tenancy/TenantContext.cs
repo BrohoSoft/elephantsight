@@ -18,7 +18,17 @@ namespace Flarelytics.Core.Tenancy;
 /// </remarks>
 public class TenantContext
 {
+    private static readonly AsyncLocal<Guid?> AmbientTenant = new();
+
     public Guid? TenantId { get; private set; }
+
+    /// <summary>
+    /// Il tenant su cui sta lavorando il flusso corrente (la richiesta, o il
+    /// giro del worker per quel tenant), senza passare dal container: lo usa il
+    /// log a database per dire a quale organizzazione si riferisce un messaggio.
+    /// Solo per questo: i dati si leggono sempre con <see cref="TenantId"/>.
+    /// </summary>
+    public static Guid? Ambient => AmbientTenant.Value;
 
     public void Set(Guid tenantId)
     {
@@ -30,5 +40,6 @@ public class TenantContext
         }
 
         TenantId = tenantId;
+        AmbientTenant.Value = tenantId;
     }
 }

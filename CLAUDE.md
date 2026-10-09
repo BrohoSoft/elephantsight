@@ -87,6 +87,9 @@ Installer (`Features/Setup`): `GET /instance` (`setupRequired`, `emailEnabled`) 
 
 Inviti: `Invitation` e `Membership` **non** sono `ITenantOwned` (chi accetta non è ancora nel tenant), quindi in `MemberEndpoints` si filtra per tenant a mano. L'invito è nominativo (l'email deve coincidere), vale come conferma dell'email, ed è l'unico modo di registrarsi (`POST /auth/register` vuole sempre il token). La creazione restituisce il link una volta sola, per mandarlo a mano senza SMTP.
 
+### Log nel pannello
+`StoredLogProvider` (registrato in `Program.cs` con `AddStoredLogs`) mette in coda i messaggi di ElephantSight dall'Information in su e di tutto il resto solo Warning+; `StoredLogWriter` li scrive a blocchi nella tabella globale `LogEntry` (non del tenant: si filtra a mano) e cancella quelli oltre 30 giorni. L'organizzazione di un messaggio è `TenantContext.Ambient` (AsyncLocal impostato da `TenantContext.Set`), l'area (Social, Store, Sistema) viene dalla categoria. La pagina Log (`/orgs/{orgId}/logs`) è per admin con accesso completo; i messaggi di sistema (senza organizzazione) li vede solo l'owner. Un messaggio utile in un log va scritto pensando che lo legga chi usa il pannello: cosa, dove (rete, account, id del post) e perché.
+
 ### Errori
 Lancia `ApiProblem` (stato + `code` stabile + dettaglio). `ProblemExceptionHandler` lo trasforma in Problem Details e mappa anche le chiavi non valide (400), gli errori degli store (502) e le violazioni di vincoli unique (409). Il frontend ragiona sul `code`, non sul testo.
 

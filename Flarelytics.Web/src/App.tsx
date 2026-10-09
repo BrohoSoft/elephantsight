@@ -26,6 +26,7 @@ import { SocialCalendarPage } from "./pages/social/Calendar";
 import { SocialInboxPage } from "./pages/social/Inbox";
 import { SocialRecurringPage } from "./pages/social/Recurring";
 import { ApiKeysPage } from "./pages/ApiKeys";
+import { LogsPage } from "./pages/Logs";
 import { PrivacyPage, TermsPage } from "./pages/Legal";
 import { MetaCallbackPage, SingleAccountCallbackPage } from "./pages/social/OAuthCallback";
 
@@ -133,6 +134,7 @@ export function App() {
         <Route path="/social/instagram/callback" element={<SingleAccountCallbackPage provider="instagram" />} />
         <Route path="/social/tiktok/callback" element={<SingleAccountCallbackPage provider="tiktok" />} />
         <Route path="/social/threads/callback" element={<SingleAccountCallbackPage provider="threads" />} />
+        <Route path="/o/:orgId/logs" element={<OrgGuard><Allowed when={canManageOrg}><LogsPage /></Allowed></OrgGuard>} />
         <Route path="/o/:orgId/members" element={<OrgGuard><Allowed when={canManageOrg}><MembersPage /></Allowed></OrgGuard>} />
         <Route path="/o/:orgId/settings" element={<OrgGuard><Allowed when={canManageOrg}><OrgSettingsPage /></Allowed></OrgGuard>} />
       </Route>
