@@ -40,7 +40,7 @@ export function SecretFilesTab({ project }: { project: Project }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-[13px] text-muted">
+        <p className="flex items-center gap-2 text-[0.8125rem] text-muted">
           <ShieldCheck className="size-4 text-ok" /> Cifrati sul server. Per scaricarli servono la password e, se attiva, la verifica in due passaggi.
         </p>
         {admin && <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setAdding(true)}>Aggiungi file</Button>}
@@ -86,7 +86,7 @@ function FileRow({ file: f, project, admin, onDownload }: { file: SecretFile; pr
     <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
       <FileKey2 className="size-4 shrink-0 text-faint" />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 text-[13px] text-fg">{f.name} <Badge>{KINDS[f.kind].label}</Badge></p>
+        <p className="flex flex-wrap items-center gap-2 text-[0.8125rem] text-fg">{f.name} <Badge>{KINDS[f.kind].label}</Badge></p>
         <p className="mt-0.5 text-xs text-muted">
           <Mono>{f.fileName}</Mono> · {(f.sizeBytes / 1024).toFixed(1)} KB · SHA-256 <span className="font-mono" title={f.sha256}>{f.sha256.slice(0, 12)}…</span> · caricato il {formatDate(f.createdAtUtc)}
           {f.lastDownloadedAtUtc && <> · ultimo download {formatDateTime(f.lastDownloadedAtUtc)}</>}
@@ -157,7 +157,7 @@ function AddFileModal({ project, onClose }: { project: Project; onClose: () => v
         {mode === "file" ? (
           <button type="button" onClick={() => input.current?.click()} className="flex w-full items-center gap-3 rounded-md border border-dashed border-line-strong bg-field px-3 py-3 text-left hover:border-brand/50">
             <Upload className="size-5 text-faint" />
-            <span className="text-[13px] text-fg">{file ? file.name : "Scegli il file"}</span>
+            <span className="text-[0.8125rem] text-fg">{file ? file.name : "Scegli il file"}</span>
             <input ref={input} type="file" accept={KINDS[kind].accept} className="hidden" onChange={(e) => { setFile(e.target.files?.[0] ?? null); e.target.value = ""; }} />
           </button>
         ) : (
@@ -165,7 +165,7 @@ function AddFileModal({ project, onClose }: { project: Project; onClose: () => v
         )}
         <Field label="Nome (facoltativo)"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Keystore di rilascio" /></Field>
         <Field label="Note (facoltative)" hint="Per esempio alias, scadenza del certificato, dove si usa. Non mettere qui le password: vanno nel file.">
-          <Textarea rows={2} className="font-sans text-[13px]" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Textarea rows={2} className="font-sans text-[0.8125rem]" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
         {error ? <Alert tone="bad">{errorMessage(error)}</Alert> : null}
       </div>

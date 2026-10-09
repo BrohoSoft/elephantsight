@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Inbox as InboxIcon, Trash2 } from "lucide-react";
+import { Inbox as InboxIcon, Trash2, Video } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { errorMessage, request } from "../../api/client";
@@ -12,8 +12,34 @@ import { Alert, Button, EmptyState, Field, Input, Mono, PageHeader, PageLoader, 
 import { commercialIncomplete, NetworkOptions } from "../../social/NetworkOptions";
 import { PostEditor } from "../../social/PostEditor";
 import { accountLabel } from "../../social/rules";
+import { formatDuration } from "../../social/upload";
 
 const pad = (n: number) => String(n).padStart(2, "0");
+
+const describeMedia = (media: SocialPost["media"]) =>
+  media.some((m) => m.kind === "Video") ? "video" : media.length === 1 ? "1 immagine" : `${media.length} immagini (carosello)`;
+
+/** L'anteprima del primo media: per un video il primo fotogramma, con l'icona e la durata sopra. */
+function MediaThumb({ media }: { media: SocialPost["media"] }) {
+  const first = media[0];
+  if (!first) return <div className="size-16 shrink-0 rounded border border-dashed border-line-strong" />;
+  if (first.kind === "Video") {
+    return (
+      <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-black">
+        <video src={`${first.url}#t=0.1`} muted preload="metadata" className="size-full object-cover" />
+        <span className="absolute inset-x-0 bottom-0 flex items-center gap-0.5 bg-black/60 px-1 text-[0.625rem] text-white">
+          <Video className="size-2.5" />{formatDuration(first.durationMs ?? 0)}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="relative size-16 shrink-0">
+      <img src={first.url} alt={first.altText ?? ""} className="size-full rounded object-cover" />
+      {media.length > 1 && <span className="absolute right-0.5 bottom-0.5 rounded bg-black/60 px-1 text-[0.625rem] text-white">+{media.length - 1}</span>}
+    </div>
+  );
+}
 
 /**
  * La coda "Da programmare": i post mandati da altri programmi con una chiave
@@ -101,7 +127,7 @@ export function SocialInboxPage() {
               <div className="space-y-4 p-4">
                 <Field label="Su quali account">
                   {accounts.data!.length === 0 ? (
-                    <p className="text-[13px] text-muted">Nessun account collegato. <Link to={`/o/${org.id}/social/accounts`} className="text-brand-fg hover:underline">Collegane uno</Link>.</p>
+                    <p className="text-[0.8125rem] text-muted">Nessun account collegato. <Link to={`/o/${org.id}/social/accounts`} className="text-brand-fg hover:underline">Collegane uno</Link>.</p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {accounts.data!.map((a) => {
@@ -109,7 +135,7 @@ export function SocialInboxPage() {
                         return (
                           <button key={a.id} type="button" aria-pressed={on} disabled={a.status === "NeedsReconnect"}
                             onClick={() => setTargets((t) => (t.includes(a.id) ? t.filter((x) => x !== a.id) : [...t, a.id]))}
-                            className={clsx("inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] transition-colors disabled:opacity-50",
+                            className={clsx("inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[0.8125rem] transition-colors disabled:opacity-50",
                               on ? "border-brand/60 bg-brand/10 text-fg" : "border-line-strong bg-panel-2 text-muted hover:text-fg")}>
                             <NetworkGlyph network={a.network} className="size-3.5" />{accountLabel(a)}
                           </button>
@@ -146,22 +172,25 @@ export function SocialInboxPage() {
           <Panel>
             <ul className="divide-y divide-line">
               {posts.map((p) => (
-                <li key={p.id} className="flex gap-3 px-4 py-3">
+                <li key={p.id} onClick={() => setEditing(p)}
+                  className={clsx("group flex cursor-pointer gap-3 px-4 py-3 transition-colors hover:bg-hover/50", selected.includes(p.id) && "bg-brand/5")}>
                   {admin && (
-                    <input type="checkbox" className="mt-1 accent-brand" checked={selected.includes(p.id)} onChange={() => toggle(p.id)} aria-label="Seleziona" />
+                    <input type="checkbox" className="mt-1 accent-brand" checked={selected.includes(p.id)} aria-label="Seleziona"
+                      onClick={(e) => e.stopPropagation()} onChange={() => toggle(p.id)} />
                   )}
-                  {p.media[0] ? <img src={p.media[0].url} alt={p.media[0].altText ?? ""} className="size-16 shrink-0 rounded object-cover" /> : <div className="size-16 shrink-0 rounded border border-dashed border-line-strong" />}
-                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setEditing(p)}>
-                    <p className="line-clamp-3 text-[13px] whitespace-pre-line text-fg">{p.text || <span className="text-muted">Senza testo</span>}</p>
+                  <MediaThumb media={p.media} />
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-3 text-[0.8125rem] whitespace-pre-line text-fg group-hover:text-brand-fg">{p.text || <span className="text-muted">Senza testo</span>}</p>
                     <p className="mt-1 text-xs text-muted">
                       {p.suggestedAtUtc ? <>proposto per il {formatDateTime(p.suggestedAtUtc)}</> : "senza data proposta"}
                       {p.source && <> · da {p.source}</>}
-                      {p.media.length > 0 && <> · {p.media.length === 1 ? "1 immagine" : `${p.media.length} immagini`}</>}
+                      {p.media.length > 0 && <> · {describeMedia(p.media)}</>}
                       {p.externalRef && <> · <Mono>{p.externalRef}</Mono></>}
                     </p>
                     {problems[p.id] && <p className="mt-1 text-xs text-bad">{problems[p.id]}</p>}
-                  </button>
-                  {admin && <Button size="sm" variant="ghost" icon={<Trash2 className="size-3" />} aria-label="Elimina" onClick={() => remove(p.id)} />}
+                  </div>
+                  <span className="hidden self-center text-xs text-faint group-hover:inline">Apri →</span>
+                  {admin && <Button size="sm" variant="ghost" icon={<Trash2 className="size-3" />} aria-label="Elimina" onClick={(e) => { e.stopPropagation(); remove(p.id); }} />}
                 </li>
               ))}
             </ul>

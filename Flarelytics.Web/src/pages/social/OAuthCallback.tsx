@@ -145,7 +145,7 @@ export function MetaCallbackPage() {
                   <input type="checkbox" className="accent-brand" checked={chosen.includes(c.key)}
                     onChange={() => setChosen((s) => (s.includes(c.key) ? s.filter((k) => k !== c.key) : [...s, c.key]))} />
                   <NetworkGlyph network={c.network} className="text-muted" />
-                  <span className="min-w-0 flex-1 text-[13px] text-fg">
+                  <span className="min-w-0 flex-1 text-[0.8125rem] text-fg">
                     {c.handle ?? c.name} <span className="text-xs text-muted">· {networkName[c.network]}</span>
                   </span>
                   {c.alreadyConnected && <Badge>Già collegato: si aggiorna</Badge>}

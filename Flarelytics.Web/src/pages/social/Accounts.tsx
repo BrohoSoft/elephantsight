@@ -117,7 +117,7 @@ function MetaCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: str
 
       <Modal open={help} onOpenChange={setHelp} wide title="L'app Meta per Instagram e Facebook"
         description="Una volta per installazione. L'app resta in modalità sviluppo: per pubblicare sui tuoi account non serve la revisione di Meta.">
-        <ol className="list-decimal space-y-2.5 pl-5 text-[13px] text-muted">
+        <ol className="list-decimal space-y-2.5 pl-5 text-[0.8125rem] text-muted">
           <li>Su <Mono>developers.facebook.com</Mono> crea un'app di tipo <b className="text-fg">Business</b>.</li>
           <li>Aggiungi i prodotti <b className="text-fg">Facebook Login for Business</b> e <b className="text-fg">Instagram</b> (API con accesso tramite Facebook Login).</li>
           <li>
@@ -179,7 +179,7 @@ function InstagramCard({ enabled, redirectUri }: { enabled: boolean; redirectUri
 
       <Modal open={help} onOpenChange={setHelp} wide title="L'app per Instagram"
         description="Una volta per installazione. L'app resta in modalità sviluppo: per pubblicare sui tuoi account non serve la revisione di Meta.">
-        <ol className="list-decimal space-y-2.5 pl-5 text-[13px] text-muted">
+        <ol className="list-decimal space-y-2.5 pl-5 text-[0.8125rem] text-muted">
           <li>Su <Mono>developers.facebook.com</Mono> (si entra con un profilo Facebook qualsiasi: serve solo a te, come sviluppatore) crea un'app di tipo <b className="text-fg">Business</b>.</li>
           <li>Aggiungi il prodotto <b className="text-fg">Instagram</b> e scegli <b className="text-fg">API setup with Instagram login</b>.</li>
           <li>
@@ -240,7 +240,7 @@ function TikTokCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: s
       {error ? <Alert tone="bad">{errorMessage(error)}</Alert> : null}
 
       <Modal open={help} onOpenChange={setHelp} wide title="L'app per TikTok" description="Una volta per installazione, su developers.tiktok.com.">
-        <ol className="list-decimal space-y-2.5 pl-5 text-[13px] text-muted">
+        <ol className="list-decimal space-y-2.5 pl-5 text-[0.8125rem] text-muted">
           <li>Su <Mono>developers.tiktok.com</Mono> crea un'app (Manage apps → Connect an app).</li>
           <li>Aggiungi i prodotti <b className="text-fg">Login Kit</b> e <b className="text-fg">Content Posting API</b>, e in Content Posting API attiva <b className="text-fg">Direct Post</b>.</li>
           <li>Negli scope servono <Mono>user.info.basic</Mono> e <Mono>video.publish</Mono>.</li>
@@ -271,7 +271,7 @@ function AccountRow({ account: a, admin }: { account: SocialAccount; admin: bool
     <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
       <NetworkGlyph network={a.network} className="text-muted" />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 text-[13px] text-fg">
+        <p className="flex flex-wrap items-center gap-2 text-[0.8125rem] text-fg">
           {a.name}
           {a.handle && a.handle !== a.name && <span className="text-muted">{a.handle}</span>}
           {a.status === "Connected" ? <Badge tone="ok">Collegato</Badge> : <Badge tone="bad">Da ricollegare</Badge>}

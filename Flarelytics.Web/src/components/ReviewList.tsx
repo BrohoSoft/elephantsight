@@ -51,7 +51,7 @@ export function ReviewList({ projectId }: { projectId?: string }) {
                 {[5, 4, 3, 2, 1].map((star) => {
                   const n = s.distribution[star - 1];
                   return (
-                    <div key={star} className="flex items-center gap-2 text-[11px] text-muted">
+                    <div key={star} className="flex items-center gap-2 text-[0.6875rem] text-muted">
                       <span className="w-3 text-right tabular-nums">{star}</span>
                       <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel-2">
                         <span className="block h-full rounded-full bg-muted/50" style={{ width: `${s.count ? (n / s.count) * 100 : 0}%` }} />
@@ -73,7 +73,7 @@ export function ReviewList({ projectId }: { projectId?: string }) {
           <option value="">Tutte le stelle</option>
           {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} {n === 1 ? "stella" : "stelle"}</option>)}
         </Select>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
+        <label className="flex items-center gap-2 text-[0.8125rem] text-muted">
           <input type="checkbox" className="accent-[var(--brand)]" checked={unanswered} onChange={(e) => { setUnanswered(e.target.checked); setPage(1); }} />
           Senza risposta
         </label>
@@ -120,13 +120,13 @@ function ReviewRow({ review: r, showProject }: { review: ReviewItem; showProject
     <li className="px-4 py-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Stars value={r.rating} />
-        {r.title && <span className="text-[13px] font-medium text-fg">{r.title}</span>}
+        {r.title && <span className="text-[0.8125rem] font-medium text-fg">{r.title}</span>}
         <span className="ml-auto flex items-center gap-2 text-xs text-faint">
           <StoreGlyph store={r.store} className={clsx("size-3", r.store === "AppStore" ? "text-ios" : "text-android")} />
           {formatDateTime(r.writtenAtUtc)}
         </span>
       </div>
-      <p className="mt-1.5 text-[13px] whitespace-pre-line text-fg">{r.body}</p>
+      <p className="mt-1.5 text-[0.8125rem] whitespace-pre-line text-fg">{r.body}</p>
       <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
         {showProject && r.projectId && (
           <Link to={`/o/${org.id}/projects/${r.projectId}/reviews`} className="inline-flex items-center gap-1.5 hover:text-fg">
@@ -143,13 +143,13 @@ function ReviewRow({ review: r, showProject }: { review: ReviewItem; showProject
           <p className="text-xs text-muted">
             La tua risposta{r.repliedAtUtc && ` · ${formatDateTime(r.repliedAtUtc)}`}{r.replyState === "PENDING_PUBLISH" && " · in attesa di pubblicazione"}
           </p>
-          <p className="mt-1 text-[13px] whitespace-pre-line text-fg">{r.replyText}</p>
+          <p className="mt-1 text-[0.8125rem] whitespace-pre-line text-fg">{r.replyText}</p>
         </div>
       )}
 
       {canAdmin(org.role) && (replying ? (
         <div className="mt-3 space-y-2">
-          <Textarea rows={3} className="font-sans text-[13px]" maxLength={limit} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+          <Textarea rows={3} className="font-sans text-[0.8125rem]" maxLength={limit} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
           <div className="flex items-center gap-2">
             <span className={clsx("text-xs", text.length > limit ? "text-bad" : "text-faint")}>{text.length}/{limit}</span>
             {reply.error && <span className="text-xs text-bad">{errorMessage(reply.error)}</span>}

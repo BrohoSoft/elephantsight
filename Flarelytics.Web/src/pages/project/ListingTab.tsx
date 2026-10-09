@@ -59,7 +59,7 @@ function Counted({ label, value, onChange, max, rows, disabled, hint }: {
   return (
     <Field label={label} hint={<span className={clsx(over && "text-bad")}>{value.length}/{max}{hint ? ` · ${hint}` : ""}</span>}>
       {rows ? (
-        <Textarea rows={rows} className="font-sans text-[13px]" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
+        <Textarea rows={rows} className="font-sans text-[0.8125rem]" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
       ) : (
         <Input value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
       )}

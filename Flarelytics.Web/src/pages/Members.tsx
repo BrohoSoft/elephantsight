@@ -67,7 +67,7 @@ function MemberRow({ member: m }: { member: Member }) {
           {m.fullName.charAt(0).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] text-fg">
+          <p className="truncate text-[0.8125rem] text-fg">
             {m.fullName} {isMe && <span className="text-faint">(tu)</span>}
           </p>
           <p className="truncate text-xs text-muted">{m.email} · dal {formatDate(m.joinedAtUtc)}</p>
@@ -106,7 +106,7 @@ function InvitationRow({ id, email, role, expires }: { id: string; email: string
   return (
     <li className="flex items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] text-fg">{email}</p>
+        <p className="truncate text-[0.8125rem] text-fg">{email}</p>
         <p className="text-xs text-muted">Scade il {formatDate(expires)}</p>
       </div>
       <Badge>{roleLabel[role]}</Badge>

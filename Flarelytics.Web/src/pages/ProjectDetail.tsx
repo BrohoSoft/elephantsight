@@ -46,7 +46,7 @@ export function ProjectDetailPage() {
           <AppIcon src={p.iconUrl} name={p.name} size="lg" />
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight text-fg">{p.name}</h1>
-            {p.description && <p className="mt-1 text-[13px] text-muted">{p.description}</p>}
+            {p.description && <p className="mt-1 text-[0.8125rem] text-muted">{p.description}</p>}
             <div className="mt-2 flex gap-1.5">{p.apps.map((a) => <StoreBadge key={a.id} store={a.store} />)}</div>
           </div>
         </div>
@@ -75,7 +75,7 @@ function ProjectOverview({ project: p }: { project: Project }) {
             <Link key={store} to={`/o/${org.id}/projects/${p.id}/settings`}
               className="flex items-center gap-3 rounded-lg border border-dashed border-line-strong bg-panel px-4 py-3 hover:bg-hover/50">
               <StoreGlyph store={store} className={store === "AppStore" ? "text-ios" : "text-android"} />
-              <span className="flex-1 text-[13px] text-muted">
+              <span className="flex-1 text-[0.8125rem] text-muted">
                 <span className="text-fg">{storeName(store)} non è ancora collegato.</span> Quando l'app è in {store === "GooglePlay" ? "Play Console" : "App Store Connect"}, collegala: da lì in poi ogni sezione mostra i due store insieme.
               </span>
               <span className="text-xs text-brand-fg">Collega →</span>
@@ -122,7 +122,7 @@ function StoreSlot({ orgId, project, store, admin, onLink }: { orgId: string; pr
     <div className="rounded-lg border border-line bg-panel p-4">
       <div className="flex items-center gap-2">
         <StoreGlyph store={store} className={tint} />
-        <span className="text-[13px] font-medium text-fg">{storeName(store)}</span>
+        <span className="text-[0.8125rem] font-medium text-fg">{storeName(store)}</span>
       </div>
 
       {app ? (
@@ -230,10 +230,10 @@ function LinkAppModal({ orgId, project, store, onClose }: { orgId: string; proje
                       className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-hover"
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] text-fg">{a.name}</span>
-                        <span className="block truncate font-mono text-[11px] text-faint">{a.bundleId}</span>
+                        <span className="block truncate text-[0.8125rem] text-fg">{a.name}</span>
+                        <span className="block truncate font-mono text-[0.6875rem] text-faint">{a.bundleId}</span>
                       </span>
-                      {store === "AppStore" && <span className="font-mono text-[11px] text-faint">{a.externalId}</span>}
+                      {store === "AppStore" && <span className="font-mono text-[0.6875rem] text-faint">{a.externalId}</span>}
                     </button>
                   </li>
                 ))}
@@ -309,7 +309,7 @@ function ProjectDetailsForm({ orgId, project }: { orgId: string; project: Projec
       }>
         <div className="max-w-xl space-y-4 p-4">
           <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <Field label="Descrizione"><Textarea rows={3} className="font-sans text-[13px]" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+          <Field label="Descrizione"><Textarea rows={3} className="font-sans text-[0.8125rem]" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
           {save.error && <Alert tone="bad">{errorMessage(save.error)}</Alert>}
         </div>
       </Panel>
@@ -317,7 +317,7 @@ function ProjectDetailsForm({ orgId, project }: { orgId: string; project: Projec
       <div className="rounded-lg border border-bad/30 bg-panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-[13px] font-medium text-fg">Elimina il progetto</p>
+            <p className="text-[0.8125rem] font-medium text-fg">Elimina il progetto</p>
             <p className="mt-0.5 text-xs text-muted">Le app vengono scollegate e i file di firma cancellati. Le chiavi degli store restano.</p>
           </div>
           {confirmDelete ? (

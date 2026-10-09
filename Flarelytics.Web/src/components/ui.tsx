@@ -19,7 +19,7 @@ export const Button = forwardRef<
     disabled={disabled || loading}
     className={clsx(
       "inline-flex items-center justify-center gap-1.5 rounded-md border font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-      size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]",
+      size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[0.8125rem]",
       variant === "primary" && "border-brand bg-brand text-brand-ink hover:bg-brand-strong hover:border-brand-strong",
       variant === "secondary" && "border-line-strong bg-panel-2 text-fg hover:bg-hover",
       variant === "ghost" && "border-transparent bg-transparent text-muted hover:bg-hover hover:text-fg",
@@ -35,7 +35,7 @@ export const Button = forwardRef<
 Button.displayName = "Button";
 
 const fieldBase =
-  "w-full rounded-md border border-line-strong bg-field px-2.5 text-[13px] text-fg placeholder:text-faint transition-colors focus:border-brand/70 focus:outline-none";
+  "w-full rounded-md border border-line-strong bg-field px-2.5 text-[0.8125rem] text-fg placeholder:text-faint transition-colors focus:border-brand/70 focus:outline-none";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (
   <input ref={ref} className={clsx(fieldBase, "h-8", className)} {...props} />
@@ -100,7 +100,7 @@ export function Badge({ tone = "neutral", children, className }: { tone?: Tone; 
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1 rounded border px-1.5 py-px text-[11px] font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1 rounded border px-1.5 py-px text-[0.6875rem] font-medium whitespace-nowrap",
         tone === "neutral" && "border-line-strong bg-panel-2 text-muted",
         tone === "ok" && "border-ok/30 bg-ok/10 text-ok",
         tone === "warn" && "border-warn/30 bg-warn/10 text-warn",
@@ -121,7 +121,7 @@ export function Alert({ tone = "warn", title, children }: { tone?: "warn" | "bad
   return (
     <div
       className={clsx(
-        "flex gap-2.5 rounded-md border px-3 py-2.5 text-[13px]",
+        "flex gap-2.5 rounded-md border px-3 py-2.5 text-[0.8125rem]",
         tone === "warn" && "border-warn/30 bg-warn/5",
         tone === "bad" && "border-bad/30 bg-bad/5",
         tone === "ok" && "border-ok/30 bg-ok/5",
@@ -162,7 +162,7 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
       {icon && <div className="mb-1 rounded-lg border border-line-strong bg-panel-2 p-2.5 text-muted">{icon}</div>}
       <p className="text-sm font-medium text-fg">{title}</p>
-      {children && <p className="max-w-sm text-[13px] text-muted">{children}</p>}
+      {children && <p className="max-w-sm text-[0.8125rem] text-muted">{children}</p>}
       {action && <div className="mt-3">{action}</div>}
     </div>
   );
@@ -173,7 +173,7 @@ export function PageHeader({ title, description, actions }: { title: ReactNode; 
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-xl font-medium tracking-tight text-fg">{title}</h1>
-        {description && <p className="mt-1 text-[13px] text-muted">{description}</p>}
+        {description && <p className="mt-1 text-[0.8125rem] text-muted">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

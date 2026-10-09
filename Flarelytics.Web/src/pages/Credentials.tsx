@@ -64,7 +64,7 @@ function CredentialRow({ orgId, credential: c, admin }: { orgId: string; credent
         <StoreGlyph store={c.store} className={`mt-0.5 ${c.store === "AppStore" ? "text-ios" : "text-android"}`} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-medium text-fg">{c.label}</span>
+            <span className="text-[0.8125rem] font-medium text-fg">{c.label}</span>
             {statusBadge[c.status]}
           </div>
           <p className="mt-1 text-xs text-muted">
@@ -112,7 +112,7 @@ function CredentialRow({ orgId, credential: c, admin }: { orgId: string; credent
 function SyncStatus({ credential: c }: { credential: Credential }) {
   return (
     <div className="mt-1.5 space-y-1">
-      <p className="text-[11px] text-faint">
+      <p className="text-[0.6875rem] text-faint">
         {c.daysImported > 0
           ? <>Storico: {c.daysImported} {c.store === "AppStore" ? "giorni controllati" : "report mensili"}{c.latestReportDate && <>, {c.store === "AppStore" ? "dati fino al" : "ultimo mese"} {formatDate(c.latestReportDate)}</>}</>
           : "Nessun report ancora scaricato"}
@@ -135,7 +135,7 @@ function FilePicker({ accept, fileName, onLoad, label }: { accept: string; fileN
     >
       {fileName ? <FileKey2 className="size-5 text-brand-fg" /> : <Upload className="size-5 text-faint" />}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] text-fg">{fileName ?? label}</span>
+        <span className="block truncate text-[0.8125rem] text-fg">{fileName ?? label}</span>
         <span className="block text-xs text-faint">{fileName ? "Clicca per sceglierne un altro" : `File ${accept}`}</span>
       </span>
       <input

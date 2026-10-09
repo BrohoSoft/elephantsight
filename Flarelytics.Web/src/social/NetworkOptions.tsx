@@ -42,7 +42,7 @@ export function NetworkOptions({ accounts, media, options, onChange, commercial,
       {instagram && hasVideo && (
         <div className="rounded-md border border-line px-3 py-2.5">
           <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-fg"><NetworkGlyph network="Instagram" className="size-3.5" /> Reel di Instagram</p>
-          <label className="flex items-center gap-2 text-[13px] text-fg">
+          <label className="flex items-center gap-2 text-[0.8125rem] text-fg">
             <input type="checkbox" className={checkbox} disabled={readOnly} checked={options.instagramShowInGrid}
               onChange={(e) => set({ instagramShowInGrid: e.target.checked })} />
             Mostra nella griglia del profilo
@@ -111,7 +111,7 @@ function TikTokOptions({ accounts, media, options, set, commercial, onCommercial
 
       <div className="space-y-1">
         <p className="text-xs font-medium text-muted">Consenti agli utenti di</p>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-fg">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[0.8125rem] text-fg">
           {([["tikTokAllowComment", "Commentare", commentOff], ["tikTokAllowDuet", "Fare un duetto", duetOff], ["tikTokAllowStitch", "Fare uno stitch", stitchOff]] as const).map(([key, label, off]) => (
             <label key={key} className="flex items-center gap-1.5" title={off ? "Disattivato nelle impostazioni dell'account TikTok" : undefined}>
               <input type="checkbox" className={checkbox} disabled={readOnly || off} checked={!off && options[key]} onChange={(e) => set({ [key]: e.target.checked })} />
@@ -122,7 +122,7 @@ function TikTokOptions({ accounts, media, options, set, commercial, onCommercial
       </div>
 
       <div className="space-y-1.5">
-        <label className="flex items-center gap-2 text-[13px] text-fg">
+        <label className="flex items-center gap-2 text-[0.8125rem] text-fg">
           <input type="checkbox" className={checkbox} disabled={readOnly} checked={commercial}
             onChange={(e) => {
               // Acceso: nessuna delle due preselezionata, come vuole TikTok. Spento: si tolgono tutte e due.
@@ -132,7 +132,7 @@ function TikTokOptions({ accounts, media, options, set, commercial, onCommercial
           Contenuto commerciale
         </label>
         {commercial && (
-          <div className="space-y-1 pl-6 text-[13px] text-fg">
+          <div className="space-y-1 pl-6 text-[0.8125rem] text-fg">
             <label className="flex items-center gap-2">
               <input type="checkbox" className={checkbox} disabled={readOnly} checked={options.tikTokBrandOrganic} onChange={(e) => set({ tikTokBrandOrganic: e.target.checked })} />
               Il tuo marchio <span className="text-xs text-muted">· etichetta "Contenuto promozionale"</span>

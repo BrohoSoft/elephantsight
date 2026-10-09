@@ -72,8 +72,8 @@ export function TrendChart({ metrics }: { metrics: Metrics }) {
       </div>
 
       {asTable ? (
-        <div className="max-h-[260px] overflow-y-auto rounded-md border border-line">
-          <table className="w-full text-[13px]">
+        <div className="max-h-[16.25rem] overflow-y-auto rounded-md border border-line">
+          <table className="w-full text-[0.8125rem]">
             <thead className="sticky top-0 bg-panel-2 text-xs text-muted">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">{metrics.days > 90 ? "Settimana dal" : "Giorno"}</th>

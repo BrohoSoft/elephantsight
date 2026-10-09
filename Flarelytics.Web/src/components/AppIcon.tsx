@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { useState } from "react";
 
-const SIZES = { sm: "size-6 rounded-md text-[11px]", md: "size-9 rounded-[9px] text-sm", lg: "size-14 rounded-[14px] text-xl" } as const;
+const SIZES = { sm: "size-6 rounded-md text-[0.6875rem]", md: "size-9 rounded-[0.5625rem] text-sm", lg: "size-14 rounded-[0.875rem] text-xl" } as const;
 
 /**
  * L'icona di un'app o di un progetto, con gli angoli arrotondati come sugli

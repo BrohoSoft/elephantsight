@@ -10,10 +10,11 @@ import { useAuth } from "../auth/AuthContext";
 import { Logo } from "./Logo";
 import { ProjectSwitcher, ProjectSidebarNav, projectSections } from "./ProjectNav";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { useScale, type Scale } from "../scale";
 import { Alert, Button, Field, Input, Modal, PageLoader } from "./ui";
 
 const menuItem =
-  "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] text-muted outline-none data-[highlighted]:bg-hover data-[highlighted]:text-fg";
+  "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[0.8125rem] text-muted outline-none data-[highlighted]:bg-hover data-[highlighted]:text-fg";
 const menuContent = "z-50 min-w-56 rounded-md border border-line-strong bg-panel p-1 shadow-xl";
 
 /** La cornice di tutte le pagine interne: barra laterale con organizzazione e sezioni, contenuto a destra. */
@@ -55,13 +56,13 @@ export function AppShell() {
             <NavItem to={`/o/${navOrg.id}/projects`} icon={<FolderKanban className="size-4" />}>Progetti</NavItem>
             <NavItem to={`/o/${navOrg.id}/reviews`} icon={<MessageSquare className="size-4" />}>Recensioni</NavItem>
             <NavItem to={`/o/${navOrg.id}/credentials`} icon={<KeyRound className="size-4" />}>Chiavi degli store</NavItem>
-            <p className="px-2 pt-4 pb-1 text-[11px] font-medium tracking-wide text-faint uppercase">Social</p>
+            <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Social</p>
             <NavItem to={`/o/${navOrg.id}/social`} end icon={<CalendarDays className="size-4" />}>Calendario</NavItem>
             <NavItem to={`/o/${navOrg.id}/social/inbox`} icon={<Inbox className="size-4" />}>
               Da programmare <InboxCount orgId={navOrg.id} />
             </NavItem>
             <NavItem to={`/o/${navOrg.id}/social/accounts`} icon={<AtSign className="size-4" />}>Account social</NavItem>
-            <p className="px-2 pt-4 pb-1 text-[11px] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
+            <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
             <NavItem to={`/o/${navOrg.id}/members`} icon={<Users className="size-4" />}>Membri</NavItem>
             <NavItem to={`/o/${navOrg.id}/api-keys`} icon={<KeySquare className="size-4" />}>Chiavi API</NavItem>
             <NavItem to={`/o/${navOrg.id}/settings`} icon={<Settings className="size-4" />}>Impostazioni</NavItem>
@@ -103,12 +104,33 @@ export function lastOrg(): string | null {
   }
 }
 
+/** Tre misure del pannello: la "A" più piccola o più grande dice cosa fa ciascuna. */
+function ScaleSwitcher() {
+  const { scale, setScale } = useScale();
+  const options: { value: Scale; label: string; size: string }[] = [
+    { value: "compact", label: "Compatta", size: "text-[0.6875rem]" },
+    { value: "normal", label: "Normale", size: "text-[0.8125rem]" },
+    { value: "large", label: "Grande", size: "text-[1rem]" },
+  ];
+  return (
+    <div className="inline-flex rounded-md border border-line-strong bg-field p-0.5" role="radiogroup" aria-label="Dimensione del pannello">
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={scale === o.value} title={o.label}
+          onClick={(e) => { e.preventDefault(); setScale(o.value); }}
+          className={clsx("flex size-7 items-center justify-center rounded font-medium", o.size, scale === o.value ? "bg-panel-2 text-fg shadow-sm" : "text-muted hover:text-fg")}>
+          A
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Quanti post aspettano nella coda: si vede dalla barra senza aprire la pagina. */
 function InboxCount({ orgId }: { orgId: string }) {
   const inbox = useSocialInbox(orgId);
   const count = inbox.data?.length ?? 0;
   if (count === 0) return null;
-  return <span className="ml-auto rounded-full bg-brand/15 px-1.5 text-[11px] font-medium text-brand-fg">{count}</span>;
+  return <span className="ml-auto rounded-full bg-brand/15 px-1.5 text-[0.6875rem] font-medium text-brand-fg">{count}</span>;
 }
 
 function NavItem({ to, icon, children, end }: { to: string; icon: ReactNode; children: ReactNode; end?: boolean }) {
@@ -118,7 +140,7 @@ function NavItem({ to, icon, children, end }: { to: string; icon: ReactNode; chi
       end={end}
       className={({ isActive }) =>
         clsx(
-          "flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
+          "flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors",
           isActive ? "bg-hover text-fg" : "text-muted hover:bg-hover/60 hover:text-fg",
         )
       }
@@ -138,15 +160,15 @@ function OrgSwitcher({ me, currentId }: { me: Me; currentId?: string }) {
     <>
       <Menu.Root>
         <Menu.Trigger className="flex h-9 w-full items-center gap-2 rounded-md border border-line-strong bg-panel-2 px-2.5 text-left hover:bg-hover">
-          <span className="flex size-5 items-center justify-center rounded bg-brand/15 text-[11px] font-semibold text-brand-fg">
+          <span className="flex size-5 items-center justify-center rounded bg-brand/15 text-[0.6875rem] font-semibold text-brand-fg">
             {(current?.name ?? "?").charAt(0).toUpperCase()}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{current?.name ?? "Scegli organizzazione"}</span>
+          <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-fg">{current?.name ?? "Scegli organizzazione"}</span>
           <ChevronsUpDown className="size-3.5 text-faint" />
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Content align="start" sideOffset={4} className={menuContent}>
-            <Menu.Label className="px-2 py-1 text-[11px] text-faint">Organizzazioni</Menu.Label>
+            <Menu.Label className="px-2 py-1 text-[0.6875rem] text-faint">Organizzazioni</Menu.Label>
             {me.organizations.map((o) => (
               <Menu.Item key={o.id} className={menuItem} onSelect={() => navigate(`/o/${o.id}`)}>
                 <span className="min-w-0 flex-1 truncate">{o.name}</span>
@@ -219,8 +241,8 @@ function UserMenu({ me }: { me: Me }) {
           {me.fullName.charAt(0).toUpperCase()}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] text-fg">{me.fullName}</span>
-          <span className="block truncate text-[11px] text-faint">{me.email}</span>
+          <span className="block truncate text-[0.8125rem] text-fg">{me.fullName}</span>
+          <span className="block truncate text-[0.6875rem] text-faint">{me.email}</span>
         </span>
       </Menu.Trigger>
       <Menu.Portal>
@@ -230,8 +252,12 @@ function UserMenu({ me }: { me: Me }) {
           </Menu.Item>
           <Menu.Separator className="my-1 h-px bg-line" />
           <div className="flex items-center justify-between gap-3 px-2 py-1.5">
-            <span className="text-[13px] text-muted">Tema</span>
+            <span className="text-[0.8125rem] text-muted">Tema</span>
             <ThemeSwitcher compact />
+          </div>
+          <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+            <span className="text-[0.8125rem] text-muted">Dimensione</span>
+            <ScaleSwitcher />
           </div>
           <Menu.Separator className="my-1 h-px bg-line" />
           <Menu.Item className={menuItem} onSelect={() => signOut().then(() => navigate("/login"))}>
@@ -254,7 +280,7 @@ function MobileBar({ me, orgId, projectId, section }: { me: Me; orgId?: string; 
           <NavLink to={`/o/${orgId}`} className="rounded p-1.5 text-muted hover:text-fg" aria-label="Vista globale"><ArrowLeft className="size-4" /></NavLink>
           <div className="min-w-0 flex-1"><ProjectSwitcher orgId={orgId} projectId={projectId} section={section} /></div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[13px]">
+        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[0.8125rem]">
           {projectSections(`/o/${orgId}/projects/${projectId}`).map((s) => <NavLink key={s.to} to={s.to} end={s.end} className={link}>{s.label}</NavLink>)}
         </nav>
       </div>
@@ -270,7 +296,7 @@ function MobileBar({ me, orgId, projectId, section }: { me: Me; orgId?: string; 
         </div>
       </div>
       {orgId && (
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[13px]">
+        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[0.8125rem]">
           {[
             ["", "Panoramica"],
             ["/projects", "Progetti"],

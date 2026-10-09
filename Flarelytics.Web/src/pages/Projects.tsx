@@ -83,7 +83,7 @@ function ProjectCard({ orgId, project }: { orgId: string; project: Project }) {
         ) : (
           project.apps.map((a) => <StoreBadge key={a.id} store={a.store} />)
         )}
-        <span className="ml-auto text-[11px] text-faint">{formatDate(project.createdAtUtc)}</span>
+        <span className="ml-auto text-[0.6875rem] text-faint">{formatDate(project.createdAtUtc)}</span>
       </div>
     </Link>
   );
@@ -132,7 +132,7 @@ function CreateProjectModal({ orgId, open, onOpenChange }: { orgId: string; open
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="App Meteo" />
         </Field>
         <Field label="Descrizione (facoltativa)">
-          <Textarea rows={3} className="font-sans text-[13px]" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <Textarea rows={3} className="font-sans text-[0.8125rem]" value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
         {create.error && <Alert tone="bad">{errorMessage(create.error)}</Alert>}
       </div>

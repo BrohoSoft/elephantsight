@@ -10,3 +10,11 @@
   var dark = preference === "dark" || (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
 })();
+
+// La scala del pannello (src/scale.ts): applicata subito, così la pagina non salta.
+(function () {
+  try {
+    var scale = localStorage.getItem("flarelytics.scale");
+    if (scale === "compact" || scale === "large") document.documentElement.dataset.scale = scale;
+  } catch (e) {}
+})();

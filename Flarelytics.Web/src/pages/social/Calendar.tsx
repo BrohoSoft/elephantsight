@@ -113,7 +113,7 @@ export function SocialCalendarPage() {
       {/* Dal tablet in su: la griglia del mese. */}
       <div className="hidden overflow-hidden rounded-lg border border-line bg-panel md:block">
         <div className="grid grid-cols-7 border-b border-line bg-panel-2/50">
-          {WEEKDAYS.map((d) => <div key={d} className="px-2 py-1.5 text-[11px] font-medium tracking-wide text-faint uppercase">{d}</div>)}
+          {WEEKDAYS.map((d) => <div key={d} className="px-2 py-1.5 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">{d}</div>)}
         </div>
         <div className="grid grid-cols-7">
           {days.map((day, i) => {
@@ -136,7 +136,7 @@ export function SocialCalendarPage() {
                 </div>
                 <div className="space-y-1">
                   {list.slice(0, 3).map((p) => <PostChip key={p.id} post={p} onOpen={() => open(p)} />)}
-                  {list.length > 3 && <p className="px-1 text-[11px] text-faint">+{list.length - 3} altri</p>}
+                  {list.length > 3 && <p className="px-1 text-[0.6875rem] text-faint">+{list.length - 3} altri</p>}
                 </div>
               </div>
             );
@@ -147,7 +147,7 @@ export function SocialCalendarPage() {
       {/* Sul telefono: i giorni del mese che hanno qualcosa. */}
       <div className="space-y-4 md:hidden">
         {visibleDays.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-line-strong px-4 py-8 text-center text-[13px] text-muted">Nessun post in questo mese.</p>
+          <p className="rounded-lg border border-dashed border-line-strong px-4 py-8 text-center text-[0.8125rem] text-muted">Nessun post in questo mese.</p>
         ) : visibleDays.map((day) => (
           <section key={dayKey(day)}>
             <h3 className="mb-1.5 text-xs font-medium text-muted first-letter:uppercase">{dayFormat.format(day)}</h3>
@@ -176,11 +176,11 @@ function PostChip({ post, onOpen, large }: { post: SocialPost; onOpen: () => voi
         large ? "px-3 py-2" : "px-1.5 py-1",
       )}>
       <span className="flex items-center gap-1">
-        <span className="font-mono text-[11px] text-muted">{timeFormat.format(new Date(post.scheduledAtUtc))}</span>
+        <span className="font-mono text-[0.6875rem] text-muted">{timeFormat.format(new Date(post.scheduledAtUtc))}</span>
         {networks.map((n) => <NetworkGlyph key={n} network={n} className="size-3 text-muted" />)}
         {large && <Badge tone={status.tone} className="ml-auto">{status.label}</Badge>}
       </span>
-      <span className={clsx("block truncate", large ? "mt-1 text-[13px]" : "text-xs")}>
+      <span className={clsx("block truncate", large ? "mt-1 text-[0.8125rem]" : "text-xs")}>
         {post.text || (post.media.length > 0 ? `${post.media.length} immagini` : "Senza testo")}
       </span>
     </button>

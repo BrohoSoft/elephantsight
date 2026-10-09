@@ -9,7 +9,7 @@ import { AppIcon } from "./AppIcon";
 import { StoreGlyph } from "./StoreIcons";
 
 const menuItem =
-  "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] text-muted outline-none data-[highlighted]:bg-hover data-[highlighted]:text-fg";
+  "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[0.8125rem] text-muted outline-none data-[highlighted]:bg-hover data-[highlighted]:text-fg";
 
 /** Le sezioni di un progetto: le stesse nella barra laterale e in quella per il telefono. */
 export const projectSections = (base: string) => [
@@ -46,14 +46,14 @@ export function ProjectSwitcher({ orgId, projectId, section }: { orgId: string; 
       <Menu.Trigger className="flex h-11 w-full items-center gap-2.5 rounded-md border border-line-strong bg-panel-2 px-2 text-left hover:bg-hover">
         <AppIcon src={current?.iconUrl} name={current?.name ?? "?"} size="sm" className="!size-7" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium text-fg">{current?.name ?? "…"}</span>
+          <span className="block truncate text-[0.8125rem] font-medium text-fg">{current?.name ?? "…"}</span>
           {current && <StoreDots project={current} />}
         </span>
         <ChevronsUpDown className="size-3.5 text-faint" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Content align="start" sideOffset={4} className="z-50 max-h-96 min-w-60 overflow-y-auto rounded-md border border-line-strong bg-panel p-1 shadow-xl">
-          <Menu.Label className="px-2 py-1 text-[11px] text-faint">Progetti</Menu.Label>
+          <Menu.Label className="px-2 py-1 text-[0.6875rem] text-faint">Progetti</Menu.Label>
           {projects.data?.map((p) => (
             <Menu.Item key={p.id} className={menuItem} onSelect={() => navigate(`/o/${orgId}/projects/${p.id}${section ? `/${section}` : ""}`)}>
               <AppIcon src={p.iconUrl} name={p.name} size="sm" className="!size-5 !rounded" />
@@ -94,7 +94,7 @@ function SectionLink({ to, icon, children, end }: { to: string; icon: ReactNode;
       to={to}
       end={end}
       className={({ isActive }) =>
-        clsx("flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors", isActive ? "bg-hover text-fg" : "text-muted hover:bg-hover/60 hover:text-fg")
+        clsx("flex h-8 items-center gap-2.5 rounded-md px-2 text-[0.8125rem] transition-colors", isActive ? "bg-hover text-fg" : "text-muted hover:bg-hover/60 hover:text-fg")
       }
     >
       {icon}

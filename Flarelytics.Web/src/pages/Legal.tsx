@@ -35,7 +35,7 @@ function LegalLayout({ title, children }: { title: string; children: ReactNode }
           <ThemeSwitcher compact />
         </div>
         <h1 className="text-2xl font-medium tracking-tight text-fg">{title}</h1>
-        <div className="mt-6 space-y-10 text-[14px] leading-relaxed text-muted [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-fg [&_li]:mt-1 [&_p]:mt-3 [&_strong]:text-fg [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-5">
+        <div className="mt-6 space-y-10 text-[0.875rem] leading-relaxed text-muted [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-fg [&_li]:mt-1 [&_p]:mt-3 [&_strong]:text-fg [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-5">
           {children}
         </div>
         <p className="mt-12 border-t border-line pt-4 text-xs text-faint">
@@ -53,7 +53,7 @@ function Contact({ email, fallback }: { email?: string | null; fallback: string 
 function NotConfigured({ configured }: { configured: boolean }) {
   if (configured) return null;
   return (
-    <p className="rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-[13px] text-warn">
+    <p className="rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-[0.8125rem] text-warn">
       Per chi gestisce l'istanza: imposta LEGAL_OWNER e LEGAL_CONTACT_EMAIL nel file .env, così qui compaiono il tuo nome e l'email di contatto.
     </p>
   );

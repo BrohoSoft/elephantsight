@@ -185,7 +185,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
 
         <Field label="Dove">
           {accounts.length === 0 ? (
-            <p className="text-[13px] text-muted">
+            <p className="text-[0.8125rem] text-muted">
               Nessun account collegato. <Link to={`/o/${org.id}/social/accounts`} className="text-brand-fg hover:underline">Collegane uno</Link>.
             </p>
           ) : (
@@ -197,7 +197,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
                   <button key={a.id} type="button" disabled={readOnly || (broken && !on)} onClick={() => toggle(a.id)} aria-pressed={on}
                     title={broken ? "Da ricollegare" : undefined}
                     className={clsx(
-                      "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] transition-colors disabled:cursor-not-allowed",
+                      "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[0.8125rem] transition-colors disabled:cursor-not-allowed",
                       on ? "border-brand/60 bg-brand/10 text-fg" : "border-line-strong bg-panel-2 text-muted hover:text-fg",
                       broken && "opacity-60",
                     )}>
@@ -212,7 +212,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
 
         <div className="space-y-2">
           <Field label="Testo">
-            <Textarea rows={6} readOnly={readOnly} className="font-sans text-[13px]" value={text} onChange={(e) => setText(e.target.value)}
+            <Textarea rows={6} readOnly={readOnly} className="font-sans text-[0.8125rem]" value={text} onChange={(e) => setText(e.target.value)}
               placeholder="Cosa vuoi raccontare? Link e #hashtag funzionano su tutte le reti." />
           </Field>
           {chosen.length > 0 && (
@@ -241,7 +241,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <Input readOnly={readOnly} value={m.altText ?? ""} placeholder="Testo alternativo" aria-label={`Testo alternativo dell'immagine ${i + 1}`}
                     onChange={(e) => setMedia((list) => list.map((x) => (x.id === m.id ? { ...x, altText: e.target.value } : x)))} />
-                  <p className="text-[11px] text-faint">
+                  <p className="text-[0.6875rem] text-faint">
                     {m.kind === "Video" ? <><Video className="mr-1 inline size-3" />{formatDuration(m.durationMs ?? 0)} · </> : null}
                     {m.width}×{m.height} · {m.sizeBytes > 1024 * 1024 ? `${(m.sizeBytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(m.sizeBytes / 1024)} KB`}
                   </p>
@@ -260,7 +260,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
                 onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
                 className="flex w-full items-center gap-3 rounded-md border border-dashed border-line-strong bg-field px-3 py-3 text-left hover:border-brand/50">
                 {uploading > 0 ? <Spinner /> : <ImagePlus className="size-5 text-faint" />}
-                <span className="text-[13px] text-muted">
+                <span className="text-[0.8125rem] text-muted">
                   {uploading > 0 ? `Caricamento…${progress !== null && progress < 1 ? ` ${Math.round(progress * 100)}%` : ""}` : "Aggiungi immagini o un video (o trascinali qui)"}
                 </span>
                 <input ref={fileInput} type="file" accept="image/*,video/mp4,video/quicktime" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
@@ -283,7 +283,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
           </div>
         )}
         {readOnly && post && (
-          <p className="text-[13px] text-muted">
+          <p className="text-[0.8125rem] text-muted">
             {post.imported ? "Pubblicato il" : post.isDraft ? "Bozza per il" : "Programmato per il"} {formatDateTime(post.scheduledAtUtc)}
             {post.imported && " · importato dalla rete: si modifica o si cancella lì."}
           </p>
@@ -329,7 +329,7 @@ function AccountText({ account: a, text, override, issues, readOnly, onOverride 
         ))}
       </div>
       {override !== undefined && (
-        <Textarea rows={3} readOnly={readOnly} className="mt-1.5 font-sans text-[13px]" value={override} onChange={(e) => onOverride(e.target.value)}
+        <Textarea rows={3} readOnly={readOnly} className="mt-1.5 font-sans text-[0.8125rem]" value={override} onChange={(e) => onOverride(e.target.value)}
           aria-label={`Testo per ${networkName[a.network]}`} />
       )}
     </li>
@@ -355,7 +355,7 @@ function TargetList({ targets }: { targets: SocialTarget[] }) {
     <ul className="divide-y divide-line rounded-md border border-line">
       {targets.map((t) => (
         <li key={t.id} className="space-y-1 px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2 text-[13px]">
+          <div className="flex flex-wrap items-center gap-2 text-[0.8125rem]">
             <NetworkGlyph network={t.network} className="size-3.5 text-muted" />
             <span className="text-fg">{t.accountName}</span>
             {!t.accountId && <span className="text-xs text-faint">(scollegato)</span>}

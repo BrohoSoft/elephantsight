@@ -62,7 +62,7 @@ function KeyRow({ apiKey: k }: { apiKey: ApiKeyItem }) {
     <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
       <KeySquare className="size-4 text-faint" />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-fg">{k.name} <Mono>{k.prefix}…</Mono></p>
+        <p className="text-[0.8125rem] text-fg">{k.name} <Mono>{k.prefix}…</Mono></p>
         <p className="mt-0.5 text-xs text-muted">
           creata il {formatDate(k.createdAtUtc)}{k.createdBy && <> da {k.createdBy}</>} · {k.lastUsedAtUtc ? <>usata l'ultima volta il {formatDateTime(k.lastUsedAtUtc)}</> : "mai usata"}
         </p>
@@ -123,7 +123,7 @@ function Usage() {
 
   return (
     <Panel title="Come si usa" description="Tutte le richieste con l'header Authorization: Bearer <chiave>. Al massimo 120 richieste al minuto per chiave.">
-      <div className="space-y-4 p-4 text-[13px] text-muted">
+      <div className="space-y-4 p-4 text-[0.8125rem] text-muted">
         <p>
           <Mono>POST /posts/batch</Mono> manda <b className="text-fg">più post in una chiamata</b> (fino a {50}), ognuno con il suo tipo, testo,
           programmazione e immagini. È un multipart: il campo <Mono>posts</Mono> contiene l'array JSON dei post, gli altri campi sono i file delle immagini,

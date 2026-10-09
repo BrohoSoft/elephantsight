@@ -15,9 +15,9 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
       </div>
       <div className="w-full max-w-sm">
         <h1 className="text-xl font-medium tracking-tight text-fg">{title}</h1>
-        {subtitle && <p className="mt-1.5 text-[13px] text-muted">{subtitle}</p>}
+        {subtitle && <p className="mt-1.5 text-[0.8125rem] text-muted">{subtitle}</p>}
         <div className="mt-6">{children}</div>
-        {footer && <div className="mt-6 text-center text-[13px] text-muted">{footer}</div>}
+        {footer && <div className="mt-6 text-center text-[0.8125rem] text-muted">{footer}</div>}
       </div>
       <p className="mt-10 text-xs text-faint">
         <Link to="/privacy" className="hover:text-fg">Privacy Policy</Link> · <Link to="/terms" className="hover:text-fg">Terms of Service</Link>

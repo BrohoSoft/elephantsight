@@ -107,7 +107,7 @@ function TwoFactorPanel({ enabled }: { enabled: boolean }) {
       actions={enabled ? <Badge tone="ok">Attiva</Badge> : <Badge>Non attiva</Badge>}
     >
       <div className="flex items-center justify-between gap-4 p-4">
-        <p className="flex items-center gap-2 text-[13px] text-muted">
+        <p className="flex items-center gap-2 text-[0.8125rem] text-muted">
           {enabled ? <ShieldCheck className="size-4 text-ok" /> : <ShieldOff className="size-4 text-faint" />}
           {enabled ? "Al prossimo accesso ti chiederemo anche il codice." : "Funziona con Google Authenticator, 1Password, Authy e simili."}
         </p>
@@ -160,10 +160,10 @@ function SetupTwoFactorModal({ onClose }: { onClose: () => void }) {
       {recovery ? (
         <div className="space-y-4">
           <Alert tone="ok" title="Verifica in due passaggi attiva" />
-          <p className="text-[13px] text-muted">
+          <p className="text-[0.8125rem] text-muted">
             Salva questi codici di recupero in un posto sicuro. Ognuno vale una volta, e servono se perdi il telefono: <span className="text-fg">non li vedrai più</span>.
           </p>
-          <div className="grid grid-cols-2 gap-2 rounded-md border border-line bg-bg p-3 font-mono text-[13px] text-fg">
+          <div className="grid grid-cols-2 gap-2 rounded-md border border-line bg-bg p-3 font-mono text-[0.8125rem] text-fg">
             {recovery.map((c) => <span key={c}>{c}</span>)}
           </div>
           <div className="flex justify-between">
@@ -179,9 +179,9 @@ function SetupTwoFactorModal({ onClose }: { onClose: () => void }) {
             run(async () => setRecovery((await request<{ codes: string[] }>("/me/2fa/enable", { method: "POST", body: { code } })).codes));
           }}
         >
-          <p className="text-[13px] text-muted">Inquadra il codice con l'app di autenticazione, poi scrivi il codice a 6 cifre che ti mostra.</p>
+          <p className="text-[0.8125rem] text-muted">Inquadra il codice con l'app di autenticazione, poi scrivi il codice a 6 cifre che ti mostra.</p>
           <div className="flex justify-center">
-            {qr ? <img src={qr} alt="QR code per l'app di autenticazione" className="size-[200px] rounded-md" /> : <div className="size-[200px]" />}
+            {qr ? <img src={qr} alt="QR code per l'app di autenticazione" className="size-[12.5rem] rounded-md" /> : <div className="size-[12.5rem]" />}
           </div>
           <p className="flex items-center justify-center gap-1 text-xs text-faint">
             Oppure inserisci a mano: <Mono>{secret.secret}</Mono> <CopyButton value={secret.secret} />

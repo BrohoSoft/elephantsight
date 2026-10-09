@@ -47,7 +47,7 @@ function StoreColumn({ releases: r }: { releases: StoreReleases }) {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <StoreGlyph store={r.store} className={tint} />
-        <span className="text-[13px] font-medium text-fg">{storeName(r.store)}</span>
+        <span className="text-[0.8125rem] font-medium text-fg">{storeName(r.store)}</span>
         <span className="font-mono text-xs text-faint">{r.appId}</span>
       </div>
 
@@ -58,7 +58,7 @@ function StoreColumn({ releases: r }: { releases: StoreReleases }) {
           <ul className="divide-y divide-line">
             {r.versions.map((v, i) => (
               <li key={`${v.track}-${v.version}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
-                <span className="font-mono text-[13px] text-fg">{v.version}</span>
+                <span className="font-mono text-[0.8125rem] text-fg">{v.version}</span>
                 <StageBadge stage={v.stage} raw={v.rawState} />
                 {v.track && <Badge>{trackLabel(v.track)}</Badge>}
                 {v.rolloutPercent != null && <span className="text-xs text-muted">{v.rolloutPercent.toFixed(0)}% degli utenti</span>}
@@ -75,7 +75,7 @@ function StoreColumn({ releases: r }: { releases: StoreReleases }) {
           <ul className="divide-y divide-line">
             {r.builds.slice(0, 15).map((b) => (
               <li key={b.buildNumber} className="flex flex-wrap items-center gap-3 px-4 py-2">
-                <span className="font-mono text-[13px] text-fg">{b.version ? `${b.version} (${b.buildNumber})` : b.buildNumber}</span>
+                <span className="font-mono text-[0.8125rem] text-fg">{b.version ? `${b.version} (${b.buildNumber})` : b.buildNumber}</span>
                 {r.store === "AppStore" ? <StageBadge stage={b.stage} raw={b.rawState} /> : b.tracks.map((t) => <Badge key={t}>{trackLabel(t)}</Badge>)}
                 {b.uploadedAtUtc && <span className="ml-auto text-xs text-faint">{formatDateTime(b.uploadedAtUtc)}</span>}
               </li>
@@ -153,7 +153,7 @@ function UploadPanel({ project }: { project: Project }) {
           className="flex w-full items-center gap-3 rounded-md border border-dashed border-line-strong bg-field px-3 py-4 text-left hover:border-brand/50">
           {file ? <FileArchive className="size-5 text-brand-fg" /> : <CloudUpload className="size-5 text-faint" />}
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] text-fg">{file ? file.name : `Scegli il file ${accept}`}</span>
+            <span className="block truncate text-[0.8125rem] text-fg">{file ? file.name : `Scegli il file ${accept}`}</span>
             <span className="block text-xs text-faint">
               {file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : store === "AppStore" ? "Versione e numero di build si leggono dal file." : "Android App Bundle firmato con la chiave di caricamento."}
             </span>
@@ -191,7 +191,7 @@ function UploadPanel({ project }: { project: Project }) {
               <Field label="Note di rilascio (facoltative)" hint={`${notes.length}/500 · lingua ${notesLanguage}`}>
                 <div className="flex gap-2">
                   <div className="w-24 shrink-0"><Input value={notesLanguage} onChange={(e) => setNotesLanguage(e.target.value)} aria-label="Lingua delle note" /></div>
-                  <Textarea rows={2} className="font-sans text-[13px]" maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} />
+                  <Textarea rows={2} className="font-sans text-[0.8125rem]" maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} />
                 </div>
               </Field>
             </div>
@@ -260,7 +260,7 @@ function UploadHistory({ project }: { project: Project }) {
           <li key={u.id} className="px-4 py-2.5">
             <div className="flex flex-wrap items-center gap-3">
               <StoreGlyph store={u.store} className={u.store === "AppStore" ? "text-ios" : "text-android"} />
-              <span className="min-w-0 truncate text-[13px] text-fg">{u.fileName}</span>
+              <span className="min-w-0 truncate text-[0.8125rem] text-fg">{u.fileName}</span>
               {(u.version || u.buildNumber) && <span className="font-mono text-xs text-muted">{u.version ?? ""}{u.buildNumber ? ` (${u.buildNumber})` : ""}</span>}
               {u.track && <Badge>{trackLabel(u.track)}</Badge>}
               <Badge tone={STATUS[u.status].tone}>{(u.status === "Uploading" || u.status === "Processing") && <Spinner className="size-3" />}{STATUS[u.status].label}</Badge>

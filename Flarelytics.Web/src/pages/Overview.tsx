@@ -58,7 +58,7 @@ export function OverviewPage() {
             }
           >
             {hasProjects ? (
-              <table className="w-full text-[13px]">
+              <table className="w-full text-[0.8125rem]">
                 <thead className="text-xs text-muted">
                   <tr className="border-b border-line">
                     <th className="px-4 py-2 text-left font-medium">Progetto</th>
@@ -110,7 +110,7 @@ function SetupStep({ done, n, to, title, children }: { done: boolean; n: number;
           {done ? <Check className="size-3.5" /> : n}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={clsx("block text-[13px]", done ? "text-muted line-through decoration-faint" : "text-fg")}>{title}</span>
+          <span className={clsx("block text-[0.8125rem]", done ? "text-muted line-through decoration-faint" : "text-fg")}>{title}</span>
           <span className="block text-xs text-faint">{children}</span>
         </span>
         {!done && <ArrowRight className="size-4 text-faint" />}

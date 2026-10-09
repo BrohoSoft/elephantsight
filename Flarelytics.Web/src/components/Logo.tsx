@@ -14,7 +14,7 @@ export function Logo({ withName = true }: { withName?: boolean }) {
         <circle cx="16" cy="16" r="5.5" fill="var(--color-brand)" />
         <path d="M12.9 18.6h1.6v-2.4h-1.6zM15.2 18.6h1.6v-4h-1.6zM17.5 18.6h1.6v-5.6h-1.6z" fill="var(--color-panel-2)" />
       </svg>
-      {withName && <span className="text-[15px] font-semibold tracking-tight text-fg">WatchStore</span>}
+      {withName && <span className="text-[0.9375rem] font-semibold tracking-tight text-fg">WatchStore</span>}
     </span>
   );
 }

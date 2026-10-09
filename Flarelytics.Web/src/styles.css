@@ -104,11 +104,27 @@ body,
   height: 100%;
 }
 
+/*
+ * La scala di tutto il pannello. Testi, spaziature e icone sono in rem, quindi
+ * crescono insieme cambiando la dimensione del carattere della radice. La
+ * sceglie l'utente dal suo menu (src/scale.ts); "normale" corrisponde allo
+ * zoom 125% del browser sulla versione di prima, che a 100% era troppo piccola.
+ */
+html {
+  font-size: 125%;
+}
+html[data-scale="compact"] {
+  font-size: 106.25%;
+}
+html[data-scale="large"] {
+  font-size: 143.75%;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 0.875rem;
   -webkit-font-smoothing: antialiased;
 }
 

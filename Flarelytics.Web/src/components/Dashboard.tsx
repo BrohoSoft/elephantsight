@@ -126,7 +126,7 @@ function Kpi({ label, hint, value, split, format, change, days, note }: {
           )}
         </p>
       )}
-      {note && <p className="mt-1 text-[11px] text-faint">{note}</p>}
+      {note && <p className="mt-1 text-[0.6875rem] text-faint">{note}</p>}
       <div className="mt-3 flex gap-4 text-xs text-muted">
         {(["AppStore", "GooglePlay"] as Store[]).map((s) => (
           <span key={s} className="inline-flex items-center gap-1.5" title={s === "AppStore" ? "App Store" : "Google Play"}>
@@ -147,7 +147,7 @@ function CountryPanel({ metrics }: { metrics: Metrics }) {
       {metrics.countries.length === 0 ? (
         <EmptyState icon={<BarChart3 className="size-5" />} title="Nessun dato nel periodo" />
       ) : (
-        <table className="w-full text-[13px]">
+        <table className="w-full text-[0.8125rem]">
           <thead className="text-xs text-muted">
             <tr className="border-b border-line">
               <th className="px-4 py-2 text-left font-medium">Paese</th>
