@@ -56,6 +56,7 @@ await app.MigrateDatabaseAsync();
 
 app.UseForwardedHeaders();
 app.UseSecurityHeaders();
+app.UseSiteVerificationFiles();
 app.UseExceptionHandler();
 app.UseRateLimiter();
 app.UseAuthentication();

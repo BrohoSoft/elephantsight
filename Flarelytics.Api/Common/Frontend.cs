@@ -1,6 +1,6 @@
 namespace Flarelytics.Api.Common;
 
-public static class Frontend
+public static partial class Frontend
 {
     /// <summary>
     /// Gli header di sicurezza, su ogni risposta. Prima li metteva Caddy; ora
@@ -30,6 +30,36 @@ public static class Frontend
             await next();
         });
     }
+
+    /// <summary>
+    /// I file con cui TikTok, Meta o Google verificano che il sito è nostro
+    /// (<c>tiktok….txt</c>, <c>google….html</c>…): stanno in
+    /// <c>{Reports}/_verify</c>, nel volume dei dati, e rispondono a qualunque
+    /// percorso che finisca con il loro nome, perché ogni piattaforma sceglie
+    /// il suo (TikTok lo vuole sotto il prefisso indicato nel suo portale).
+    /// </summary>
+    /// <remarks>
+    /// Solo nomi semplici (lettere, numeri, trattini) con estensione .txt o
+    /// .html: nessun percorso arriva al disco così com'è.
+    /// </remarks>
+    public static void UseSiteVerificationFiles(this WebApplication app)
+    {
+        var directory = Path.Combine(app.Configuration["Reports:StorageDirectory"] ?? "/data/reports", "_verify");
+        app.Use(async (http, next) =>
+        {
+            var name = Path.GetFileName(http.Request.Path.Value ?? "");
+            if (HttpMethods.IsGet(http.Request.Method) && VerificationName().IsMatch(name) && File.Exists(Path.Combine(directory, name)))
+            {
+                http.Response.ContentType = name.EndsWith(".html") ? "text/html; charset=utf-8" : "text/plain; charset=utf-8";
+                await http.Response.SendFileAsync(Path.Combine(directory, name));
+                return;
+            }
+            await next();
+        });
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9_-]{4,100}\.(txt|html)$")]
+    private static partial System.Text.RegularExpressions.Regex VerificationName();
 
     /// <summary>
     /// Serve il pannello compilato da <c>wwwroot</c>. In sviluppo la cartella
