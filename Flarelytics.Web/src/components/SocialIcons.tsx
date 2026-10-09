@@ -33,6 +33,14 @@ export function NetworkGlyph({ network, className }: { network: SocialNetwork; c
           <circle cx="11.6" cy="4.4" r=".5" fill="currentColor" stroke="none" />
         </svg>
       );
+    case "TikTok":
+      // Una nota musicale.
+      return (
+        <svg {...common} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 2.5v8a2.5 2.5 0 1 1-2.5-2.5" />
+          <path d="M9 2.5c.4 1.8 1.7 3 3.5 3.2" />
+        </svg>
+      );
     case "FacebookPage":
       // Una "f" in un riquadro.
       return (

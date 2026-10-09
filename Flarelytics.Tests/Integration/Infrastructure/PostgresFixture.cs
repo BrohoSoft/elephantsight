@@ -17,7 +17,11 @@ public sealed class PostgresFixture : IAsyncLifetime
     public const string AppRole = "flarelytics_app";
     private const string AppPassword = "app";
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine").Build();
+    // Ogni test ha il suo database e i suoi pool di connessioni: con le 100
+    // connessioni di serie, a suite lunga, PostgreSQL rifiuta le nuove.
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
+        .WithCommand("-c", "max_connections=400")
+        .Build();
 
     public async Task InitializeAsync()
     {

@@ -5,7 +5,8 @@ public enum SocialNetwork
     Bluesky = 0,
     Mastodon = 1,
     Instagram = 2,
-    FacebookPage = 3
+    FacebookPage = 3,
+    TikTok = 4
 }
 
 public enum SocialAccountStatus
@@ -143,6 +144,13 @@ public class SocialPost : BaseEntity, ITenantOwned
 
     public Guid CreatedByUserId { get; private set; }
 
+    /// <summary>Le scelte per le singole reti (griglia di Instagram, privacy di TikTok…), in JSON: vedi <see cref="Social.PostOptions"/>.</summary>
+    public string? OptionsJson { get; private set; }
+
+    public Social.PostOptions Options => Social.PostOptions.FromJson(OptionsJson);
+
+    public void SetOptions(Social.PostOptions options) => OptionsJson = options.ToJson();
+
     public IReadOnlyList<SocialPostTarget> Targets => _targets;
     public IReadOnlyList<SocialMedia> Media => _media;
 
@@ -229,6 +237,9 @@ public class SocialPostTarget : BaseEntity, ITenantOwned
     /// </summary>
     public string? ProgressState { get; private set; }
 
+    /// <summary>Da quando la rete sta elaborando (un Reel, un video TikTok): oltre un tempo massimo si rinuncia.</summary>
+    public DateTime? ProgressStartedAtUtc { get; private set; }
+
     private SocialPostTarget() { }
 
     public static SocialPostTarget For(SocialPost post, SocialAccount account) => new()
@@ -245,7 +256,23 @@ public class SocialPostTarget : BaseEntity, ITenantOwned
         Error = null;
     }
 
-    public void SetProgress(string? state) => ProgressState = state;
+    public void SetProgress(string? state, DateTime? nowUtc = null)
+    {
+        ProgressState = state;
+        ProgressStartedAtUtc = state is null ? null : ProgressStartedAtUtc ?? nowUtc ?? DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// La rete sta ancora elaborando il video: si ricontrolla più tardi. Non
+    /// è un errore e non consuma un tentativo.
+    /// </summary>
+    public void StillProcessing(DateTime nextCheckAtUtc)
+    {
+        Status = SocialTargetStatus.Pending;
+        NextAttemptAtUtc = nextCheckAtUtc;
+        Attempts = Math.Max(0, Attempts - 1);
+        Error = null;
+    }
 
     public void Published(string? externalId, string? url, DateTime nowUtc)
     {
@@ -289,23 +316,45 @@ public class SocialPostTarget : BaseEntity, ITenantOwned
     }
 }
 
+public enum MediaKind
+{
+    Image = 0,
+    Video = 1
+}
+
 /// <summary>
-/// Un'immagine di un post, salvata su disco in JPEG. La converte il pannello
-/// prima di caricarla: Instagram vuole solo JPEG, Bluesky meno di 1 MB.
+/// Un'immagine o un video di un post, su disco.
 /// </summary>
 /// <remarks>
-/// Si carica prima del post (<see cref="PostId"/> null) e ci si attacca al
-/// salvataggio. Quelle mai attaccate le cancella il worker dopo un giorno.
+/// <para>Le immagini sono sempre JPEG: le converte il pannello prima di
+/// caricarle (Instagram vuole solo JPEG, Bluesky meno di 1 MB). I video
+/// arrivano come sono (MP4 o MOV): il server ne legge durata, dimensioni e se
+/// l'indice sta in testa (<see cref="Social.Mp4Info"/>), senza ricodificarli.</para>
+///
+/// <para>Si carica prima del post (<see cref="PostId"/> null) e ci si attacca
+/// al salvataggio. Quelli mai attaccati li cancella il worker dopo un giorno.</para>
 /// </remarks>
 public class SocialMedia : BaseEntity, ITenantOwned
 {
     public Guid TenantId { get; private set; }
     public Guid? PostId { get; private set; }
     public int Position { get; private set; }
+    public MediaKind Kind { get; private set; }
+
+    /// <summary>image/jpeg, video/mp4 o video/quicktime.</summary>
+    public string ContentType { get; private set; } = "image/jpeg";
+
     public string FileName { get; private set; } = null!;
     public long SizeBytes { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
+
+    /// <summary>Solo video.</summary>
+    public int? DurationMs { get; private set; }
+
+    /// <summary>Solo video: l'indice (moov) sta prima dei dati, come vuole Instagram per i Reel.</summary>
+    public bool FastStart { get; private set; }
+
     public string? AltText { get; private set; }
     public Guid CreatedByUserId { get; private set; }
 
@@ -313,7 +362,22 @@ public class SocialMedia : BaseEntity, ITenantOwned
 
     public static SocialMedia Create(Guid tenantId, string fileName, long size, int width, int height, Guid createdBy) => new()
     {
-        TenantId = tenantId, FileName = fileName, SizeBytes = size, Width = width, Height = height, CreatedByUserId = createdBy
+        TenantId = tenantId, FileName = fileName, SizeBytes = size, Width = width, Height = height, CreatedByUserId = createdBy,
+        Kind = MediaKind.Image, ContentType = "image/jpeg"
+    };
+
+    public static SocialMedia CreateVideo(Guid tenantId, string fileName, long size, Social.VideoInfo info, Guid createdBy) => new()
+    {
+        TenantId = tenantId, FileName = fileName, SizeBytes = size, Width = info.Width, Height = info.Height, CreatedByUserId = createdBy,
+        Kind = MediaKind.Video, ContentType = info.ContentType, DurationMs = info.DurationMs, FastStart = info.FastStart
+    };
+
+    /// <summary>L'estensione del file su disco e nell'indirizzo firmato.</summary>
+    public string Extension => ContentType switch
+    {
+        "video/mp4" => ".mp4",
+        "video/quicktime" => ".mov",
+        _ => ".jpg"
     };
 
     public void AttachTo(Guid postId, int position, string? altText)

@@ -130,10 +130,14 @@ function Usage() {
           che i post citano per nome in <Mono>media[].file</Mono>.
         </p>
         <ul className="list-disc space-y-1 pl-5">
-          <li><Mono>type</Mono>: <Mono>text</Mono> (nessuna immagine), <Mono>image</Mono> (una), <Mono>carousel</Mono> (da 2 a 10, nell'ordine in cui le elenchi).</li>
+          <li><Mono>type</Mono>: <Mono>text</Mono> (nessuna immagine), <Mono>image</Mono> (una), <Mono>carousel</Mono> (da 2 a 10, nell'ordine in cui le elenchi), <Mono>video</Mono> (un MP4/MOV: su Instagram diventa un Reel, su TikTok un video).</li>
+          <li><Mono>options.showInProfileGrid</Mono>: per i Reel, <Mono>false</Mono> = solo nella scheda Reel, non nella griglia del profilo. La visibilità su TikTok invece la sceglie chi programma il post, nel pannello: lo chiede TikTok.</li>
           <li><Mono>suggestedAtUtc</Mono>: quando pubblicarlo, in UTC (<Mono>…Z</Mono>) o con il fuso (<Mono>…+02:00</Mono>).</li>
           <li><Mono>externalRef</Mono>: il tuo id del post. Rimandando lo stesso blocco, i post già entrati risultano <Mono>existing</Mono> e non si duplicano.</li>
           <li>Immagini <b className="text-fg">JPEG</b> fino a 10 MB (per Bluesky meno di 1 MB). Ogni post si controlla da solo: la risposta dice per ciascuno <Mono>created</Mono>, <Mono>existing</Mono> o <Mono>rejected</Mono> con il motivo.</li>
+          <li>Tutta la richiesta deve restare sotto i <b className="text-fg">100 MB</b> (il limite di Cloudflare). Un video più grande si carica prima a pezzi e poi si cita con <Mono>media[].id</Mono>:
+            {" "}<Mono>POST /media/uploads</Mono> con <Mono>fileName</Mono> e <Mono>size</Mono> → <Mono>uploadId</Mono>; <Mono>PUT /media/uploads/&#123;uploadId&#125;?offset=N</Mono> con i byte del pezzo (fino a 50 MB);
+            {" "}<Mono>POST /media/uploads/&#123;uploadId&#125;/complete</Mono> → l'<Mono>id</Mono> del video.</li>
         </ul>
         <Snippet title="Più post in una chiamata" code={batch} />
         <p className="text-xs">

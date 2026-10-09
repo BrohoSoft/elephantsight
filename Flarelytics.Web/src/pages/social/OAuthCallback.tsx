@@ -23,37 +23,38 @@ function useOAuthOrg(): string | null {
 }
 
 /**
- * Dove Instagram rimanda dopo il login. Un login è un account solo: l'API lo
- * collega subito, e si torna agli account.
+ * Dove Instagram e TikTok rimandano dopo il login. Un login è un account solo:
+ * l'API lo collega subito, e si torna agli account.
  */
-export function InstagramCallbackPage() {
+export function SingleAccountCallbackPage({ provider }: { provider: "instagram" | "tiktok" }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const orgId = useOAuthOrg();
   const [error, setError] = useState<unknown>(null);
   const started = useRef(false);
+  const name = provider === "tiktok" ? "TikTok" : "Instagram";
 
   const code = params.get("code");
   const state = params.get("state");
-  const denied = params.get("error_description") ?? (params.get("error") ? "Accesso negato su Instagram." : null);
+  const denied = params.get("error_description") ?? (params.get("error") ? `Accesso negato su ${name}.` : null);
 
   useEffect(() => {
     // Una volta sola: il codice vale per un solo scambio.
     if (started.current || !code || !state || !orgId) return;
     started.current = true;
-    request(`/orgs/${orgId}/social/instagram/complete`, { method: "POST", body: { code, state } })
+    request(`/orgs/${orgId}/social/${provider}/complete`, { method: "POST", body: { code, state } })
       .then(() => queryClient.invalidateQueries({ queryKey: keys.socialAccounts(orgId) }))
       .then(() => navigate(`/o/${orgId}/social/accounts`, { replace: true }))
       .catch(setError);
-  }, [code, state, orgId, navigate, queryClient]);
+  }, [code, state, orgId, navigate, queryClient, provider]);
 
   if (!denied && code && state && !error) return <PageLoader />;
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
-      <PageHeader title="Collegamento con Instagram" />
-      <Alert tone="bad">{error ? errorMessage(error) : denied ?? "Instagram non ha restituito il codice di accesso."}</Alert>
+      <PageHeader title={`Collegamento con ${name}`} />
+      <Alert tone="bad">{error ? errorMessage(error) : denied ?? `${name} non ha restituito il codice di accesso.`}</Alert>
       <Button onClick={() => navigate(orgId ? `/o/${orgId}/social/accounts` : "/", { replace: true })}>Torna agli account</Button>
     </div>
   );

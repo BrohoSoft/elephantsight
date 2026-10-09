@@ -23,6 +23,8 @@ public class SocialOptions
 
     public InstagramOptions Instagram { get; set; } = new();
 
+    public TikTokOptions TikTok { get; set; } = new();
+
     /// <summary>Quanto aspettare fra un controllo e l'altro di un'elaborazione (Instagram, Mastodon). Zero nei test.</summary>
     public TimeSpan PollDelay { get; set; } = TimeSpan.FromSeconds(3);
 }
@@ -52,4 +54,13 @@ public class InstagramOptions
     public string? AppSecret { get; set; }
 
     public bool Enabled => !string.IsNullOrWhiteSpace(AppId) && !string.IsNullOrWhiteSpace(AppSecret);
+}
+
+/// <summary>L'app TikTok di chi installa (developers.tiktok.com): Login Kit e Content Posting API.</summary>
+public class TikTokOptions
+{
+    public string? ClientKey { get; set; }
+    public string? ClientSecret { get; set; }
+
+    public bool Enabled => !string.IsNullOrWhiteSpace(ClientKey) && !string.IsNullOrWhiteSpace(ClientSecret);
 }

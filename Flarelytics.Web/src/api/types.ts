@@ -149,6 +149,9 @@ export interface InstanceInfo {
   instagramEnabled: boolean;
   /** Da registrare nelle impostazioni di Business login di Instagram. */
   instagramRedirectUri: string;
+  tikTokEnabled: boolean;
+  /** Da registrare nell'app TikTok (Login Kit → Redirect URI). */
+  tikTokRedirectUri: string;
   version: string;
 }
 
@@ -310,7 +313,7 @@ export interface BuildUploadItem {
   finishedAtUtc: string | null;
 }
 
-export type SocialNetwork = "Bluesky" | "Mastodon" | "Instagram" | "FacebookPage";
+export type SocialNetwork = "Bluesky" | "Mastodon" | "Instagram" | "FacebookPage" | "TikTok";
 export type SocialAccountStatus = "Connected" | "NeedsReconnect";
 
 /** I limiti di una rete, gli stessi che il server ricontrolla (SocialRules). */
@@ -323,6 +326,13 @@ export interface NetworkLimits {
   maxAspectRatio: number | null;
   maxHashtags: number | null;
   characterCounting: "graphemes" | "codepoints" | "mastodon";
+  /** none: niente video; optional: Instagram, diventa un Reel; required: TikTok. */
+  video: "none" | "optional" | "required";
+  maxVideoBytes: number;
+  minVideoSeconds: number;
+  maxVideoSeconds: number;
+  /** Il video deve avere l'indice in testa (Reel di Instagram). */
+  requiresFastStart: boolean;
 }
 
 export interface SocialAccount {
@@ -337,8 +347,13 @@ export interface SocialAccount {
   createdAtUtc: string;
 }
 
+export type MediaKind = "Image" | "Video";
+
 export interface SocialMediaItem {
   id: string;
+  kind: MediaKind;
+  durationMs: number | null;
+  fastStart: boolean;
   width: number;
   height: number;
   sizeBytes: number;
@@ -378,6 +393,7 @@ export interface SocialPost {
   /** La data proposta da chi l'ha mandato. */
   suggestedAtUtc: string | null;
   externalRef: string | null;
+  options: PostOptions;
   /** Il nome della chiave API da cui è arrivato (solo nella coda). */
   source?: string | null;
   media: SocialMediaItem[];
@@ -417,4 +433,38 @@ export interface AssignResult {
   postId: string;
   scheduled: boolean;
   problem: string | null;
+}
+
+export type TikTokPrivacy = "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY";
+
+/** Le scelte del post che valgono per alcune reti (vedi PostOptions in C#). */
+export interface PostOptions {
+  instagramShowInGrid: boolean;
+  tikTokPrivacy: TikTokPrivacy | null;
+  tikTokAllowComment: boolean;
+  tikTokAllowDuet: boolean;
+  tikTokAllowStitch: boolean;
+  tikTokBrandOrganic: boolean;
+  tikTokBrandedContent: boolean;
+}
+
+export const defaultPostOptions: PostOptions = {
+  instagramShowInGrid: true,
+  tikTokPrivacy: null,
+  tikTokAllowComment: false,
+  tikTokAllowDuet: false,
+  tikTokAllowStitch: false,
+  tikTokBrandOrganic: false,
+  tikTokBrandedContent: false,
+};
+
+/** Quello che TikTok dice del creator: va mostrato mentre si prepara il post. */
+export interface TikTokCreator {
+  username: string;
+  nickname: string;
+  privacyLevels: TikTokPrivacy[];
+  commentDisabled: boolean;
+  duetDisabled: boolean;
+  stitchDisabled: boolean;
+  maxVideoSeconds: number;
 }

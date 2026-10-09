@@ -1,16 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { ArrowLeft, ArrowRight, ExternalLink, ImagePlus, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, ImagePlus, RotateCcw, Trash2, Video, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { errorMessage, request } from "../api/client";
 import { keys } from "../api/hooks";
-import type { Project, SocialAccount, SocialMediaItem, SocialPost, SocialPostStatus, SocialTarget } from "../api/types";
+import { defaultPostOptions, type PostOptions, type Project, type SocialAccount, type SocialMediaItem, type SocialPost, type SocialPostStatus, type SocialTarget } from "../api/types";
 import { formatDateTime, useOrg } from "../components/org";
 import { NetworkGlyph } from "../components/SocialIcons";
 import { Alert, Badge, Button, Field, Input, Modal, Segmented, Select, Spinner, Textarea } from "../components/ui";
-import { toJpeg } from "./image";
-import { accountLabel, countCharacters, networkName, problems } from "./rules";
+import { commercialIncomplete, NetworkOptions } from "./NetworkOptions";
+import { accountLabel, countCharacters, networkName, optionProblems, problems } from "./rules";
+import { formatDuration, uploadMedia } from "./upload";
 
 type Tone = "neutral" | "ok" | "warn" | "bad" | "brand";
 
@@ -59,13 +60,19 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   const [time, setTime] = useState(timeInput(start));
   const [projectId, setProjectId] = useState(post?.projectId ?? "");
   const [uploading, setUploading] = useState(0);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [options, setOptions] = useState<PostOptions>(post?.options ?? defaultPostOptions);
+  const [commercial, setCommercial] = useState(!!(post?.options.tikTokBrandOrganic || post?.options.tikTokBrandedContent));
   const [busy, setBusy] = useState<"draft" | "save" | "delete" | "retry" | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const chosen = accounts.filter((a) => selected.includes(a.id));
-  const issues = chosen.map((a) => ({ account: a, problems: problems(overrides[a.id] ?? text, media, a.limits) })).filter((x) => x.problems.length > 0);
+  const issues = chosen
+    .map((a) => ({ account: a, problems: [...problems(overrides[a.id] ?? text, media, a.limits), ...optionProblems(a.network, options)] }))
+    .filter((x) => x.problems.length > 0);
+  const incomplete = chosen.some((a) => a.network === "TikTok") && commercialIncomplete(options, commercial);
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
@@ -75,14 +82,13 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
     for (const file of Array.from(files)) {
       setUploading((n) => n + 1);
       try {
-        const form = new FormData();
-        form.append("file", await toJpeg(file), file.name.replace(/\.[^.]+$/, "") + ".jpg");
-        const item = await request<SocialMediaItem>(`/orgs/${org.id}/social/media`, { method: "POST", body: form });
+        const item = await uploadMedia(org.id, file, setProgress);
         setMedia((m) => [...m, { ...item, altText: "" }]);
       } catch (e) {
         setError(e);
       } finally {
         setUploading((n) => n - 1);
+        setProgress(null);
       }
     }
   }
@@ -106,6 +112,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
       accountIds: selected,
       media: media.map((m) => ({ id: m.id, altText: m.altText || null })),
       overrides: Object.fromEntries(Object.entries(overrides).filter(([id, v]) => selected.includes(id) && v.trim())),
+      options,
     };
     try {
       await request(post ? `/orgs/${org.id}/social/posts/${post.id}` : `/orgs/${org.id}/social/posts`, { method: post ? "PUT" : "POST", body });
@@ -157,7 +164,7 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
         <>
           <Button variant="ghost" onClick={onClose}>Annulla</Button>
           <Button loading={busy === "draft"} disabled={uploading > 0} onClick={() => save(true)}>{post?.inbox ? "Salva in coda" : "Salva bozza"}</Button>
-          <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0} onClick={() => save(false)}>
+          <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete} onClick={() => save(false)}>
             {when === "now" ? "Pubblica ora" : "Programma"}
           </Button>
         </>
@@ -224,15 +231,20 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
           )}
         </div>
 
-        <Field label="Immagini" hint={!readOnly ? "Si convertono in JPEG sotto 1 MB, come vogliono Instagram e Bluesky. Il testo alternativo aiuta chi usa un lettore di schermo." : undefined}>
+        <Field label="Immagini o video" hint={!readOnly ? "Le immagini si convertono in JPEG sotto 1 MB. Un video (MP4 o MOV) va da solo: su Instagram diventa un Reel, su TikTok un video. Il testo alternativo aiuta chi usa un lettore di schermo." : undefined}>
           <div className="space-y-2">
             {media.map((m, i) => (
               <div key={m.id} className="flex items-start gap-3 rounded-md border border-line bg-panel-2/50 p-2">
-                <img src={m.url} alt={m.altText ?? ""} className="size-16 shrink-0 rounded object-cover" />
+                {m.kind === "Video"
+                  ? <video src={m.url} controls preload="metadata" className="h-28 w-16 shrink-0 rounded bg-black object-cover" />
+                  : <img src={m.url} alt={m.altText ?? ""} className="size-16 shrink-0 rounded object-cover" />}
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <Input readOnly={readOnly} value={m.altText ?? ""} placeholder="Testo alternativo" aria-label={`Testo alternativo dell'immagine ${i + 1}`}
                     onChange={(e) => setMedia((list) => list.map((x) => (x.id === m.id ? { ...x, altText: e.target.value } : x)))} />
-                  <p className="text-[11px] text-faint">{m.width}×{m.height} · {Math.round(m.sizeBytes / 1024)} KB</p>
+                  <p className="text-[11px] text-faint">
+                    {m.kind === "Video" ? <><Video className="mr-1 inline size-3" />{formatDuration(m.durationMs ?? 0)} · </> : null}
+                    {m.width}×{m.height} · {m.sizeBytes > 1024 * 1024 ? `${(m.sizeBytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(m.sizeBytes / 1024)} KB`}
+                  </p>
                 </div>
                 {!readOnly && (
                   <div className="flex shrink-0 gap-0.5">
@@ -248,12 +260,16 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
                 onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
                 className="flex w-full items-center gap-3 rounded-md border border-dashed border-line-strong bg-field px-3 py-3 text-left hover:border-brand/50">
                 {uploading > 0 ? <Spinner /> : <ImagePlus className="size-5 text-faint" />}
-                <span className="text-[13px] text-muted">{uploading > 0 ? "Caricamento…" : "Aggiungi immagini (o trascinale qui)"}</span>
-                <input ref={fileInput} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+                <span className="text-[13px] text-muted">
+                  {uploading > 0 ? `Caricamento…${progress !== null && progress < 1 ? ` ${Math.round(progress * 100)}%` : ""}` : "Aggiungi immagini o un video (o trascinali qui)"}
+                </span>
+                <input ref={fileInput} type="file" accept="image/*,video/mp4,video/quicktime" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
               </button>
             )}
           </div>
         </Field>
+
+        <NetworkOptions accounts={chosen} media={media} options={options} onChange={setOptions} commercial={commercial} onCommercial={setCommercial} readOnly={readOnly} />
 
         {!readOnly && (
           <div className="space-y-3">

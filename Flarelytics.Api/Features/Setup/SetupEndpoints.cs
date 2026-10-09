@@ -45,6 +45,8 @@ public static class SetupEndpoints
             MetaRedirectUri: Social.SocialAccountEndpoints.MetaRedirectUri(social),
             InstagramEnabled: social.Value.Instagram.Enabled,
             InstagramRedirectUri: Social.SocialAccountEndpoints.InstagramRedirectUri(social),
+            TikTokEnabled: social.Value.TikTok.Enabled,
+            TikTokRedirectUri: Social.SocialAccountEndpoints.TikTokRedirectUri(social),
             Version: typeof(SetupEndpoints).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
 
     /// <summary>
@@ -85,7 +87,9 @@ public static class SetupEndpoints
 /// <param name="MetaRedirectUri">L'indirizzo da registrare nell'app Meta come URI di reindirizzamento OAuth.</param>
 /// <param name="InstagramEnabled">C'è un'app Instagram (Instagram Login): si collegano account Instagram senza Pagina Facebook.</param>
 /// <param name="InstagramRedirectUri">L'indirizzo da registrare nelle impostazioni di Business login di Instagram.</param>
-public record InstanceInfo(bool SetupRequired, bool EmailEnabled, bool MetaEnabled, string MetaRedirectUri, bool InstagramEnabled, string InstagramRedirectUri, string Version);
+/// <param name="TikTokRedirectUri">L'indirizzo da registrare nell'app TikTok (Login Kit → Redirect URI).</param>
+public record InstanceInfo(bool SetupRequired, bool EmailEnabled, bool MetaEnabled, string MetaRedirectUri, bool InstagramEnabled, string InstagramRedirectUri,
+    bool TikTokEnabled, string TikTokRedirectUri, string Version);
 
 public record SetupRequest(string Email, string Password, string FullName, string OrganizationName);
 

@@ -23,7 +23,7 @@ import { SocialAccountsPage } from "./pages/social/Accounts";
 import { SocialCalendarPage } from "./pages/social/Calendar";
 import { SocialInboxPage } from "./pages/social/Inbox";
 import { ApiKeysPage } from "./pages/ApiKeys";
-import { InstagramCallbackPage, MetaCallbackPage } from "./pages/social/OAuthCallback";
+import { MetaCallbackPage, SingleAccountCallbackPage } from "./pages/social/OAuthCallback";
 
 /** Le pagine interne: chi non ha una sessione va all'accesso, e poi torna qui. */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -110,7 +110,8 @@ export function App() {
         <Route path="/o/:orgId/api-keys" element={<OrgGuard><ApiKeysPage /></OrgGuard>} />
         {/* I ritorni dai login di Facebook e Instagram: indirizzi fissi, registrati nelle app. */}
         <Route path="/social/meta/callback" element={<MetaCallbackPage />} />
-        <Route path="/social/instagram/callback" element={<InstagramCallbackPage />} />
+        <Route path="/social/instagram/callback" element={<SingleAccountCallbackPage provider="instagram" />} />
+        <Route path="/social/tiktok/callback" element={<SingleAccountCallbackPage provider="tiktok" />} />
         <Route path="/o/:orgId/members" element={<OrgGuard><MembersPage /></OrgGuard>} />
         <Route path="/o/:orgId/settings" element={<OrgGuard><OrgSettingsPage /></OrgGuard>} />
       </Route>

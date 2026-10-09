@@ -5,10 +5,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { errorMessage, request } from "../../api/client";
 import { canAdmin, keys, useProjects, useSocialAccounts, useSocialInbox } from "../../api/hooks";
-import type { AssignResult, SocialPost } from "../../api/types";
+import { defaultPostOptions, type AssignResult, type PostOptions, type SocialPost } from "../../api/types";
 import { formatDateTime, useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
 import { Alert, Button, EmptyState, Field, Input, Mono, PageHeader, PageLoader, Panel, Segmented } from "../../components/ui";
+import { commercialIncomplete, NetworkOptions } from "../../social/NetworkOptions";
 import { PostEditor } from "../../social/PostEditor";
 import { accountLabel } from "../../social/rules";
 
@@ -38,6 +39,8 @@ export function SocialInboxPage() {
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [done, setDone] = useState<number | null>(null);
   const [editing, setEditing] = useState<SocialPost | null>(null);
+  const [options, setOptions] = useState<PostOptions>(defaultPostOptions);
+  const [commercial, setCommercial] = useState(false);
 
   if (inbox.isPending || accounts.isPending || projects.isPending) return <PageLoader />;
   const posts = inbox.data ?? [];
@@ -55,7 +58,7 @@ export function SocialInboxPage() {
     try {
       const results = await request<AssignResult[]>(`/orgs/${org.id}/social/inbox/assign`, {
         method: "POST",
-        body: { postIds: selected, accountIds: targets, scheduledAtUtc: when === "fixed" ? new Date(`${date}T${time}`).toISOString() : null },
+        body: { postIds: selected, accountIds: targets, scheduledAtUtc: when === "fixed" ? new Date(`${date}T${time}`).toISOString() : null, options },
       });
       setProblems(Object.fromEntries(results.filter((r) => r.problem).map((r) => [r.postId, r.problem!])));
       setSelected(results.filter((r) => !r.scheduled).map((r) => r.postId));
@@ -115,6 +118,9 @@ export function SocialInboxPage() {
                     </div>
                   )}
                 </Field>
+                <NetworkOptions accounts={accounts.data!.filter((a) => targets.includes(a.id))}
+                  media={posts.filter((p) => selected.includes(p.id)).flatMap((p) => p.media)}
+                  options={options} onChange={setOptions} commercial={commercial} onCommercial={setCommercial} readOnly={false} />
                 <div className="flex flex-wrap items-end gap-3">
                   <Segmented value={when} onChange={setWhen} options={[{ value: "suggested", label: "Alle date proposte" }, { value: "fixed", label: "Tutti alla stessa ora" }]} />
                   {when === "fixed" && (
@@ -124,7 +130,9 @@ export function SocialInboxPage() {
                     </>
                   )}
                   <span className="flex-1" />
-                  <Button variant="primary" loading={busy} disabled={selected.length === 0 || targets.length === 0} onClick={assign}>
+                  <Button variant="primary" loading={busy} disabled={selected.length === 0 || targets.length === 0
+                    || (accounts.data!.some((a) => a.network === "TikTok" && targets.includes(a.id)) && (!options.tikTokPrivacy || commercialIncomplete(options, commercial)))}
+                    onClick={assign}>
                     Programma {selected.length > 0 ? selected.length : ""}
                   </Button>
                 </div>

@@ -117,7 +117,7 @@ public class SocialImporter(
             if (item.ImageUrl is { } imageUrl && await TryDownloadAsync(imageUrl, ct) is { } jpeg && JpegInfo.TryReadSize(jpeg, out var w, out var h))
             {
                 var media = SocialMedia.Create(account.TenantId, "anteprima.jpg", jpeg.Length, w, h, account.CreatedByUserId);
-                await storage.WriteAsync(account.TenantId, media.Id, jpeg, ct);
+                await storage.WriteAsync(media, jpeg, ct);
                 media.AttachTo(post.Id, 0, null);
                 post.AddMedia(media);
                 db.Add(media);

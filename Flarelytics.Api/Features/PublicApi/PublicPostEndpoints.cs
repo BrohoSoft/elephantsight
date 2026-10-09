@@ -33,7 +33,12 @@ public static class PublicPostEndpoints
     public static void MapPublicApi(this IEndpointRouteBuilder api)
     {
         var group = api.MapApiKeyGroup("");
-        group.MapPost("/media", UploadMedia).DisableAntiforgery();
+        group.MapPost("/media", UploadMedia).DisableAntiforgery().WithFormOptions(multipartBodyLengthLimit: SocialMediaFiles.MaxSingleRequestBytes);
+        group.MapChunkedUploads(http =>
+        {
+            var key = http.RequestServices.GetRequiredService<CurrentApiKey>();
+            return (key.TenantId, key.CreatedByUserId);
+        });
         group.MapPost("/posts", Create).Validating<PublicPostRequest>();
         group.MapPost("/posts/batch", CreateBatch).DisableAntiforgery()
             .WithFormOptions(multipartBodyLengthLimit: MaxBatchBytes, valueLengthLimit: 8 * 1024 * 1024);
@@ -41,7 +46,7 @@ public static class PublicPostEndpoints
         group.MapDelete("/posts/{postId:guid}", Delete);
     }
 
-    /// <summary>Un'immagine JPEG (campo <c>file</c>, al massimo 10 MB), da citare poi in un post con il suo id.</summary>
+    /// <summary>Un'immagine JPEG (al massimo 10 MB) o un video MP4/MOV (fino a 100 MB; più grandi a pezzi) nel campo <c>file</c>, da citare poi in un post con il suo id.</summary>
     private static async Task<IResult> UploadMedia(HttpRequest request, CurrentApiKey key, FlarelyticsDbContext db, SocialMediaStorage storage,
         MediaUrlSigner signer, CancellationToken ct) =>
         Results.Ok(SocialMediaResponse.From(await SocialPostEndpoints.SaveMediaAsync(request, key.TenantId, key.CreatedByUserId, db, storage, ct), signer));
@@ -133,58 +138,52 @@ public static class PublicPostEndpoints
         if (!problems.IsValid) throw ApiProblem.BadRequest("post_invalid", string.Join(" ", problems.Errors.Select(e => e.ErrorMessage)));
 
         var items = req.Media ?? [];
-        CheckType(req.Type, items.Count, !string.IsNullOrWhiteSpace(req.Text));
 
         if (req.ProjectId is { } projectId && !await db.Set<Project>().AnyAsync(p => p.Id == projectId, ct))
             throw ApiProblem.NotFound("Progetto");
 
-        // Le immagini: già caricate (id) o in questa stessa richiesta (file).
+        // I media già caricati (id) si controllano prima di scrivere qualsiasi cosa.
         var ids = items.Where(m => m.Id is not null).Select(m => m.Id!.Value).ToList();
         var uploaded = await db.Set<SocialMedia>().Where(m => ids.Contains(m.Id) && m.PostId == null).ToListAsync(ct);
         if (uploaded.Count != ids.Distinct().Count())
-            throw ApiProblem.BadRequest("media_not_found", "Un'immagine non esiste o è già usata in un altro post: caricala con POST /public/media.");
-
-        var fresh = new List<(int Position, byte[] Content, string FileName, int Width, int Height, string? Alt)>();
-        foreach (var (item, position) in items.Select((m, i) => (m, i)))
+            throw ApiProblem.BadRequest("media_not_found", "Un'immagine o un video non esiste o è già usato in un altro post: caricalo con POST /public/media.");
+        foreach (var (item, position) in items.Select((m, i) => (m, i)).Where(x => x.m.Id is null))
         {
-            if (item.Id is not null) continue;
             if (string.IsNullOrWhiteSpace(item.File))
-                throw ApiProblem.BadRequest("media_invalid", $"L'immagine {position + 1} non ha né id né file.");
-            var file = files?.GetFile(item.File)
-                ?? throw ApiProblem.BadRequest("media_file_missing", $"Nella richiesta non c'è il file '{item.File}' citato dall'immagine {position + 1}.");
-            if (file.Length is 0 or > SocialPostEndpoints.MaxImageBytes)
-                throw ApiProblem.BadRequest("file_size", $"Il file '{item.File}' deve pesare meno di 10 MB.");
-
-            using var buffer = new MemoryStream();
-            await file.CopyToAsync(buffer, ct);
-            var content = buffer.ToArray();
-            if (!JpegInfo.TryReadSize(content, out var width, out var height))
-                throw ApiProblem.BadRequest("file_type", $"Il file '{item.File}' non è un JPEG (Instagram accetta solo quelli).");
-            fresh.Add((position, content, Path.GetFileName(file.FileName), width, height, item.AltText));
+                throw ApiProblem.BadRequest("media_invalid", $"Il media {position + 1} non ha né id né file.");
+            if (files?.GetFile(item.File) is null)
+                throw ApiProblem.BadRequest("media_file_missing", $"Nella richiesta non c'è il file '{item.File}' citato dal media {position + 1}.");
         }
 
-        // Da qui si scrive.
-        var post = SocialPost.FromApi(key.TenantId, key.KeyId, key.CreatedByUserId, req.Text ?? "", req.SuggestedAtUtc, req.ExternalRef, req.ProjectId, DateTime.UtcNow);
-        db.Add(post);
+        // I file della richiesta diventano media sul disco; se il post poi non
+        // va, si cancellano e il contesto si svuota, così il post dopo parte pulito.
         var written = new List<SocialMedia>();
         try
         {
-            foreach (var (item, position) in items.Select((m, i) => (m, i)))
+            var ordered = new List<(SocialMedia Media, string? Alt)>();
+            foreach (var item in items)
             {
-                SocialMedia media;
                 if (item.Id is { } id)
                 {
-                    media = uploaded.Single(m => m.Id == id);
+                    ordered.Add((uploaded.Single(m => m.Id == id), item.AltText));
+                    continue;
                 }
-                else
-                {
-                    var f = fresh.Single(x => x.Position == position);
-                    media = SocialMedia.Create(key.TenantId, f.FileName, f.Content.Length, f.Width, f.Height, key.CreatedByUserId);
-                    await storage.WriteAsync(key.TenantId, media.Id, f.Content, ct);
-                    written.Add(media);
-                    db.Add(media);
-                }
-                media.AttachTo(post.Id, position, item.AltText);
+                var media = await SocialMediaFiles.FromFormFileAsync(files!.GetFile(item.File!)!, key.TenantId, key.CreatedByUserId, storage, ct);
+                written.Add(media);
+                db.Add(media);
+                ordered.Add((media, item.AltText));
+            }
+
+            CheckType(req.Type, ordered.Select(o => o.Media).ToList(), !string.IsNullOrWhiteSpace(req.Text));
+
+            var post = SocialPost.FromApi(key.TenantId, key.KeyId, key.CreatedByUserId, req.Text ?? "", req.SuggestedAtUtc, req.ExternalRef, req.ProjectId, DateTime.UtcNow);
+            // Dall'API si sceglie solo la griglia di Instagram: la privacy di
+            // TikTok la vuole scelta da una persona, nel pannello.
+            post.SetOptions(new PostOptions(InstagramShowInGrid: req.Options?.ShowInProfileGrid ?? true));
+            db.Add(post);
+            foreach (var ((media, alt), position) in ordered.Select((o, i) => (o, i)))
+            {
+                media.AttachTo(post.Id, position, alt);
                 post.AddMedia(media);
             }
 
@@ -193,24 +192,28 @@ public static class PublicPostEndpoints
         }
         catch
         {
-            foreach (var m in written) storage.Delete(m.TenantId, m.Id);
+            foreach (var m in written) storage.Delete(m);
             db.ChangeTracker.Clear();
             throw;
         }
     }
 
-    /// <summary>Il tipo dichiarato deve tornare con le immagini: un carosello con una foto sola è quasi sempre un errore di chi lo manda.</summary>
-    private static void CheckType(string? type, int images, bool hasText)
+    /// <summary>Il tipo dichiarato deve tornare con i media: un carosello con una foto sola è quasi sempre un errore di chi lo manda.</summary>
+    private static void CheckType(string? type, List<SocialMedia> media, bool hasText)
     {
+        var images = media.Count(m => m.Kind == MediaKind.Image);
+        var videos = media.Count(m => m.Kind == MediaKind.Video);
         var (ok, expected) = type?.ToLowerInvariant() switch
         {
-            null or "" => (true, ""),
-            "text" => (images == 0 && hasText, "un post di tipo text ha un testo e nessuna immagine"),
-            "image" => (images == 1, "un post di tipo image ha esattamente un'immagine"),
-            "carousel" => (images is >= 2 and <= 10, "un post di tipo carousel ha da 2 a 10 immagini"),
-            _ => (false, "il tipo è text, image o carousel")
+            null or "" => (videos == 0 || media.Count == 1, "un video va da solo"),
+            "text" => (media.Count == 0 && hasText, "un post di tipo text ha un testo e nessun media"),
+            "image" => (images == 1 && videos == 0, "un post di tipo image ha esattamente un'immagine"),
+            "carousel" => (images is >= 2 and <= 10 && videos == 0, "un post di tipo carousel ha da 2 a 10 immagini"),
+            // Su Instagram diventa un Reel, su TikTok un video.
+            "video" or "reel" => (videos == 1 && images == 0, "un post di tipo video ha esattamente un video"),
+            _ => (false, "il tipo è text, image, carousel o video")
         };
-        if (!ok) throw ApiProblem.BadRequest("post_type", $"Tipo e immagini non tornano: {expected} (immagini ricevute: {images}).");
+        if (!ok) throw ApiProblem.BadRequest("post_type", $"Tipo e media non tornano: {expected} (ricevuti: {images} immagini, {videos} video).");
     }
 
     /// <summary>Lo stato del post: in coda, programmato, pubblicato (con i link), non riuscito (con il motivo).</summary>
@@ -226,7 +229,7 @@ public static class PublicPostEndpoints
         var media = post.Media.ToList();
         db.Remove(post);
         await db.SaveChangesAsync(ct);
-        foreach (var m in media) storage.Delete(m.TenantId, m.Id);
+        foreach (var m in media) storage.Delete(m);
         return Results.NoContent();
     }
 
@@ -237,10 +240,14 @@ public static class PublicPostEndpoints
 /// <summary>Un'immagine di un post: già caricata (<paramref name="Id"/>) o un file della stessa richiesta a blocchi (<paramref name="File"/>, il nome del campo).</summary>
 public record PublicPostMedia(Guid? Id, string? File, string? AltText);
 
-/// <param name="Type"><c>text</c>, <c>image</c> o <c>carousel</c>; facoltativo, ma se c'è deve tornare con le immagini.</param>
+/// <param name="Type"><c>text</c>, <c>image</c>, <c>carousel</c> o <c>video</c> (Reel su Instagram); facoltativo, ma se c'è deve tornare con i media.</param>
 /// <param name="SuggestedAtUtc">La data in cui va pubblicato, facoltativa: chi lo programma la può tenere o cambiare.</param>
 /// <param name="ExternalRef">Il tuo id del post (per esempio quello nel CMS): rimandarlo non crea doppioni.</param>
-public record PublicPostRequest(string? Type, string? Text, DateTime? SuggestedAtUtc, IReadOnlyList<PublicPostMedia>? Media, string? ExternalRef, Guid? ProjectId);
+public record PublicPostRequest(string? Type, string? Text, DateTime? SuggestedAtUtc, IReadOnlyList<PublicPostMedia>? Media, string? ExternalRef, Guid? ProjectId,
+    PublicPostOptions? Options = null);
+
+/// <param name="ShowInProfileGrid">Reel di Instagram: se compare anche nella griglia del profilo (predefinito sì).</param>
+public record PublicPostOptions(bool? ShowInProfileGrid);
 
 /// <param name="Index">La posizione del post nell'array mandato.</param>
 /// <param name="Outcome"><c>created</c>, <c>existing</c> (stesso externalRef già entrato) o <c>rejected</c> (con <paramref name="Error"/>).</param>

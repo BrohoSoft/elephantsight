@@ -30,6 +30,8 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
     {
         b.Property(p => p.Text).HasMaxLength(10000);
         b.Property(p => p.ExternalRef).HasMaxLength(200);
+        b.Property(p => p.OptionsJson).HasColumnType("jsonb");
+        b.Ignore(p => p.Options);
 
         b.HasIndex(p => new { p.TenantId, p.ScheduledAtUtc });
         b.HasIndex(p => new { p.TenantId, p.IsInbox });
@@ -73,6 +75,8 @@ public class SocialMediaConfiguration : IEntityTypeConfiguration<SocialMedia>
     {
         b.Property(m => m.FileName).HasMaxLength(255);
         b.Property(m => m.AltText).HasMaxLength(1500);
+        b.Property(m => m.ContentType).HasMaxLength(50).HasDefaultValue("image/jpeg");
+        b.Ignore(m => m.Extension);
 
         b.HasIndex(m => m.PostId);
         b.HasOne<Tenant>().WithMany().HasForeignKey(m => m.TenantId).OnDelete(DeleteBehavior.Cascade);

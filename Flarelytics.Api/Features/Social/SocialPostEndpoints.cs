@@ -22,7 +22,6 @@ namespace Flarelytics.Api.Features.Social;
 /// </remarks>
 public static class SocialPostEndpoints
 {
-    public const long MaxImageBytes = 10 * 1024 * 1024;
 
     public static void MapSocialPosts(this IEndpointRouteBuilder api)
     {
@@ -36,7 +35,8 @@ public static class SocialPostEndpoints
         admin.MapPut("/posts/{postId:guid}", Update).Validating<SavePostRequest>();
         admin.MapDelete("/posts/{postId:guid}", Delete);
         admin.MapPost("/posts/{postId:guid}/retry", Retry);
-        admin.MapPost("/media", UploadMedia).DisableAntiforgery();
+        admin.MapPost("/media", UploadMedia).DisableAntiforgery().WithFormOptions(multipartBodyLengthLimit: SocialMediaFiles.MaxSingleRequestBytes);
+        admin.MapChunkedUploads(http => (http.RequestServices.GetRequiredService<CurrentOrg>().TenantId, http.User.UserId()));
         admin.MapPost("/inbox/assign", Assign).Validating<AssignInboxRequest>();
 
         // Anonima: la usa Instagram, che scarica l'immagine da sé, e i tag
@@ -101,7 +101,7 @@ public static class SocialPostEndpoints
         var media = post.Media.ToList();
         db.Remove(post);
         await db.SaveChangesAsync(ct);
-        foreach (var m in media) storage.Delete(m.TenantId, m.Id);
+        foreach (var m in media) storage.Delete(m);
         return Results.NoContent();
     }
 
@@ -126,25 +126,31 @@ public static class SocialPostEndpoints
         SocialMediaStorage storage, MediaUrlSigner signer, CancellationToken ct) =>
         Results.Ok(SocialMediaResponse.From(await SaveMediaAsync(request, org.TenantId, principal.UserId(), db, storage, ct), signer));
 
-    /// <summary>Il campo <c>file</c> del multipart, salvato come immagine non ancora attaccata a un post. Lo usa anche l'API pubblica.</summary>
+    /// <summary>
+    /// Il campo <c>file</c> del multipart (un JPEG, o un video MP4/MOV fino a
+    /// 100 MB; più grandi a pezzi), salvato come media non ancora attaccato a un
+    /// post. Lo usa anche l'API pubblica.
+    /// </summary>
     public static async Task<SocialMedia> SaveMediaAsync(HttpRequest request, Guid tenantId, Guid userId, FlarelyticsDbContext db,
         SocialMediaStorage storage, CancellationToken ct)
     {
-        if (!request.HasFormContentType) throw ApiProblem.BadRequest("file_missing", "Manda l'immagine come multipart/form-data, nel campo file.");
+        if (request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = SocialMediaFiles.MaxSingleRequestBytes;
+        if (!request.HasFormContentType) throw ApiProblem.BadRequest("file_missing", "Manda il file come multipart/form-data, nel campo file.");
         var form = await request.ReadFormAsync(ct);
-        var file = form.Files.GetFile("file") ?? throw ApiProblem.BadRequest("file_missing", "Manca l'immagine (campo file).");
-        if (file.Length is 0 or > MaxImageBytes) throw ApiProblem.BadRequest("file_size", "L'immagine deve pesare meno di 10 MB.");
+        var file = form.Files.GetFile("file") ?? throw ApiProblem.BadRequest("file_missing", "Manca il file (campo file).");
 
-        using var buffer = new MemoryStream();
-        await file.CopyToAsync(buffer, ct);
-        var content = buffer.ToArray();
-        if (!JpegInfo.TryReadSize(content, out var width, out var height))
-            throw ApiProblem.BadRequest("file_type", "Serve un'immagine JPEG (Instagram accetta solo quelle).");
-
-        var media = SocialMedia.Create(tenantId, Path.GetFileName(file.FileName), content.Length, width, height, userId);
-        await storage.WriteAsync(tenantId, media.Id, content, ct);
+        var media = await SocialMediaFiles.FromFormFileAsync(file, tenantId, userId, storage, ct);
         db.Add(media);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            storage.Delete(media);
+            throw;
+        }
         return media;
     }
 
@@ -200,6 +206,11 @@ public static class SocialPostEndpoints
                 continue;
             }
 
+            // Le scelte per TikTok arrivano dall'assegnazione (le fa la persona,
+            // qui); la griglia di Instagram resta quella del post, se non cambiata.
+            if (req.Options is { } chosen)
+                post.SetOptions(chosen with { InstagramShowInGrid = req.Options.InstagramShowInGrid && post.Options.InstagramShowInGrid });
+
             var problems = ProblemsFor(post, accounts, _ => null);
             if (problems.Count > 0)
             {
@@ -224,12 +235,15 @@ public static class SocialPostEndpoints
 
     private static IResult ServeMedia(string file, long? e, string? s, MediaUrlSigner signer, SocialMediaStorage storage)
     {
-        if (!file.EndsWith(".jpg") || e is null || !signer.TryVerify(file[..^4], e.Value, s, DateTime.UtcNow, out var tenantId, out var mediaId))
+        var extension = Path.GetExtension(file);
+        var contentType = extension switch { ".jpg" => "image/jpeg", ".mp4" => "video/mp4", ".mov" => "video/quicktime", _ => null };
+        if (contentType is null || e is null || !signer.TryVerify(file[..^extension.Length], e.Value, s, DateTime.UtcNow, out var tenantId, out var mediaId))
             return Results.NotFound();
 
-        var path = storage.PathFor(tenantId, mediaId);
+        var path = storage.PathFor(tenantId, mediaId, extension);
         if (!File.Exists(path)) return Results.NotFound();
-        return Results.File(path, "image/jpeg", enableRangeProcessing: false);
+        // I video si leggono a pezzi (il player del pannello, e chi scarica per la rete).
+        return Results.File(path, contentType, enableRangeProcessing: contentType != "image/jpeg");
     }
 
     /// <summary>Scrive sul post testo, data, account e immagini della richiesta, e lo controlla contro i limiti delle reti.</summary>
@@ -239,6 +253,7 @@ public static class SocialPostEndpoints
             throw ApiProblem.NotFound("Progetto");
 
         post.Update(req.Text, req.ScheduledAtUtc, req.IsDraft, req.ProjectId);
+        if (req.Options is { } options) post.SetOptions(options);
         // Un post della coda programmato dal pannello diventa un post qualsiasi;
         // salvato come bozza resta in coda.
         if (!req.IsDraft) post.LeaveInbox();
@@ -274,7 +289,7 @@ public static class SocialPostEndpoints
         {
             post.RemoveMedia(m);
             db.Remove(m);
-            storage.Delete(m.TenantId, m.Id);
+            storage.Delete(m);
         }
         foreach (var (item, position) in req.Media.Select((m, i) => (m, i)))
         {
@@ -294,8 +309,10 @@ public static class SocialPostEndpoints
     private static List<string> ProblemsFor(SocialPost post, IEnumerable<SocialAccount> accounts, Func<SocialAccount, string?> textOverride)
     {
         var ordered = post.Media.OrderBy(m => m.Position).ToList();
+        var options = post.Options;
         return accounts
-            .Select(a => (Account: a, Problems: SocialRules.Problems(textOverride(a) ?? post.Text, ordered, SocialRules.For(a))))
+            .Select(a => (Account: a, Problems: SocialRules.Problems(textOverride(a) ?? post.Text, ordered, SocialRules.For(a))
+                .Concat(SocialRules.OptionProblems(a.Network, options)).ToList()))
             .Where(x => x.Problems.Count > 0)
             .Select(x => $"{NetworkName(x.Account.Network)} ({x.Account.Handle ?? x.Account.Name}): {string.Join("; ", x.Problems)}.")
             .ToList();
@@ -319,13 +336,13 @@ public enum SocialPostStatus { Draft, Scheduled, Publishing, Published, Partiall
 /// <param name="SuggestedAtUtc">La data proposta da chi l'ha mandato.</param>
 /// <param name="Source">Il nome della chiave API da cui è arrivato (solo nell'elenco della coda).</param>
 public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, SocialPostStatus Status, bool Editable, bool Imported,
-    bool Inbox, DateTime? SuggestedAtUtc, string? ExternalRef, IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc)
+    bool Inbox, DateTime? SuggestedAtUtc, string? ExternalRef, PostOptions Options, IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc)
 {
     public string? Source { get; init; }
 
     public static SocialPostResponse From(SocialPost p, MediaUrlSigner signer) => new(
         p.Id, p.Text, p.ScheduledAtUtc, p.IsDraft, p.ProjectId, StatusOf(p), p.IsEditable, p.IsImported,
-        p.IsInbox, p.SuggestedAtUtc, p.ExternalRef,
+        p.IsInbox, p.SuggestedAtUtc, p.ExternalRef, p.Options,
         p.Media.OrderBy(m => m.Position).Select(m => SocialMediaResponse.From(m, signer)).ToList(),
         p.Targets.OrderBy(t => t.Network).ThenBy(t => t.AccountName).Select(SocialTargetResponse.From).ToList(),
         p.CreatedAtUtc);
@@ -352,18 +369,19 @@ public record SocialTargetResponse(Guid Id, Guid? AccountId, SocialNetwork Netwo
 }
 
 /// <param name="Url">Firmato: vale per le anteprime del pannello finché la pagina resta aperta un pomeriggio.</param>
-public record SocialMediaResponse(Guid Id, int Width, int Height, long SizeBytes, string? AltText, string Url)
+public record SocialMediaResponse(Guid Id, MediaKind Kind, int Width, int Height, long SizeBytes, int? DurationMs, bool FastStart, string? AltText, string Url)
 {
     public static readonly TimeSpan PreviewValidity = TimeSpan.FromHours(12);
 
     public static SocialMediaResponse From(SocialMedia m, MediaUrlSigner signer) =>
-        new(m.Id, m.Width, m.Height, m.SizeBytes, m.AltText, signer.PathFor(m.TenantId, m.Id, DateTime.UtcNow.Add(PreviewValidity)));
+        new(m.Id, m.Kind, m.Width, m.Height, m.SizeBytes, m.DurationMs, m.FastStart, m.AltText, signer.PathFor(m, DateTime.UtcNow.Add(PreviewValidity)));
 }
 
 public record SavePostMedia(Guid Id, string? AltText);
 
 /// <param name="ScheduledAtUtc">Un'ora per tutti; null = ciascuno all'ora che ha proposto.</param>
-public record AssignInboxRequest(IReadOnlyList<Guid> PostIds, IReadOnlyList<Guid> AccountIds, DateTime? ScheduledAtUtc);
+/// <param name="Options">Le scelte per le reti che le chiedono (TikTok), uguali per tutti i post assegnati.</param>
+public record AssignInboxRequest(IReadOnlyList<Guid> PostIds, IReadOnlyList<Guid> AccountIds, DateTime? ScheduledAtUtc, PostOptions? Options = null);
 
 public record AssignResult(Guid PostId, bool Scheduled, string? Problem);
 
@@ -378,7 +396,7 @@ public class AssignInboxRequestValidator : AbstractValidator<AssignInboxRequest>
 
 /// <param name="Overrides">Testi diversi per account: id dell'account → testo.</param>
 public record SavePostRequest(string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, IReadOnlyList<Guid> AccountIds,
-    IReadOnlyList<SavePostMedia> Media, Dictionary<Guid, string>? Overrides);
+    IReadOnlyList<SavePostMedia> Media, Dictionary<Guid, string>? Overrides, PostOptions? Options = null);
 
 public class SavePostRequestValidator : AbstractValidator<SavePostRequest>
 {

@@ -323,7 +323,7 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
 
         // E un indirizzo scaduto non vale più.
         var signer = _app.Services.GetRequiredService<MediaUrlSigner>();
-        var expired = signer.PathFor(a.OrgId, image, DateTime.UtcNow.AddMinutes(-1));
+        var expired = signer.PathFor(await WithMediaAsync(a, image), DateTime.UtcNow.AddMinutes(-1));
         Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync(expired)).StatusCode);
     }
 
@@ -381,6 +381,13 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Contains("scaduto", Target(await GetPostAsync(a, post), "Instagram").GetProperty("error").GetString());
         Assert.Equal(SocialAccountStatus.NeedsReconnect, (await WithAccountAsync(a, instagram, _ => { })).Status);
         Assert.Empty(Net.Calls(HttpMethod.Post, "/17841/media"));
+    }
+
+    private async Task<SocialMedia> WithMediaAsync(Account a, Guid mediaId)
+    {
+        using var scope = _app.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<TenantContext>().Set(a.OrgId);
+        return await scope.ServiceProvider.GetRequiredService<FlarelyticsDbContext>().Set<SocialMedia>().SingleAsync(m => m.Id == mediaId);
     }
 
     /// <summary>Legge (e se serve modifica) l'account direttamente nel database, nel tenant giusto.</summary>

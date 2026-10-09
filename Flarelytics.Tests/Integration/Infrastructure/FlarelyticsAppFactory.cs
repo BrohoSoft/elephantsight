@@ -33,7 +33,8 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
     /// <summary>I client che parlano con le reti social, da attaccare a <see cref="SocialApis"/>.</summary>
     public static readonly string[] SocialClients =
         [nameof(Flarelytics.Core.Social.BlueskyClient), nameof(Flarelytics.Core.Social.MastodonClient), nameof(Flarelytics.Core.Social.MetaGraphClient),
-         nameof(Flarelytics.Core.Social.InstagramLoginClient), nameof(Flarelytics.Core.Social.RemoteImageClient)];
+         nameof(Flarelytics.Core.Social.InstagramLoginClient), nameof(Flarelytics.Core.Social.RemoteImageClient),
+         nameof(Flarelytics.Core.Social.TikTokClient)];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -59,6 +60,8 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
         builder.UseSetting("Social:Meta:AppSecret", "segreto-meta");
         builder.UseSetting("Social:Instagram:AppId", "app-instagram");
         builder.UseSetting("Social:Instagram:AppSecret", "segreto-instagram");
+        builder.UseSetting("Social:TikTok:ClientKey", "chiave-tiktok");
+        builder.UseSetting("Social:TikTok:ClientSecret", "segreto-tiktok");
 
         builder.ConfigureTestServices(services =>
         {
@@ -88,6 +91,8 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
+        // Le connessioni rimaste nei pool di questo test non servono più a nessuno.
+        Npgsql.NpgsqlConnection.ClearAllPools();
         if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
         GC.SuppressFinalize(this);
     }

@@ -15,8 +15,17 @@ namespace Flarelytics.Core.Social;
 /// <summary>Pubblica un post su un account, e ne registra l'esito.</summary>
 public class SocialPublisher(
     FlarelyticsDbContext db, FieldProtector protector, SocialMediaStorage storage, MediaUrlSigner signer,
-    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, IOptions<SocialOptions> options, ILogger<SocialPublisher> log)
+    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, TikTokClient tiktok, IOptions<SocialOptions> options, ILogger<SocialPublisher> log)
 {
+    /// <summary>Ogni quanto si ricontrolla un video che la rete sta ancora elaborando.</summary>
+    public static readonly TimeSpan ProcessingCheckInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>Oltre, l'elaborazione si considera persa: un Reel o un video TikTok ci mettono minuti, non ore.</summary>
+    public static readonly TimeSpan MaxProcessing = TimeSpan.FromHours(2);
+
+    /// <summary>La rete sta ancora elaborando: non è un errore, si ricontrolla più tardi.</summary>
+    private sealed class StillProcessingException : Exception;
+
     /// <summary>Tentativi per gli errori passeggeri, a 2, 4 e 8 minuti di distanza.</summary>
     public const int MaxAttempts = 4;
 
@@ -30,7 +39,9 @@ public class SocialPublisher(
             return;
         }
 
-        if (account.TokenExpiresAtUtc is { } expires && expires <= DateTime.UtcNow)
+        // Il token di Instagram Login scaduto non si recupera; quello di TikTok
+        // (24 ore) invece si rinnova qui sotto con il token di rinnovo.
+        if (account.Network != SocialNetwork.TikTok && account.TokenExpiresAtUtc is { } expires && expires <= DateTime.UtcNow)
         {
             account.MarkBroken("L'accesso a Instagram è scaduto: ricollega l'account.");
             target.Fail(account.StatusMessage!);
@@ -51,11 +62,21 @@ public class SocialPublisher(
             {
                 SocialNetwork.Bluesky => await PublishBlueskyAsync(account, secret, text, media, ct),
                 SocialNetwork.Mastodon => await PublishMastodonAsync(account, secret, target, text, media, ct),
-                SocialNetwork.Instagram => await PublishInstagramAsync(account, secret, target, text, media, ct),
+                SocialNetwork.Instagram => await PublishInstagramAsync(account, secret, target, post, text, media, ct),
                 SocialNetwork.FacebookPage => await PublishFacebookAsync(account, secret, text, media, ct),
+                SocialNetwork.TikTok => await PublishTikTokAsync(account, secret, target, post.Options, text, media, ct),
                 _ => throw new SocialApiException("Rete non supportata.")
             };
             target.Published(externalId, url, DateTime.UtcNow);
+        }
+        catch (StillProcessingException)
+        {
+            if (target.ProgressStartedAtUtc is { } since && DateTime.UtcNow - since > MaxProcessing)
+            {
+                target.SetProgress(null);
+                target.Fail($"{account.Network} non ha finito di elaborare il video in {MaxProcessing.TotalHours:0} ore: controlla sull'app e riprova.");
+            }
+            else target.StillProcessing(DateTime.UtcNow + ProcessingCheckInterval);
         }
         catch (SocialApiException e) when (e.Unauthorized)
         {
@@ -76,7 +97,7 @@ public class SocialPublisher(
         }
         catch (FileNotFoundException)
         {
-            target.Fail("Un'immagine del post non c'è più sul server.");
+            target.Fail("Un'immagine o il video del post non c'è più sul server.");
         }
 
         await db.SaveChangesAsync(ct);
@@ -104,7 +125,7 @@ public class SocialPublisher(
         var images = new List<(System.Text.Json.Nodes.JsonNode, string?, int, int)>();
         foreach (var m in media)
         {
-            var blob = await bluesky.UploadImageAsync(session, await storage.ReadAsync(m.TenantId, m.Id, ct), ct);
+            var blob = await bluesky.UploadImageAsync(session, await storage.ReadAsync(m, ct), ct);
             images.Add((blob, m.AltText, m.Width, m.Height));
         }
 
@@ -117,7 +138,7 @@ public class SocialPublisher(
         var ids = new List<string>();
         foreach (var m in media)
         {
-            ids.Add(await mastodon.UploadImageAsync(account.ServerUrl!, token, await storage.ReadAsync(m.TenantId, m.Id, ct), m.FileName, m.AltText, ct));
+            ids.Add(await mastodon.UploadImageAsync(account.ServerUrl!, token, await storage.ReadAsync(m, ct), m.FileName, m.AltText, ct));
         }
 
         var (id, url) = await mastodon.PostAsync(account.ServerUrl!, token, text, ids, target.Id.ToString("N"), ct);
@@ -129,7 +150,8 @@ public class SocialPublisher(
     /// carosello), l'attesa che Instagram scarichi le immagini, la pubblicazione.
     /// Il container si salva subito, così un riavvio a metà non ne crea un secondo.
     /// </summary>
-    private async Task<(string?, string?)> PublishInstagramAsync(SocialAccount account, string token, SocialPostTarget target, string text, List<SocialMedia> media, CancellationToken ct)
+    private async Task<(string?, string?)> PublishInstagramAsync(SocialAccount account, string token, SocialPostTarget target, SocialPost post, string text,
+        List<SocialMedia> media, CancellationToken ct)
     {
         var graph = meta.InstagramBase(account);
         var container = target.ProgressState;
@@ -149,7 +171,19 @@ public class SocialPublisher(
         {
             var caption = text.Length > 0 ? new KeyValuePair<string, string>("caption", text) : (KeyValuePair<string, string>?)null;
 
-            if (media.Count == 1)
+            if (media is [{ Kind: MediaKind.Video } video])
+            {
+                // Un video è un Reel. share_to_feed decide se compare anche nella
+                // griglia del profilo e nel feed, o solo nella scheda Reel.
+                var fields = new List<KeyValuePair<string, string>>
+                {
+                    new("media_type", "REELS"), new("video_url", PublicImageUrl(video)),
+                    new("share_to_feed", post.Options.InstagramShowInGrid ? "true" : "false")
+                };
+                if (caption is { } c) fields.Add(c);
+                container = await meta.CreateInstagramContainerAsync(graph, account.ExternalId, token, fields, ct);
+            }
+            else if (media.Count == 1)
             {
                 var fields = new List<KeyValuePair<string, string>> { new("image_url", PublicImageUrl(media[0])) };
                 if (caption is { } c) fields.Add(c);
@@ -177,6 +211,8 @@ public class SocialPublisher(
             await db.SaveChangesAsync(ct);
         }
 
+        // Le foto sono pronte in pochi secondi; un Reel può metterci minuti: dopo
+        // qualche controllo si lascia stare e si ripassa al giro dopo.
         for (var attempt = 0; ; attempt++)
         {
             var status = await meta.InstagramContainerStatusAsync(graph, container, token, ct);
@@ -186,12 +222,101 @@ public class SocialPublisher(
                 target.SetProgress(null);
                 throw new SocialApiException("Instagram non è riuscito a scaricare o a usare l'immagine: controlla che l'indirizzo dell'istanza sia raggiungibile da internet.");
             }
-            if (attempt == 20) throw new SocialApiException("Instagram sta ancora elaborando il post: si riprova più tardi.", transient: true);
+            if (attempt == 10) throw new StillProcessingException();
             await Task.Delay(options.Value.PollDelay, ct);
         }
 
         var mediaId = await meta.PublishInstagramAsync(graph, account.ExternalId, token, container, ct);
         return (mediaId, await meta.InstagramPermalinkAsync(graph, mediaId, token, ct));
+    }
+
+    /// <summary>
+    /// TikTok: informazioni del creator (obbligatorie, e dicono se adesso può
+    /// pubblicare), apertura, caricamento a pezzi, poi si segue lo stato. L'id
+    /// della pubblicazione si salva prima di caricare: dopo un riavvio si
+    /// riprende da lì invece di pubblicare due volte.
+    /// </summary>
+    private async Task<(string?, string?)> PublishTikTokAsync(SocialAccount account, string secretJson, SocialPostTarget target, PostOptions choices,
+        string text, List<SocialMedia> media, CancellationToken ct)
+    {
+        var accessToken = await TikTokAccessTokenAsync(account, secretJson, ct);
+
+        if (target.ProgressState is null)
+        {
+            var video = media is [{ Kind: MediaKind.Video } v] ? v : throw new SocialApiException("Su TikTok si pubblica un video, da solo.");
+            var creator = await tiktok.CreatorInfoAsync(accessToken, ct);
+            if ((video.DurationMs ?? 0) / 1000 > creator.MaxVideoSeconds)
+                throw new SocialApiException($"TikTok: questo account può pubblicare video fino a {creator.MaxVideoSeconds / 60} minuti.");
+            if (choices.TikTokPrivacy is not { } privacy || !creator.PrivacyLevels.Contains(privacy))
+                throw new SocialApiException($"TikTok: la visibilità scelta non è permessa a questo account (permesse: {string.Join(", ", creator.PrivacyLevels)}).");
+
+            var postInfo = new Dictionary<string, object>
+            {
+                ["title"] = text,
+                ["privacy_level"] = privacy,
+                // Disattivato se l'ha chiesto chi pubblica o se il creator l'ha spento nelle sue impostazioni.
+                ["disable_comment"] = !choices.TikTokAllowComment || creator.CommentDisabled,
+                ["disable_duet"] = !choices.TikTokAllowDuet || creator.DuetDisabled,
+                ["disable_stitch"] = !choices.TikTokAllowStitch || creator.StitchDisabled,
+                ["brand_organic_toggle"] = choices.TikTokBrandOrganic,
+                ["brand_content_toggle"] = choices.TikTokBrandedContent
+            };
+
+            await using var file = storage.OpenRead(video);
+            var (publishId, uploadUrl) = await tiktok.InitVideoAsync(accessToken, postInfo, file.Length, ct);
+            target.SetProgress(publishId);
+            await db.SaveChangesAsync(ct);
+
+            try
+            {
+                await tiktok.UploadAsync(uploadUrl, file, video.ContentType, ct);
+            }
+            catch
+            {
+                // Caricamento a metà: TikTok non pubblica niente, al prossimo tentativo si riparte da capo.
+                target.SetProgress(null);
+                throw;
+            }
+        }
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var status = await tiktok.StatusAsync(accessToken, target.ProgressState!, ct);
+            switch (status.Status)
+            {
+                case "PUBLISH_COMPLETE":
+                    // L'indirizzo c'è solo per i post pubblici già approvati dalla moderazione di TikTok.
+                    var url = status.PostId is { } id && account.Handle is { } handle ? $"https://www.tiktok.com/{handle}/video/{id}" : null;
+                    return (status.PostId ?? target.ProgressState, url);
+                case "FAILED":
+                    target.SetProgress(null);
+                    throw new SocialApiException($"TikTok non ha pubblicato il video ({status.FailReason ?? "motivo non indicato"}).");
+            }
+            if (attempt < 4) await Task.Delay(options.Value.PollDelay, ct);
+        }
+        throw new StillProcessingException();
+    }
+
+    /// <summary>Il token d'accesso di TikTok, rinnovato se scade fra meno di 5 minuti (dura 24 ore).</summary>
+    private async Task<string> TikTokAccessTokenAsync(SocialAccount account, string secretJson, CancellationToken ct)
+    {
+        var secret = TikTokSecret.Parse(secretJson);
+        if (account.TokenExpiresAtUtc is { } expires && expires > DateTime.UtcNow.AddMinutes(5)) return secret.AccessToken;
+
+        var renewed = await RenewTikTokAsync(account, secret, protector, tiktok, ct);
+        await db.SaveChangesAsync(ct);
+        return renewed;
+    }
+
+    /// <summary>Rinnova il token d'accesso con quello di rinnovo e salva sull'account i token nuovi. Restituisce il token d'accesso.</summary>
+    public static async Task<string> RenewTikTokAsync(SocialAccount account, TikTokSecret secret, FieldProtector protector, TikTokClient tiktok, CancellationToken ct)
+    {
+        if (secret.RefreshExpiresAtUtc <= DateTime.UtcNow)
+            throw new SocialApiException("L'accesso a TikTok è scaduto (dura un anno): ricollega l'account.", unauthorized: true);
+
+        var tokens = await tiktok.RefreshAsync(secret.RefreshToken, ct);
+        account.RenewToken(protector.Protect(Encoding.UTF8.GetBytes(TikTokSecret.From(tokens).ToJson()), account.SecretContext), tokens.ExpiresAtUtc);
+        return tokens.AccessToken;
     }
 
     private async Task<(string?, string?)> PublishFacebookAsync(SocialAccount account, string token, string text, List<SocialMedia> media, CancellationToken ct)
@@ -230,7 +355,7 @@ public class SocialPublisher(
         if (string.IsNullOrEmpty(publicUrl) || Uri.TryCreate(publicUrl, UriKind.Absolute, out var uri) && (uri.IsLoopback || uri.Host == "localhost"))
             throw new SocialApiException($"Meta scarica le immagini dall'indirizzo pubblico dell'istanza, e '{publicUrl}' non è raggiungibile da internet: imposta PUBLIC_URL.");
 
-        return publicUrl + signer.PathFor(m.TenantId, m.Id, DateTime.UtcNow.AddHours(1));
+        return publicUrl + signer.PathFor(m, DateTime.UtcNow.AddHours(1));
     }
 }
 
@@ -310,13 +435,15 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
 
         db.RemoveRange(orphans);
         await db.SaveChangesAsync(ct);
-        foreach (var m in orphans) storage.Delete(m.TenantId, m.Id);
+        foreach (var m in orphans) storage.Delete(m);
+        storage.DeleteStaleParts(OrphanMediaAge);
     }
 
     /// <summary>
-    /// I token che scadono (Instagram Login, 60 giorni) si rinnovano quando
-    /// hanno più di una settimana: Instagram lo permette dopo 24 ore, e così
-    /// restano settimane di margine se qualche giro va a vuoto.
+    /// I token che scadono. Instagram Login (60 giorni) si rinnova quando ha più
+    /// di una settimana: Instagram lo permette dopo 24 ore, e così restano
+    /// settimane di margine se qualche giro va a vuoto. TikTok (24 ore) quando
+    /// ne mancano meno di 2.
     /// </summary>
     private async Task RenewTokensAsync(FlarelyticsDbContext db, IServiceProvider services, CancellationToken ct)
     {
@@ -327,10 +454,13 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
         if (expiring.Count == 0) return;
 
         var instagram = services.GetRequiredService<InstagramLoginClient>();
+        var tiktok = services.GetRequiredService<TikTokClient>();
         var protector = services.GetRequiredService<FieldProtector>();
         foreach (var account in expiring)
         {
-            if (account.TokenExpiresAtUtc <= DateTime.UtcNow)
+            // TikTok: il token d'accesso dura 24 ore, si rinnova quando ne mancano meno di 2.
+            if (account.Network == SocialNetwork.TikTok && account.TokenExpiresAtUtc > DateTime.UtcNow.AddHours(2)) continue;
+            if (account.Network != SocialNetwork.TikTok && account.TokenExpiresAtUtc <= DateTime.UtcNow)
             {
                 account.MarkBroken("L'accesso a Instagram è scaduto: ricollega l'account.");
                 continue;
@@ -339,6 +469,11 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
             var secret = protector.Unprotect(account.ProtectedSecret, account.SecretContext);
             try
             {
+                if (account.Network == SocialNetwork.TikTok)
+                {
+                    await SocialPublisher.RenewTikTokAsync(account, TikTokSecret.Parse(Encoding.UTF8.GetString(secret)), protector, tiktok, ct);
+                    continue;
+                }
                 var token = await instagram.RefreshAsync(Encoding.UTF8.GetString(secret), ct);
                 account.RenewToken(protector.Protect(Encoding.UTF8.GetBytes(token.AccessToken), account.SecretContext), token.ExpiresAtUtc);
             }

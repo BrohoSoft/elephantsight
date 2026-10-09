@@ -60,8 +60,10 @@ public class SocialRulesTests
         try
         {
             var signer = new MediaUrlSigner(new KeyRing(Options.Create(new SecretsOptions { KeysDirectory = directory, ActiveKeyVersion = "v1" })));
-            var (tenant, media) = (Guid.NewGuid(), Guid.NewGuid());
-            var path = new Uri("http://x" + signer.PathFor(tenant, media, DateTime.UtcNow.AddHours(1)));
+            var tenant = Guid.NewGuid();
+            var image = SocialMedia.Create(tenant, "a.jpg", 10, 10, 10, Guid.NewGuid());
+            var media = image.Id;
+            var path = new Uri("http://x" + signer.PathFor(image, DateTime.UtcNow.AddHours(1)));
             var id = path.Segments[^1][..^4];
             var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(path.Query);
             var (e, s) = (long.Parse(query["e"]!), query["s"].ToString());

@@ -7,26 +7,64 @@ using Microsoft.Extensions.Options;
 
 namespace Flarelytics.Core.Social;
 
-/// <summary>Le immagini dei post, su disco accanto ai report: <c>{Reports}/_social/{tenant}/{id}.jpg</c>.</summary>
+/// <summary>
+/// Le immagini e i video dei post, su disco accanto ai report:
+/// <c>{Reports}/_social/{tenant}/{id}.jpg|.mp4|.mov</c>. I video in arrivo a
+/// pezzi stanno in <c>{id}.part</c> finché non sono completi.
+/// </summary>
 public class SocialMediaStorage(IOptions<ReportsOptions> options)
 {
     public string Root => Path.Combine(options.Value.StorageDirectory, "_social");
 
-    public string PathFor(Guid tenantId, Guid mediaId) => Path.Combine(Root, tenantId.ToString("N"), mediaId.ToString("N") + ".jpg");
+    public string PathFor(Guid tenantId, Guid mediaId, string extension) =>
+        Path.Combine(Root, tenantId.ToString("N"), mediaId.ToString("N") + extension);
 
-    public async Task WriteAsync(Guid tenantId, Guid mediaId, byte[] content, CancellationToken ct)
+    public string PathFor(Database.Entities.SocialMedia media) => PathFor(media.TenantId, media.Id, media.Extension);
+
+    public async Task WriteAsync(Database.Entities.SocialMedia media, byte[] content, CancellationToken ct)
     {
-        var path = PathFor(tenantId, mediaId);
+        var path = PathFor(media);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllBytesAsync(path, content, ct);
     }
 
-    public Task<byte[]> ReadAsync(Guid tenantId, Guid mediaId, CancellationToken ct) => File.ReadAllBytesAsync(PathFor(tenantId, mediaId), ct);
+    public Task<byte[]> ReadAsync(Database.Entities.SocialMedia media, CancellationToken ct) => File.ReadAllBytesAsync(PathFor(media), ct);
 
-    public void Delete(Guid tenantId, Guid mediaId)
+    public FileStream OpenRead(Database.Entities.SocialMedia media) => File.OpenRead(PathFor(media));
+
+    public void Delete(Database.Entities.SocialMedia media)
     {
-        var path = PathFor(tenantId, mediaId);
+        var path = PathFor(media);
         if (File.Exists(path)) File.Delete(path);
+    }
+
+    // --- caricamento a pezzi ---
+
+    public string PartPath(Guid tenantId, Guid uploadId)
+    {
+        var path = PathFor(tenantId, uploadId, ".part");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        return path;
+    }
+
+    /// <summary>Il file completo prende il suo nome definitivo: l'id del caricamento diventa l'id dell'immagine o del video.</summary>
+    public void Promote(Guid tenantId, Guid uploadId, string extension) =>
+        File.Move(PartPath(tenantId, uploadId), PathFor(tenantId, uploadId, extension), overwrite: true);
+
+    public void DeletePart(Guid tenantId, Guid uploadId)
+    {
+        var path = PathFor(tenantId, uploadId, ".part");
+        if (File.Exists(path)) File.Delete(path);
+    }
+
+    /// <summary>I pezzi abbandonati: caricamenti mai completati da più di un giorno.</summary>
+    public int DeleteStaleParts(TimeSpan olderThan)
+    {
+        if (!Directory.Exists(Root)) return 0;
+        var stale = Directory.EnumerateFiles(Root, "*.part", SearchOption.AllDirectories)
+            .Where(f => File.GetLastWriteTimeUtc(f) < DateTime.UtcNow - olderThan).ToList();
+        foreach (var f in stale) File.Delete(f);
+        return stale.Count;
     }
 }
 
@@ -48,12 +86,12 @@ public class MediaUrlSigner(KeyRing keys)
 {
     public const string RoutePrefix = "/api/v1/social/media/";
 
-    /// <summary>Il percorso relativo, da prefissare con l'indirizzo pubblico quando serve a uno store esterno.</summary>
-    public string PathFor(Guid tenantId, Guid mediaId, DateTime expiresAtUtc)
+    /// <summary>Il percorso relativo, da prefissare con l'indirizzo pubblico quando serve a una rete esterna.</summary>
+    public string PathFor(Database.Entities.SocialMedia media, DateTime expiresAtUtc)
     {
-        var id = tenantId.ToString("N") + mediaId.ToString("N");
+        var id = media.TenantId.ToString("N") + media.Id.ToString("N");
         var expires = new DateTimeOffset(expiresAtUtc, TimeSpan.Zero).ToUnixTimeSeconds();
-        return $"{RoutePrefix}{id}.jpg?e={expires}&s={Signature(id, expires)}";
+        return $"{RoutePrefix}{id}{media.Extension}?e={expires}&s={Signature(id, expires)}";
     }
 
     /// <summary>Controlla firma e scadenza; se vanno bene restituisce tenant e immagine.</summary>

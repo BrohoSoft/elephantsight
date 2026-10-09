@@ -33,6 +33,7 @@ public static class SocialAccountEndpoints
 {
     public const string MetaCallbackPath = "/social/meta/callback";
     public const string InstagramCallbackPath = "/social/instagram/callback";
+    public const string TikTokCallbackPath = "/social/tiktok/callback";
 
     public static void MapSocialAccounts(this IEndpointRouteBuilder api)
     {
@@ -50,6 +51,10 @@ public static class SocialAccountEndpoints
 
         admin.MapPost("/instagram/start", StartInstagram);
         admin.MapPost("/instagram/complete", CompleteInstagram).Validating<CompleteMetaRequest>();
+
+        admin.MapPost("/tiktok/start", StartTikTok);
+        admin.MapPost("/tiktok/complete", CompleteTikTok).Validating<CompleteMetaRequest>();
+        admin.MapGet("/accounts/{accountId:guid}/tiktok-creator", TikTokCreator);
     }
 
     private static async Task<IResult> List(FlarelyticsDbContext db, CancellationToken ct)
@@ -202,6 +207,68 @@ public static class SocialAccountEndpoints
         return Results.Ok(SocialAccountResponse.From(account));
     }
 
+    // --- TikTok ---
+
+    private static IResult StartTikTok(ClaimsPrincipal principal, CurrentOrg org, TikTokClient tiktok, IOptions<SocialOptions> options,
+        IDataProtectionProvider protection)
+    {
+        if (!options.Value.TikTok.Enabled)
+            throw ApiProblem.BadRequest("tiktok_not_configured", "Per TikTok imposta TIKTOK_CLIENT_KEY e TIKTOK_CLIENT_SECRET e riavvia.");
+
+        var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
+        return Results.Ok(new { url = tiktok.AuthorizeUrl(TikTokRedirectUri(options), state) });
+    }
+
+    /// <summary>
+    /// Il ritorno dal login di TikTok: due token (24 ore e un anno) cifrati
+    /// insieme, e nome e handle dalle informazioni del creator.
+    /// </summary>
+    private static async Task<IResult> CompleteTikTok(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
+        TikTokClient tiktok, FieldProtector protector, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
+    {
+        CheckState(protection, req.State, org, principal, "TikTok");
+
+        var tokens = await tiktok.ExchangeCodeAsync(req.Code, TikTokRedirectUri(options), ct);
+        var creator = await tiktok.CreatorInfoAsync(tokens.AccessToken, ct);
+
+        var account = await UpsertAsync(db, org.TenantId, SocialNetwork.TikTok, tokens.OpenId, null, principal.UserId(), ct);
+        account.Reconnect(Protect(protector, account, TikTokSecret.From(tokens).ToJson()),
+            string.IsNullOrWhiteSpace(creator.Nickname) ? creator.Username : creator.Nickname,
+            string.IsNullOrWhiteSpace(creator.Username) ? null : "@" + creator.Username, null, tokens.ExpiresAtUtc);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialAccountResponse.From(account));
+    }
+
+    /// <summary>
+    /// Le informazioni del creator, fresche: TikTok vuole che il pannello le
+    /// mostri mentre si prepara un post (chi pubblica, quali visibilità sono
+    /// permesse, cosa ha disattivato, la durata massima).
+    /// </summary>
+    private static async Task<IResult> TikTokCreator(Guid accountId, FlarelyticsDbContext db, TikTokClient tiktok, FieldProtector protector, CancellationToken ct)
+    {
+        var account = await db.Set<SocialAccount>().SingleOrDefaultAsync(a => a.Id == accountId && a.Network == SocialNetwork.TikTok, ct)
+            ?? throw ApiProblem.NotFound("Account");
+
+        var bytes = protector.Unprotect(account.ProtectedSecret, account.SecretContext);
+        var secret = TikTokSecret.Parse(Encoding.UTF8.GetString(bytes));
+        System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+
+        try
+        {
+            var token = account.TokenExpiresAtUtc > DateTime.UtcNow.AddMinutes(5)
+                ? secret.AccessToken
+                : await SocialPublisher.RenewTikTokAsync(account, secret, protector, tiktok, ct);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(await tiktok.CreatorInfoAsync(token, ct));
+        }
+        catch (SocialApiException e) when (e.Unauthorized)
+        {
+            account.MarkBroken(e.Message);
+            await db.SaveChangesAsync(ct);
+            throw;
+        }
+    }
+
     /// <summary>Lo <c>state</c> del login: firmato, a scadenza, e partito da questo utente in questa organizzazione.</summary>
     private static void CheckState(IDataProtectionProvider protection, string state, CurrentOrg org, ClaimsPrincipal principal, string network)
     {
@@ -229,6 +296,7 @@ public static class SocialAccountEndpoints
     // (AppUrl), dove il browser ha la sessione, non sull'indirizzo delle immagini.
     public static string MetaRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + MetaCallbackPath;
     public static string InstagramRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + InstagramCallbackPath;
+    public static string TikTokRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + TikTokCallbackPath;
 
     // --- in comune ---
 

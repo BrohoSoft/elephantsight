@@ -40,6 +40,9 @@ services:
       # Sono l'Instagram App ID e il suo secret, non quelli dell'app Meta.
       Social__Instagram__AppId: ${INSTAGRAM_APP_ID:-}
       Social__Instagram__AppSecret: ${INSTAGRAM_APP_SECRET:-}
+      # Facoltativo: TikTok (developers.tiktok.com, Login Kit + Content Posting API).
+      Social__TikTok__ClientKey: ${TIKTOK_CLIENT_KEY:-}
+      Social__TikTok__ClientSecret: ${TIKTOK_CLIENT_SECRET:-}
     volumes:
       # Le chiavi: quella che cifra le credenziali degli store e quella dei
       # login. Vanno salvate a parte rispetto al resto: senza la chiave master

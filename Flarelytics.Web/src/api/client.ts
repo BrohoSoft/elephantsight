@@ -84,15 +84,18 @@ export async function requestWithStatus<T>(path: string, options: RequestOptions
   // I file viaggiano come FormData: il browser mette da sé il Content-Type
   // con il boundary del multipart, quindi qui non va impostato.
   const isForm = options.body instanceof FormData;
+  // Un Blob (un pezzo di video) parte così com'è.
+  const isRaw = options.body instanceof Blob;
   const send = () =>
     fetch(`/api/v1${path}`, {
       method: options.method ?? "GET",
       credentials: "same-origin",
       headers: {
-        ...(options.body !== undefined && !isForm ? { "Content-Type": "application/json" } : {}),
+        ...(options.body !== undefined && !isForm && !isRaw ? { "Content-Type": "application/json" } : {}),
+        ...(isRaw ? { "Content-Type": "application/octet-stream" } : {}),
         ...(!options.anonymous && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
-      body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
+      body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : isRaw ? (options.body as Blob) : JSON.stringify(options.body),
     });
 
   // Si rinnova un po' prima della scadenza invece di aspettare il 401.
