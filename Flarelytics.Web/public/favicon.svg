@@ -1,1 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1c1c1c"/><path d="M4.5 16C7.9 10.6 11.7 8 16 8s8.1 2.6 11.5 8C24.1 21.4 20.3 24 16 24s-8.1-2.6-11.5-8Z" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="16" r="5.5" fill="#f59e0b"/><path d="M12.9 18.6h1.6v-2.4h-1.6zM15.2 18.6h1.6v-4h-1.6zM17.5 18.6h1.6v-5.6h-1.6z" fill="#1c1c1c"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Il segno di ElephantSight (vedi src/components/Logo.tsx), con i colori fissi dei due temi. -->
+  <style>
+    .bg { fill: #f4f4f5; stroke: #d4d4d8; }
+    .cut { fill: #f4f4f5; stroke: #f4f4f5; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #202020; stroke: #383838; }
+      .cut { fill: #202020; stroke: #202020; }
+    }
+  </style>
+  <rect class="bg" x=".5" y=".5" width="31" height="31" rx="7"/>
+  <path d="M15.4 7C9.6 5.6 4.6 9.4 4.6 15.2c0 4.9 3.6 8.4 8.6 8.1z" fill="#f59e0b"/>
+  <circle cx="18" cy="13.8" r="7.3" fill="#f59e0b" class="cut" style="fill:#f59e0b" stroke-width="1.6"/>
+  <path d="M22.4 18.6c1 3.2 2.5 5.5 4.9 6 1 .2 1.7-.4 1.7-1.3" fill="none" stroke="#f59e0b" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle class="cut" cx="20.5" cy="12" r="1.65"/>
+</svg>
