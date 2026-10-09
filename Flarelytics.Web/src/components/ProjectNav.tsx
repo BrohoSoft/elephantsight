@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { ArrowLeft, CalendarDays, ChartColumn, Check, ChevronsUpDown, FileKey2, LayoutDashboard, MessageSquare, Package, Repeat, Settings, Store as StoreIcon } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChartColumn, Check, ChevronsUpDown, FileKey2, Inbox, LayoutDashboard, MessageSquare, Package, Repeat, Settings, Store as StoreIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router";
 import { useProjects } from "../api/hooks";
@@ -12,29 +12,33 @@ import { StoreGlyph } from "./StoreIcons";
 const menuItem =
   "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[0.8125rem] text-muted outline-none data-[highlighted]:bg-hover data-[highlighted]:text-fg";
 
+type ProjectSection = { to: string; label: string; icon: ReactNode; end?: boolean; group?: "Store" | "Social" | "Progetto" };
+
 /**
- * Le sezioni di un progetto: le stesse nella barra laterale e in quella per il
- * telefono, secondo le sezioni che il membro vede. La panoramica c'è per tutti
- * e mostra le parti che il membro vede.
+ * Le sezioni di un progetto: le stesse nella barra laterale (divise in gruppi,
+ * come quella dell'organizzazione) e in quella per il telefono, secondo le
+ * sezioni che il membro vede. La panoramica c'è per tutti e mostra le parti
+ * che il membro vede.
  */
-export const projectSections = (base: string, org: OrgSummary) => [
+export const projectSections = (base: string, org: OrgSummary): ProjectSection[] => [
   { to: base, label: "Panoramica", icon: <LayoutDashboard className="size-4" />, end: true },
   ...(hasStore(org)
-    ? [
-        { to: `${base}/analytics`, label: "Analitiche", icon: <ChartColumn className="size-4" /> },
-        { to: `${base}/releases`, label: "Versioni e build", icon: <Package className="size-4" /> },
-        { to: `${base}/reviews`, label: "Recensioni", icon: <MessageSquare className="size-4" /> },
-        { to: `${base}/listing`, label: "Pagina dello store", icon: <StoreIcon className="size-4" /> },
-        { to: `${base}/files`, label: "File di firma", icon: <FileKey2 className="size-4" /> },
-      ]
+    ? ([
+        { to: `${base}/analytics`, label: "Analitiche", icon: <ChartColumn className="size-4" />, group: "Store" },
+        { to: `${base}/releases`, label: "Versioni e build", icon: <Package className="size-4" />, group: "Store" },
+        { to: `${base}/reviews`, label: "Recensioni", icon: <MessageSquare className="size-4" />, group: "Store" },
+        { to: `${base}/listing`, label: "Pagina dello store", icon: <StoreIcon className="size-4" />, group: "Store" },
+        { to: `${base}/files`, label: "File di firma", icon: <FileKey2 className="size-4" />, group: "Store" },
+      ] as ProjectSection[])
     : []),
   ...(hasSocial(org)
-    ? [
-        { to: `${base}/social`, label: "Calendario social", icon: <CalendarDays className="size-4" /> },
-        { to: `${base}/recurring`, label: "Post ricorrenti", icon: <Repeat className="size-4" /> },
-      ]
+    ? ([
+        { to: `${base}/social`, label: "Calendario social", icon: <CalendarDays className="size-4" />, group: "Social" },
+        { to: `${base}/inbox`, label: "Da programmare", icon: <Inbox className="size-4" />, group: "Social" },
+        { to: `${base}/recurring`, label: "Post ricorrenti", icon: <Repeat className="size-4" />, group: "Social" },
+      ] as ProjectSection[])
     : []),
-  ...(hasStore(org) || canManageOrg(org) ? [{ to: `${base}/settings`, label: "Impostazioni", icon: <Settings className="size-4" /> }] : []),
+  ...(hasStore(org) || canManageOrg(org) ? [{ to: `${base}/settings`, label: "Impostazioni", icon: <Settings className="size-4" />, group: "Progetto" } as ProjectSection] : []),
 ];
 
 /** I due segni degli store: pieni se l'app è collegata, sbiaditi se no. */
@@ -99,7 +103,14 @@ export function ProjectSidebarNav({ org, projectId, section }: { org: OrgSummary
         <ProjectSwitcher orgId={orgId} projectId={projectId} section={section} />
       </div>
       <nav className="flex-1 space-y-0.5 p-2">
-        {projectSections(base, org).map((s) => <SectionLink key={s.to} to={s.to} icon={s.icon} end={s.end}>{s.label}</SectionLink>)}
+        {projectSections(base, org).map((s, i, all) => (
+          <div key={s.to}>
+            {s.group && s.group !== all[i - 1]?.group && (
+              <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">{s.group}</p>
+            )}
+            <SectionLink to={s.to} icon={s.icon} end={s.end}>{s.label}</SectionLink>
+          </div>
+        ))}
       </nav>
     </>
   );

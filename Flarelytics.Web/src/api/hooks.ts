@@ -170,8 +170,13 @@ export const useSocialPosts = (orgId: string, from: Date, to: Date, projectId?: 
   });
 
 /** La coda "Da programmare": si ricarica ogni minuto, i post arrivano dall'esterno. */
-export const useSocialInbox = (orgId: string) =>
-  useQuery({ queryKey: keys.socialInbox(orgId), queryFn: () => request<SocialPost[]>(`/orgs/${orgId}/social/inbox`), refetchInterval: 60_000 });
+/** La coda "Da programmare" (di un progetto, con projectId): si ricarica ogni minuto, i post arrivano anche dall'esterno. */
+export const useSocialInbox = (orgId: string, projectId?: string) =>
+  useQuery({
+    queryKey: projectId ? [...keys.socialInbox(orgId), projectId] : keys.socialInbox(orgId),
+    queryFn: () => request<SocialPost[]>(`/orgs/${orgId}/social/inbox${projectId ? `?projectId=${projectId}` : ""}`),
+    refetchInterval: 60_000,
+  });
 
 /** I post ricorrenti che il membro vede, o (con projectId) quelli di un progetto. */
 export const useSocialRecurring = (orgId: string, projectId?: string) =>

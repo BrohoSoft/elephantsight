@@ -5,10 +5,10 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { errorMessage, request } from "../../api/client";
 import { canAdmin, keys, useProjects, useSocialAccounts, useSocialInbox } from "../../api/hooks";
-import { defaultPostOptions, type AssignResult, type PostOptions, type SocialPost } from "../../api/types";
+import { defaultPostOptions, type AssignResult, type PostOptions, type Project, type SocialPost } from "../../api/types";
 import { formatDateTime, useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
-import { Alert, Button, EmptyState, Field, Input, Mono, PageHeader, PageLoader, Panel, Segmented } from "../../components/ui";
+import { Alert, Badge, Button, EmptyState, Field, Input, Mono, PageHeader, PageLoader, Panel, Segmented, Select } from "../../components/ui";
 import { commercialIncomplete, NetworkOptions } from "../../social/NetworkOptions";
 import { PostEditor } from "../../social/PostEditor";
 import { accountLabel } from "../../social/rules";
@@ -42,15 +42,21 @@ export function MediaThumb({ media }: { media: SocialPost["media"] }) {
 }
 
 /**
- * La coda "Da programmare": i post mandati da altri programmi con una chiave
- * API. Qui si sceglie su quali account vanno e quando, uno per uno (si apre
- * l'editor) o tanti insieme (si selezionano e si assegnano).
+ * La coda "Da programmare": i post scritti qui per prepararli o mandati da
+ * altri programmi con una chiave API. Qui si sceglie su quali account vanno e
+ * quando, uno per uno (si apre l'editor) o tanti insieme (si selezionano e si
+ * assegnano). Programmato, un post sta in un progetto: quelli che non ne
+ * hanno uno lo ricevono qui. Dentro un progetto (<code>project</code>) è la
+ * coda di quel progetto.
  */
-export function SocialInboxPage() {
+export function SocialInboxPage({ project }: { project?: Project } = {}) {
   const org = useOrg();
   const admin = canAdmin(org.role);
   const queryClient = useQueryClient();
-  const inbox = useSocialInbox(org.id);
+  // Fuori dai progetti: un filtro per progetto; dentro un progetto, solo i suoi.
+  const [filter, setFilter] = useState("");
+  const inbox = useSocialInbox(org.id, project?.id ?? (filter || undefined));
+  const [assignProject, setAssignProject] = useState(project?.id ?? "");
   const accounts = useSocialAccounts(org.id);
   const projects = useProjects(org.id);
 
@@ -72,6 +78,14 @@ export function SocialInboxPage() {
 
   if (inbox.isPending || accounts.isPending || projects.isPending) return <PageLoader />;
   const posts = inbox.data ?? [];
+  const allProjects = projects.data ?? [];
+  const chosenPosts = posts.filter((p) => selected.includes(p.id));
+  // I post senza progetto prendono quello scelto qui: programmato, un post sta in un progetto.
+  const needsProject = allProjects.length > 0 && chosenPosts.some((p) => !p.projectId);
+  // Gli account utili: quelli collegati ai progetti dei post scelti (o a quello scelto qui).
+  const involved = new Set(chosenPosts.map((p) => p.projectId ?? assignProject).filter(Boolean));
+  const usableAccounts = involved.size === 0 ? accounts.data! : accounts.data!.filter((a) => a.projectIds.some((id) => involved.has(id)) || targets.includes(a.id));
+  const projectName = (id: string | null) => allProjects.find((p) => p.id === id)?.name;
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const refresh = () => Promise.all([
@@ -86,7 +100,7 @@ export function SocialInboxPage() {
     try {
       const results = await request<AssignResult[]>(`/orgs/${org.id}/social/inbox/assign`, {
         method: "POST",
-        body: { postIds: selected, accountIds: targets, scheduledAtUtc: when === "fixed" ? new Date(`${date}T${time}`).toISOString() : null, options },
+        body: { postIds: selected, accountIds: targets, scheduledAtUtc: when === "fixed" ? new Date(`${date}T${time}`).toISOString() : null, options, projectId: assignProject || null },
       });
       setProblems(Object.fromEntries(results.filter((r) => r.problem).map((r) => [r.postId, r.problem!])));
       setSelected(results.filter((r) => !r.scheduled).map((r) => r.postId));
@@ -108,9 +122,19 @@ export function SocialInboxPage() {
   return (
     <>
       <PageHeader
-        title="Da programmare"
+        title={project ? `Da programmare · ${project.name}` : "Da programmare"}
         description={<>I post pronti ma non ancora programmati: scritti qui, per prepararti, o mandati da altri programmi (un CMS, uno script, un'automazione) con una <Link to={`/o/${org.id}/api-keys`} className="text-brand-fg hover:underline">chiave API</Link>. Scegli account e ora: da lì diventano post programmati come gli altri.</>}
-        actions={admin && <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>Nuovo post</Button>}
+        actions={
+          <>
+            {!project && allProjects.length > 0 && (
+              <Select value={filter} onChange={(e) => { setFilter(e.target.value); setSelected([]); }} className="w-44" aria-label="Progetto">
+                <option value="">Tutti i progetti</option>
+                {allProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            )}
+            {admin && <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>Nuovo post</Button>}
+          </>
+        }
       />
 
       {posts.length === 0 ? (
@@ -128,12 +152,20 @@ export function SocialInboxPage() {
                 {selected.length === posts.length ? "Deseleziona tutti" : "Seleziona tutti"}
               </Button>}>
               <div className="space-y-4 p-4">
+                {needsProject && (
+                  <Field label="Progetto" hint="Per i post selezionati che non hanno ancora un progetto: programmati, stanno nel calendario di quel progetto.">
+                    <Select value={assignProject} onChange={(e) => setAssignProject(e.target.value)} className="sm:w-64">
+                      <option value="">Scegli il progetto</option>
+                      {allProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </Select>
+                  </Field>
+                )}
                 <Field label="Su quali account">
                   {accounts.data!.length === 0 ? (
                     <p className="text-[0.8125rem] text-muted">Nessun account collegato. <Link to={`/o/${org.id}/social/accounts`} className="text-brand-fg hover:underline">Collegane uno</Link>.</p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
-                      {accounts.data!.map((a) => {
+                      {usableAccounts.map((a) => {
                         const on = targets.includes(a.id);
                         return (
                           <button key={a.id} type="button" aria-pressed={on} disabled={a.status === "NeedsReconnect"}
@@ -159,7 +191,7 @@ export function SocialInboxPage() {
                     </>
                   )}
                   <span className="flex-1" />
-                  <Button variant="primary" loading={busy} disabled={selected.length === 0 || targets.length === 0
+                  <Button variant="primary" loading={busy} disabled={selected.length === 0 || targets.length === 0 || (needsProject && !assignProject)
                     || (accounts.data!.some((a) => a.network === "TikTok" && targets.includes(a.id)) && (!options.tikTokPrivacy || commercialIncomplete(options, commercial)))}
                     onClick={assign}>
                     Programma {selected.length > 0 ? selected.length : ""}
@@ -194,6 +226,7 @@ export function SocialInboxPage() {
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-3 text-[0.8125rem] whitespace-pre-line text-fg group-hover:text-brand-fg">{p.text || <span className="text-muted">Senza testo</span>}</p>
                     <p className="mt-1 text-xs text-muted">
+                      {!project && (p.projectId ? <Badge className="mr-1.5">{projectName(p.projectId) ?? "Progetto"}</Badge> : allProjects.length > 0 && <Badge tone="warn" className="mr-1.5">Senza progetto</Badge>)}
                       {p.suggestedAtUtc ? <>proposto per il {formatDateTime(p.suggestedAtUtc)}</> : "senza data proposta"}
                       {p.source && <> · da {p.source}</>}
                       {p.media.length > 0 && <> · {describeMedia(p.media)}</>}
@@ -211,7 +244,7 @@ export function SocialInboxPage() {
       )}
 
       {editing && <PostEditor post={editing} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />}
-      {creating && <PostEditor toInbox accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setCreating(false)} />}
+      {creating && <PostEditor toInbox defaultProjectId={project?.id ?? (filter || undefined)} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setCreating(false)} />}
     </>
   );
 }

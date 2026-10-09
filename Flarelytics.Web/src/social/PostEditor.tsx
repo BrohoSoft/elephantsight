@@ -68,6 +68,8 @@ export function PostEditor({ post, initialDate, defaultProjectId, toInbox, accou
   // Chi vede solo alcuni progetti scrive sempre in uno dei suoi.
   const allowNone = canSeeProject(org, null);
   const [projectId, setProjectId] = useState(post?.projectId ?? defaultProjectId ?? (allowNone ? "" : projects[0]?.id ?? ""));
+  // Programmato, un post sta in un progetto (se l'organizzazione ne ha): in bozza e in coda può aspettare.
+  const needsProject = !projectId && (projects.length > 0 || !allowNone);
   const [uploading, setUploading] = useState(0);
   const [options, setOptions] = useState<PostOptions>(post?.options ?? defaultPostOptions);
   const [commercial, setCommercial] = useState(!!(post?.options.tikTokBrandOrganic || post?.options.tikTokBrandedContent));
@@ -163,8 +165,8 @@ export function PostEditor({ post, initialDate, defaultProjectId, toInbox, accou
           ) : (
             <>
               <Button loading={busy === "draft"} disabled={uploading > 0 || (!allowNone && !projectId)} onClick={() => save(true)}>{post?.inbox ? "Salva in coda" : "Salva bozza"}</Button>
-              <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete || (!allowNone && !projectId) || (queueMode && !suggest)}
-                title={queueMode && !suggest ? "Per programmarlo scegli giorno e ora" : undefined} onClick={() => save(false)}>
+              <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete || needsProject || (queueMode && !suggest)}
+                title={needsProject ? "Per programmarlo scegli il progetto" : queueMode && !suggest ? "Per programmarlo scegli giorno e ora" : undefined} onClick={() => save(false)}>
                 {when === "now" && !queueMode ? "Pubblica ora" : "Programma"}
               </Button>
             </>

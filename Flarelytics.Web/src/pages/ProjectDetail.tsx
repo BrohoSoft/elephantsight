@@ -10,6 +10,7 @@ import { Alert, Button, EmptyState, Field, Input, Modal, PageHeader, PageLoader,
 import { canManageOrg, hasSocial, hasStore, useOrg } from "../components/org";
 import { SocialCalendarPage } from "./social/Calendar";
 import { SocialRecurringPage } from "./social/Recurring";
+import { SocialInboxPage } from "./social/Inbox";
 import { Dashboard } from "../components/Dashboard";
 import { formatInt } from "../components/format";
 import { MoreLink, ProjectVersions, StatTile, UpcomingList } from "../components/OverviewParts";
@@ -49,9 +50,11 @@ export function ProjectDetailPage() {
   const base = `/o/${org.id}/projects/${p.id}`;
 
   // Il Social del progetto: calendario e post ricorrenti solo di questo progetto.
-  if (tab === "social" || tab === "recurring") {
+  if (tab === "social" || tab === "recurring" || tab === "inbox") {
     if (!hasSocial(org)) return <Navigate to={base} replace />;
-    return tab === "recurring" ? <SocialRecurringPage project={p} /> : <SocialCalendarPage key={p.id} project={p} />;
+    return tab === "recurring" ? <SocialRecurringPage project={p} />
+      : tab === "inbox" ? <SocialInboxPage key={p.id} project={p} />
+      : <SocialCalendarPage key={p.id} project={p} />;
   }
   // Le sezioni dello Store (e le impostazioni con le app) non si aprono senza Store.
   if (tab && tab !== "settings" && !hasStore(org)) return <Navigate to={base} replace />;
@@ -105,7 +108,7 @@ function ProjectOverview({ project: p }: { project: Project }) {
         {social && (
           <>
             <StatTile label="Post programmati" value={social.scheduled} to={`${base}/social`} />
-            <StatTile label="Da programmare" value={social.inbox} to={`/o/${org.id}/social/inbox`} tone={social.inbox > 0 ? "warn" : undefined} />
+            <StatTile label="Da programmare" value={social.inbox} to={`${base}/inbox`} tone={social.inbox > 0 ? "warn" : undefined} />
             <StatTile label="Post ricorrenti attivi" value={social.recurringActive} to={`${base}/recurring`} />
             <StatTile label="Non usciti (7 giorni)" value={social.failedLastWeek} to={`${base}/social`} tone={social.failedLastWeek > 0 ? "bad" : undefined} />
           </>

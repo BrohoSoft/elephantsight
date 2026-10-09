@@ -124,7 +124,7 @@ public static class SocialRecurringEndpoints
     private static async Task ApplyAsync(SocialRecurringPost recurring, SaveRecurringPostRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage,
         CancellationToken ct)
     {
-        if (req.ProjectId is null && !org.CanSee(null))
+        if (req.ProjectId is null && (!org.CanSee(null) || await SocialPostEndpoints.HasProjectsAsync(db, ct)))
             throw ApiProblem.BadRequest("project_required", "Scegli il progetto del post ricorrente.");
         org.EnsureCanSee(req.ProjectId);
         if (req.ProjectId is { } projectId && !await db.Set<Project>().AnyAsync(p => p.Id == projectId, ct))

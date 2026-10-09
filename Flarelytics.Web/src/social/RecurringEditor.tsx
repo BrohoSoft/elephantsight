@@ -52,7 +52,8 @@ export function RecurringEditor({ recurring, template, defaultProjectId, account
   const [media, setMedia] = useState<SocialMediaItem[]>(source?.media ?? []);
   const [options, setOptions] = useState<PostOptions>(source?.options ?? defaultPostOptions);
   const [commercial, setCommercial] = useState(!!(source?.options.tikTokBrandOrganic || source?.options.tikTokBrandedContent));
-  const allowNone = canSeeProject(org, null);
+  // Un post ricorrente esce da solo: se ci sono progetti, sta in uno.
+  const allowNone = canSeeProject(org, null) && projects.length === 0;
   const [projectId, setProjectId] = useState(source?.projectId ?? defaultProjectId ?? (allowNone ? "" : projects[0]?.id ?? ""));
   const [frequency, setFrequency] = useState<RecurrenceFrequency>(source?.frequency ?? "Daily");
   const [interval, setIntervalText] = useState(String(source?.interval ?? 1));

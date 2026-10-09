@@ -42,7 +42,7 @@ export function ProjectField({ projects, value, onChange, allowNone, readOnly }:
   return (
     <Field label="Progetto" hint="Il post compare nel calendario del progetto, e usa gli account collegati al progetto.">
       <Select disabled={readOnly} value={value} onChange={(e) => onChange(e.target.value)}>
-        {allowNone ? <option value="">Nessuno (dell'organizzazione)</option> : !value && <option value="">Scegli il progetto</option>}
+        {allowNone ? <option value="">Nessuno (solo per bozze e coda: per programmarlo serve un progetto)</option> : !value && <option value="">Scegli il progetto</option>}
         {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </Select>
     </Field>

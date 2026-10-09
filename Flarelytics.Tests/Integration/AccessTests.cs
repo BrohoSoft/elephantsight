@@ -98,7 +98,11 @@ public class AccessTests(PostgresFixture postgres) : IAsyncLifetime
         await owner.Client.PutAsJsonAsync($"/api/v1/orgs/{owner.OrgId}/social/accounts/{shared}/projects", new { projectIds = new[] { mine, other } });
         var otherPost = (await (await owner.Client.PostAsJsonAsync($"/api/v1/orgs/{owner.OrgId}/social/posts", Post("Di B", other, shared))).ReadJsonAsync()).GetProperty("id").GetGuid();
         await owner.Client.PostAsJsonAsync($"/api/v1/orgs/{owner.OrgId}/social/posts", Post("Di A", mine, shared));
-        await owner.Client.PostAsJsonAsync($"/api/v1/orgs/{owner.OrgId}/social/posts", Post("Dell'organizzazione", null, shared));
+        // Un post senza progetto (una bozza: programmato, starebbe in un progetto) è dell'organizzazione.
+        Assert.Equal(HttpStatusCode.Created, (await owner.Client.PostAsJsonAsync($"/api/v1/orgs/{owner.OrgId}/social/posts", new
+        {
+            text = "Dell'organizzazione", scheduledAtUtc = DateTime.UtcNow.AddDays(1), isDraft = true, projectId = (Guid?)null, accountIds = new[] { shared }, media = Array.Empty<object>()
+        })).StatusCode);
 
         var client = await InviteAsync(owner, "Admin", new { allProjects = false, projectIds = new[] { mine }, sections = "Store, Social" });
         var api = $"/api/v1/orgs/{owner.OrgId}";
@@ -134,6 +138,47 @@ public class AccessTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, (await client.Client.PostAsJsonAsync($"{api}/projects", new { name = "Nuovo" })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.Client.PutAsJsonAsync($"{api}/social/accounts/{shared}/projects", new { projectIds = new[] { mine } })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.Client.PostAsJsonAsync($"{api}/invitations", new { email = "x@example.com", role = "Viewer" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Programmato_un_post_sta_in_un_progetto_anche_quando_arriva_dalla_coda()
+    {
+        var owner = await _app.SignUpAsync();
+        var project = await CreateProjectAsync(owner, "App");
+        var other = await CreateProjectAsync(owner, "Cliente");
+        var account = await ConnectMastodonAsync(owner);
+        await owner.Client.PutAsJsonAsync($"/api/v1/orgs/{owner.OrgId}/social/accounts/{account}/projects", new { projectIds = new[] { project } });
+        var api = $"/api/v1/orgs/{owner.OrgId}";
+
+        // Con progetti nell'organizzazione, un post programmato senza progetto no; una bozza sì.
+        Assert.Equal("project_required", await (await owner.Client.PostAsJsonAsync($"{api}/social/posts", Post("Senza", null, account))).ProblemCodeAsync());
+
+        // In coda può stare senza progetto: si sceglie quando lo si programma.
+        object Queued(string text, Guid? projectId) => new
+        {
+            text, scheduledAtUtc = DateTime.UtcNow, isDraft = true, projectId, accountIds = Array.Empty<Guid>(), media = Array.Empty<object>(), inbox = true,
+            suggestedAtUtc = DateTime.UtcNow.AddDays(2)
+        };
+        var loose = (await (await owner.Client.PostAsJsonAsync($"{api}/social/posts", Queued("Senza progetto", null))).ReadJsonAsync()).GetProperty("id").GetGuid();
+        var inProject = (await (await owner.Client.PostAsJsonAsync($"{api}/social/posts", Queued("Del progetto", project))).ReadJsonAsync()).GetProperty("id").GetGuid();
+        await owner.Client.PostAsJsonAsync($"{api}/social/posts", Queued("Dell'altro", other));
+
+        // La coda di un progetto ha solo i suoi.
+        var projectInbox = (await (await owner.Client.GetAsync($"{api}/social/inbox?projectId={project}")).ReadJsonAsync()).EnumerateArray().ToList();
+        Assert.Equal(["Del progetto"], projectInbox.Select(p => p.GetProperty("text").GetString()).ToArray());
+
+        // Senza scegliere il progetto, quello senza resta in coda con il motivo; l'altro si programma nel suo.
+        var first = (await (await owner.Client.PostAsJsonAsync($"{api}/social/inbox/assign", new { postIds = new[] { loose, inProject }, accountIds = new[] { account } })).ReadJsonAsync())
+            .EnumerateArray().ToDictionary(r => r.GetProperty("postId").GetGuid());
+        Assert.False(first[loose].GetProperty("scheduled").GetBoolean());
+        Assert.Contains("progetto", first[loose].GetProperty("problem").GetString());
+        Assert.True(first[inProject].GetProperty("scheduled").GetBoolean());
+
+        // Scegliendolo, entra in quel progetto.
+        var second = await (await owner.Client.PostAsJsonAsync($"{api}/social/inbox/assign", new { postIds = new[] { loose }, accountIds = new[] { account }, projectId = project })).ReadJsonAsync();
+        Assert.True(second[0].GetProperty("scheduled").GetBoolean());
+        var post = await (await owner.Client.GetAsync($"{api}/social/posts/{loose}")).ReadJsonAsync();
+        Assert.Equal(project, post.GetProperty("projectId").GetGuid());
     }
 
     [Fact]

@@ -130,6 +130,7 @@ function Usage() {
           che i post citano per nome in <Mono>media[].file</Mono>.
         </p>
         <ul className="list-disc space-y-1 pl-5">
+          <li><Mono>projectId</Mono>: il progetto del post (facoltativo). Senza, lo scegli quando lo programmi dalla coda.</li>
           <li><Mono>type</Mono>: <Mono>text</Mono> (nessuna immagine), <Mono>image</Mono> (una), <Mono>carousel</Mono> (da 2 a 10, nell'ordine in cui le elenchi), <Mono>video</Mono> (un MP4/MOV: su Instagram diventa un Reel, su TikTok un video).</li>
           <li><Mono>options.showInProfileGrid</Mono>: per i Reel, <Mono>false</Mono> = solo nella scheda Reel, non nella griglia del profilo. La visibilità su TikTok invece la sceglie chi programma il post, nel pannello: lo chiede TikTok.</li>
           <li><Mono>suggestedAtUtc</Mono>: quando pubblicarlo, in UTC (<Mono>…Z</Mono>) o con il fuso (<Mono>…+02:00</Mono>).</li>

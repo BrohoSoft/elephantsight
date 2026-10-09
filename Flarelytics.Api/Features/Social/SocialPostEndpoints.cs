@@ -213,10 +213,12 @@ public static class SocialPostEndpoints
     /// La coda "Da programmare": i post arrivati con una chiave API e non
     /// ancora assegnati. Dalla data proposta più vicina; quelli senza data in fondo.
     /// </summary>
-    private static async Task<IResult> Inbox(CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    /// <remarks>Con <paramref name="projectId"/> la coda di un progetto; senza, quella di tutti i progetti che il membro vede.</remarks>
+    private static async Task<IResult> Inbox(Guid? projectId, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
     {
+        if (projectId is not null) org.EnsureCanSee(projectId);
         var posts = await Visible(db, org).AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
-            .Where(p => p.IsInbox)
+            .Where(p => p.IsInbox && (projectId == null || p.ProjectId == projectId))
             .OrderBy(p => p.SuggestedAtUtc == null).ThenBy(p => p.SuggestedAtUtc).ThenBy(p => p.CreatedAtUtc)
             .ToListAsync(ct);
 
@@ -238,6 +240,12 @@ public static class SocialPostEndpoints
     /// </summary>
     private static async Task<IResult> Assign(AssignInboxRequest req, CurrentOrg org, FlarelyticsDbContext db, CancellationToken ct)
     {
+        if (req.ProjectId is { } chosenProject)
+        {
+            org.EnsureCanSee(chosenProject);
+            if (!await db.Set<Project>().AnyAsync(p => p.Id == chosenProject, ct)) throw ApiProblem.NotFound("Progetto");
+        }
+        var projectRequired = await HasProjectsAsync(db, ct);
         var accounts = await SocialAccountEndpoints.VisibleAccounts(db, org).Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
         if (accounts.Count != req.AccountIds.Distinct().Count()) throw ApiProblem.NotFound("Account");
 
@@ -260,6 +268,16 @@ public static class SocialPostEndpoints
                 results.Add(new AssignResult(id, false, "Non ha una data proposta: scegline una."));
                 continue;
             }
+
+            // Programmato, un post sta in un progetto: quello che ha già (scelto
+            // nel pannello o mandato con l'API), o quello scelto qui.
+            var project = post.ProjectId ?? req.ProjectId;
+            if (project is null && projectRequired)
+            {
+                results.Add(new AssignResult(id, false, "Scegli il progetto in cui programmarlo."));
+                continue;
+            }
+            if (post.ProjectId is null && project is not null) post.Update(post.Text, post.ScheduledAtUtc, isDraft: true, project);
 
             // Le scelte per TikTok arrivano dall'assegnazione (le fa la persona,
             // qui); la griglia di Instagram resta quella del post, se non cambiata.
@@ -450,10 +468,20 @@ public static class SocialPostEndpoints
 
         if (post.IsDraft) return;
 
+        // Programmato, un post sta in un progetto (in bozza e in coda può aspettare).
+        if (post.ProjectId is null && await HasProjectsAsync(db, ct))
+            throw ApiProblem.BadRequest("project_required", "Scegli il progetto del post: un post programmato sta in un progetto.");
         if (post.Targets.Count == 0) throw ApiProblem.BadRequest("no_accounts", "Scegli almeno un account su cui pubblicare.");
         var problems = ProblemsFor(post, accounts, a => post.Targets.Single(t => t.AccountId == a.Id).TextOverride);
         if (problems.Count > 0) throw ApiProblem.BadRequest("post_invalid", string.Join(" ", problems));
     }
+
+    /// <summary>
+    /// L'organizzazione ha progetti: allora un post programmato (o ricorrente)
+    /// deve stare in uno. Senza progetti (un'installazione appena fatta, solo
+    /// social) si programma lo stesso.
+    /// </summary>
+    public static Task<bool> HasProjectsAsync(FlarelyticsDbContext db, CancellationToken ct) => db.Set<Project>().AnyAsync(ct);
 
     /// <summary>Anche in bozza: un post di un progetto usa solo gli account collegati a quel progetto.</summary>
     public static void EnsureInProject(Guid? projectId, IEnumerable<SocialAccount> accounts)
@@ -559,7 +587,8 @@ public class CopyMediaRequestValidator : AbstractValidator<CopyMediaRequest>
 
 /// <param name="ScheduledAtUtc">Un'ora per tutti; null = ciascuno all'ora che ha proposto.</param>
 /// <param name="Options">Le scelte per le reti che le chiedono (TikTok), uguali per tutti i post assegnati.</param>
-public record AssignInboxRequest(IReadOnlyList<Guid> PostIds, IReadOnlyList<Guid> AccountIds, DateTime? ScheduledAtUtc, PostOptions? Options = null);
+/// <param name="ProjectId">Il progetto dei post che non ne hanno uno; quelli che ce l'hanno restano nel loro.</param>
+public record AssignInboxRequest(IReadOnlyList<Guid> PostIds, IReadOnlyList<Guid> AccountIds, DateTime? ScheduledAtUtc, PostOptions? Options = null, Guid? ProjectId = null);
 
 public record AssignResult(Guid PostId, bool Scheduled, string? Problem);
 
