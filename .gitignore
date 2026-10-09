@@ -8,7 +8,10 @@ obj/
 # Chiave master e segreti cifrati dello sviluppo locale.
 .dev/
 
-# Configurazione di produzione: contiene password e chiavi.
+# Configurazione dell'installazione (accanto a compose.yaml): contiene password
+# del database e chiavi delle app social.
+.env
+.env.*
 deploy/.env
 deploy/keys/
 

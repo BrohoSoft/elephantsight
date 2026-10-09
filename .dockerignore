@@ -3,5 +3,7 @@
 **/node_modules
 **/dist
 .dev
+.env
+.env.*
 .git
 Flarelytics.Tests
