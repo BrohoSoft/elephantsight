@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { ArrowLeft, AtSign, CalendarDays, Check, ChevronsUpDown, FolderKanban, Inbox, KeyRound, KeySquare, LayoutDashboard, LogOut, MessageSquare, Plus, Repeat, ScrollText, Settings, UserRound, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
-import { useApiMutation, keys, useMe, useSocialInbox } from "../api/hooks";
+import { useApiMutation, keys, useInstance, useMe, useSocialInbox } from "../api/hooks";
 import { errorMessage } from "../api/client";
 import type { Me, OrgSummary } from "../api/types";
 import { canManageOrg, hasSocial, hasStore, homePath, isFull } from "./org";
@@ -243,6 +243,7 @@ function CreateOrgModal({ open, onOpenChange }: { open: boolean; onOpenChange: (
 }
 
 function UserMenu({ me }: { me: Me }) {
+  const instance = useInstance();
   const { signOut } = useAuth();
   const navigate = useNavigate();
 
@@ -275,6 +276,7 @@ function UserMenu({ me }: { me: Me }) {
           <Menu.Item className={menuItem} onSelect={() => signOut().then(() => navigate("/login"))}>
             <LogOut className="size-3.5" /> Esci
           </Menu.Item>
+          {instance.data && <p className="px-2 pt-1.5 pb-0.5 text-[0.6875rem] text-faint">ElephantSight {instance.data.version}</p>}
         </Menu.Content>
       </Menu.Portal>
     </Menu.Root>

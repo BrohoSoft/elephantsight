@@ -199,6 +199,19 @@ public class SocialPost : BaseEntity, ITenantOwned
     /// <summary>Programmato: esce dalla coda ed entra nel calendario come un post qualsiasi.</summary>
     public void LeaveInbox() => IsInbox = false;
 
+    /// <summary>
+    /// In coda "Da programmare", scritto a mano dal pannello: come quelli che
+    /// arrivano con una chiave API, è una bozza con una data proposta facoltativa.
+    /// </summary>
+    public void PutInInbox(DateTime? suggestedAtUtc, DateTime nowUtc)
+    {
+        IsInbox = true;
+        IsDraft = true;
+        SuggestedAtUtc = suggestedAtUtc is { } s ? DateTime.SpecifyKind(s.ToUniversalTime(), DateTimeKind.Utc) : null;
+        // La data c'è sempre (vedi sopra): finché è in coda vale quella proposta, o adesso.
+        ScheduledAtUtc = SuggestedAtUtc ?? DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc);
+    }
+
     /// <param name="projectId">Il progetto dell'account, se ne ha uno solo; con più progetti non si sa a quale appartenga e resta dell'organizzazione.</param>
     public static SocialPost Imported(Guid tenantId, string text, DateTime publishedAtUtc, Guid createdBy, Guid? projectId = null) => new()
     {

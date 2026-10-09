@@ -640,6 +640,42 @@ public class SocialTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Un_post_si_mette_in_coda_anche_a_mano_e_poi_si_programma_dalla_coda()
+    {
+        var a = await _app.SignUpAsync();
+        var mastodon = await ConnectMastodonAsync(a);
+        var suggested = DateTime.UtcNow.AddDays(3);
+
+        // In coda: senza account, con una data proposta, e senza i controlli delle reti (è una bozza).
+        var queued = await CreatePostAsync(a, new
+        {
+            text = new string('a', 600), scheduledAtUtc = DateTime.UtcNow, isDraft = false, accountIds = Array.Empty<Guid>(),
+            media = Array.Empty<object>(), inbox = true, suggestedAtUtc = suggested
+        });
+        Assert.Equal("Inbox", queued.GetProperty("status").GetString());
+        Assert.True(queued.GetProperty("inbox").GetBoolean());
+        Assert.Equal(suggested, queued.GetProperty("suggestedAtUtc").GetDateTime().ToUniversalTime(), TimeSpan.FromSeconds(1));
+        var id = queued.GetProperty("id").GetGuid();
+
+        var inbox = await (await a.Client.GetAsync($"/api/v1/orgs/{a.OrgId}/social/inbox")).ReadJsonAsync();
+        Assert.Equal(id, Assert.Single(inbox.EnumerateArray()).GetProperty("id").GetGuid());
+        Assert.Empty((await CalendarAsync(a)).EnumerateArray().Where(p => p.GetProperty("id").GetGuid() == id));
+
+        // Senza data proposta: va bene lo stesso.
+        var noDate = await CreatePostAsync(a, new { text = "Idea", scheduledAtUtc = DateTime.UtcNow, isDraft = true, accountIds = Array.Empty<Guid>(), media = Array.Empty<object>(), inbox = true });
+        Assert.Equal(JsonValueKind.Null, noDate.GetProperty("suggestedAtUtc").ValueKind);
+
+        // Dalla coda si assegna come quelli arrivati con una chiave API (il testo si accorcia prima).
+        await a.Client.PutAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/posts/{id}", new
+        {
+            text = "Pronto", scheduledAtUtc = suggested, isDraft = true, accountIds = Array.Empty<Guid>(), media = Array.Empty<object>(), inbox = true, suggestedAtUtc = suggested
+        });
+        var assigned = await (await a.Client.PostAsJsonAsync($"/api/v1/orgs/{a.OrgId}/social/inbox/assign", new { postIds = new[] { id }, accountIds = new[] { mastodon } })).ReadJsonAsync();
+        Assert.True(assigned[0].GetProperty("scheduled").GetBoolean());
+        Assert.Equal("Scheduled", (await GetPostAsync(a, queued)).GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task Un_file_che_non_e_un_jpeg_si_rifiuta()
     {
         var a = await _app.SignUpAsync();

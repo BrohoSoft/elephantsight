@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
+import { useInstance } from "../api/hooks";
 import { Link } from "react-router";
 import { Logo } from "./Logo";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 
 /** Le pagine fuori dal pannello: accesso, registrazione, link delle email. */
 export function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+  const instance = useInstance();
   return (
     <div className="relative flex min-h-full flex-col items-center justify-center px-4 py-12">
       <div className="absolute top-4 right-4">
@@ -21,6 +23,7 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
       </div>
       <p className="mt-10 text-xs text-faint">
         <Link to="/privacy" className="hover:text-fg">Privacy Policy</Link> · <Link to="/terms" className="hover:text-fg">Terms of Service</Link>
+        {instance.data && <> · ElephantSight {instance.data.version}</>}
       </p>
     </div>
   );

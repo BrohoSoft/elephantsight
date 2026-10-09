@@ -33,8 +33,10 @@ const timeInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
  * Scrivere, programmare e seguire un post. Lo stesso componente crea, modifica
  * e, quando il post è già uscito, mostra com'è andata su ogni account.
  */
-export function PostEditor({ post, initialDate, defaultProjectId, accounts, projects, admin, onClose }: {
+export function PostEditor({ post, initialDate, defaultProjectId, toInbox, accounts, projects, admin, onClose }: {
   post?: SocialPost;
+  /** Un post nuovo per la coda "Da programmare": account e data proposta facoltativi. */
+  toInbox?: boolean;
   initialDate?: Date;
   /** Il progetto di un post nuovo (dal calendario di un progetto). */
   defaultProjectId?: string;
@@ -58,6 +60,9 @@ export function PostEditor({ post, initialDate, defaultProjectId, accounts, proj
   );
   const [media, setMedia] = useState<SocialMediaItem[]>(post?.media ?? []);
   const [when, setWhen] = useState<"schedule" | "now">("schedule");
+  // In coda la data è solo una proposta, e si può non darla.
+  const queueMode = !!toInbox || !!post?.inbox;
+  const [suggest, setSuggest] = useState(post?.inbox ? post.suggestedAtUtc !== null : false);
   const [date, setDate] = useState(dateInput(start));
   const [time, setTime] = useState(timeInput(start));
   // Chi vede solo alcuni progetti scrive sempre in uno dei suoi.
@@ -93,6 +98,9 @@ export function PostEditor({ post, initialDate, defaultProjectId, accounts, proj
       text,
       scheduledAtUtc,
       isDraft: draft,
+      // Salvato dalla coda resta in coda, con la data proposta (se c'è).
+      inbox: draft && queueMode,
+      suggestedAtUtc: draft && queueMode && suggest ? scheduledAtUtc : null,
       projectId: projectId || null,
       accountIds: selected,
       media: media.map((m) => ({ id: m.id, altText: m.altText || null })),
@@ -148,10 +156,19 @@ export function PostEditor({ post, initialDate, defaultProjectId, accounts, proj
       ) : (
         <>
           <Button variant="ghost" onClick={onClose}>Annulla</Button>
-          <Button loading={busy === "draft"} disabled={uploading > 0 || (!allowNone && !projectId)} onClick={() => save(true)}>{post?.inbox ? "Salva in coda" : "Salva bozza"}</Button>
-          <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete || (!allowNone && !projectId)} onClick={() => save(false)}>
-            {when === "now" ? "Pubblica ora" : "Programma"}
-          </Button>
+          {toInbox ? (
+            <Button variant="primary" loading={busy === "draft"} disabled={uploading > 0 || (!allowNone && !projectId) || (!text.trim() && media.length === 0)} onClick={() => save(true)}>
+              Metti in coda
+            </Button>
+          ) : (
+            <>
+              <Button loading={busy === "draft"} disabled={uploading > 0 || (!allowNone && !projectId)} onClick={() => save(true)}>{post?.inbox ? "Salva in coda" : "Salva bozza"}</Button>
+              <Button variant="primary" loading={busy === "save"} disabled={uploading > 0 || selected.length === 0 || issues.length > 0 || incomplete || (!allowNone && !projectId) || (queueMode && !suggest)}
+                title={queueMode && !suggest ? "Per programmarlo scegli giorno e ora" : undefined} onClick={() => save(false)}>
+                {when === "now" && !queueMode ? "Pubblica ora" : "Programma"}
+              </Button>
+            </>
+          )}
         </>
       )}
     </div>
@@ -159,7 +176,7 @@ export function PostEditor({ post, initialDate, defaultProjectId, accounts, proj
 
   return (
     <Modal open onOpenChange={(o) => !o && onClose()} wide footer={footer}
-      title={post?.inbox ? "Post da programmare" : post ? (readOnly ? "Post" : "Modifica post") : "Nuovo post"}
+      title={toInbox ? "Nuovo post da programmare" : post?.inbox ? "Post da programmare" : post ? (readOnly ? "Post" : "Modifica post") : "Nuovo post"}
       description={post && (post.imported
         ? <Badge tone="ok">Pubblicato fuori da ElephantSight</Badge>
         : post.inbox
@@ -208,7 +225,26 @@ export function PostEditor({ post, initialDate, defaultProjectId, accounts, proj
 
         <NetworkOptions accounts={chosen} media={media} options={options} onChange={setOptions} commercial={commercial} onCommercial={setCommercial} readOnly={readOnly} />
 
-        {!readOnly && (
+        {!readOnly && queueMode && (
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-[0.8125rem] text-fg">
+              <input type="checkbox" className="accent-brand" checked={suggest} onChange={(e) => setSuggest(e.target.checked)} />
+              Proponi un giorno e un'ora
+            </label>
+            {suggest && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Giorno"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+                <Field label="Ora"><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
+              </div>
+            )}
+            <p className="text-xs text-muted">
+              {toInbox
+                ? "Resta nella coda Da programmare finché non scegli account e ora. Account e data sono facoltativi: puoi prepararlo adesso e decidere dopo."
+                : "\"Salva in coda\" lo lascia in coda; \"Programma\" lo mette nel calendario all'ora scelta."}
+            </p>
+          </div>
+        )}
+        {!readOnly && !queueMode && (
           <div className="space-y-3">
             <Segmented value={when} onChange={setWhen} options={[{ value: "schedule", label: "Programma" }, { value: "now", label: "Pubblica subito" }]} />
             {when === "schedule" && (

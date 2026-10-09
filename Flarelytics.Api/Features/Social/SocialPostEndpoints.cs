@@ -398,11 +398,13 @@ public static class SocialPostEndpoints
         if (req.ProjectId is { } projectId && !await db.Set<Project>().AnyAsync(p => p.Id == projectId, ct))
             throw ApiProblem.NotFound("Progetto");
 
-        post.Update(req.Text, req.ScheduledAtUtc, req.IsDraft, req.ProjectId);
+        post.Update(req.Text, req.ScheduledAtUtc, req.IsDraft || req.Inbox, req.ProjectId);
         if (req.Options is { } options) post.SetOptions(options);
+        // In coda (scritto a mano o rimesso lì): una bozza con la data proposta.
         // Un post della coda programmato dal pannello diventa un post qualsiasi;
         // salvato come bozza resta in coda.
-        if (!req.IsDraft) post.LeaveInbox();
+        if (req.Inbox) post.PutInInbox(req.SuggestedAtUtc, DateTime.UtcNow);
+        else if (!req.IsDraft) post.LeaveInbox();
 
         // Gli account: si tolgono quelli non più scelti, si aggiungono i nuovi.
         var accounts = await SocialAccountEndpoints.VisibleAccounts(db, org).Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
@@ -591,8 +593,9 @@ public class AssignInboxRequestValidator : AbstractValidator<AssignInboxRequest>
 }
 
 /// <param name="Overrides">Testi diversi per account: id dell'account → testo.</param>
+/// <param name="Inbox">Nella coda "Da programmare" invece che nel calendario: una bozza, con <paramref name="SuggestedAtUtc"/> come data proposta (facoltativa).</param>
 public record SavePostRequest(string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, IReadOnlyList<Guid> AccountIds,
-    IReadOnlyList<SavePostMedia> Media, Dictionary<Guid, string>? Overrides, PostOptions? Options = null);
+    IReadOnlyList<SavePostMedia> Media, Dictionary<Guid, string>? Overrides, PostOptions? Options = null, bool Inbox = false, DateTime? SuggestedAtUtc = null);
 
 public class SavePostRequestValidator : AbstractValidator<SavePostRequest>
 {

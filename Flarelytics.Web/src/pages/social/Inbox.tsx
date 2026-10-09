@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Inbox as InboxIcon, Trash2, Video } from "lucide-react";
+import { Inbox as InboxIcon, Plus, Trash2, Video } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { errorMessage, request } from "../../api/client";
@@ -65,6 +65,8 @@ export function SocialInboxPage() {
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [done, setDone] = useState<number | null>(null);
   const [editing, setEditing] = useState<SocialPost | null>(null);
+  // Un post nuovo scritto a mano, che entra in coda invece che nel calendario.
+  const [creating, setCreating] = useState(false);
   const [options, setOptions] = useState<PostOptions>(defaultPostOptions);
   const [commercial, setCommercial] = useState(false);
 
@@ -107,14 +109,15 @@ export function SocialInboxPage() {
     <>
       <PageHeader
         title="Da programmare"
-        description={<>I post mandati da altri programmi (un CMS, uno script, un'automazione) con una <Link to={`/o/${org.id}/api-keys`} className="text-brand-fg hover:underline">chiave API</Link>. Scegli account e ora: da lì diventano post programmati come gli altri.</>}
+        description={<>I post pronti ma non ancora programmati: scritti qui, per prepararti, o mandati da altri programmi (un CMS, uno script, un'automazione) con una <Link to={`/o/${org.id}/api-keys`} className="text-brand-fg hover:underline">chiave API</Link>. Scegli account e ora: da lì diventano post programmati come gli altri.</>}
+        actions={admin && <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>Nuovo post</Button>}
       />
 
       {posts.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line-strong">
           <EmptyState icon={<InboxIcon className="size-5" />} title="Nessun post in coda"
-            action={admin && <Link to={`/o/${org.id}/api-keys`}><Button>Crea una chiave API</Button></Link>}>
-            Un programma esterno manda i post qui con una chiave API: testo, immagini e, se vuole, una data proposta.
+            action={admin && <Button variant="primary" onClick={() => setCreating(true)}>Scrivi un post</Button>}>
+            Scrivi qui i post che vuoi preparare e programmare dopo, o falli arrivare da un programma esterno con una chiave API: testo, immagini e, se vuoi, una data proposta.
           </EmptyState>
         </div>
       ) : (
@@ -208,6 +211,7 @@ export function SocialInboxPage() {
       )}
 
       {editing && <PostEditor post={editing} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />}
+      {creating && <PostEditor toInbox accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setCreating(false)} />}
     </>
   );
 }

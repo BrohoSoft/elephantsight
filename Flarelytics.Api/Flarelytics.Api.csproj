@@ -9,6 +9,10 @@
     <!-- In sviluppo le chiavi delle app social (Meta, Instagram) e l'indirizzo
          del tunnel stanno negli user-secrets, fuori dal repository. -->
     <UserSecretsId>watchstore-api-dev</UserSecretsId>
+    <!-- La versione di ElephantSight: la restituisce /api/v1/instance e il
+         pannello la mostra. Va alzata a ogni rilascio, insieme a quella in
+         Flarelytics.Web/package.json. -->
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
