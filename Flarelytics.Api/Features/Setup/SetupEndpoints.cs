@@ -4,8 +4,10 @@ using Flarelytics.Api.Email;
 using Flarelytics.Api.Features.Auth;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
+using Flarelytics.Core.Social;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Flarelytics.Api.Features.Setup;
 
@@ -35,10 +37,12 @@ public static class SetupEndpoints
     }
 
     /// <summary>Quello che il pannello deve sapere prima ancora del login.</summary>
-    private static async Task<IResult> Instance(FlarelyticsDbContext db, AccountEmails emails, CancellationToken ct) =>
+    private static async Task<IResult> Instance(FlarelyticsDbContext db, AccountEmails emails, IOptions<SocialOptions> social, CancellationToken ct) =>
         Results.Ok(new InstanceInfo(
             SetupRequired: !await db.Set<User>().AnyAsync(ct),
             EmailEnabled: emails.Enabled,
+            MetaEnabled: social.Value.Meta.Enabled,
+            MetaRedirectUri: Social.SocialAccountEndpoints.RedirectUri(social),
             Version: typeof(SetupEndpoints).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
 
     /// <summary>
@@ -75,7 +79,9 @@ public static class SetupEndpoints
 
 /// <param name="SetupRequired">Nessun utente ancora: il pannello mostra l'installer.</param>
 /// <param name="EmailEnabled">Senza SMTP gli inviti si mandano copiando il link, e il recupero password non c'è.</param>
-public record InstanceInfo(bool SetupRequired, bool EmailEnabled, string Version);
+/// <param name="MetaEnabled">C'è un'app Meta configurata: si possono collegare Instagram e le Pagine Facebook.</param>
+/// <param name="MetaRedirectUri">L'indirizzo da registrare nell'app Meta come URI di reindirizzamento OAuth.</param>
+public record InstanceInfo(bool SetupRequired, bool EmailEnabled, bool MetaEnabled, string MetaRedirectUri, string Version);
 
 public record SetupRequest(string Email, string Password, string FullName, string OrganizationName);
 

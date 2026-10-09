@@ -101,6 +101,23 @@ public static class CoreServices
         return services;
     }
 
+    /// <summary>
+    /// La pubblicazione sui social: client delle reti, immagini, firma degli
+    /// indirizzi. Il ciclo che pubblica sta in <see cref="AddFlarelyticsSync"/>.
+    /// </summary>
+    public static IServiceCollection AddFlarelyticsSocial(this IServiceCollection services)
+    {
+        services.AddOptions<Social.SocialOptions>().BindConfiguration(Social.SocialOptions.Section)
+            .PostConfigure<IConfiguration>((o, c) => o.PublicUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? c["Auth:PublicAppUrl"] : o.PublicUrl);
+        services.AddSingleton<Social.SocialMediaStorage>();
+        services.AddSingleton<Social.MediaUrlSigner>();
+        services.AddHttpClient<Social.BlueskyClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddHttpClient<Social.MastodonClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddHttpClient<Social.MetaGraphClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddScoped<Social.SocialPublisher>();
+        return services;
+    }
+
     /// <summary>La sincronizzazione con gli store, con il ciclo in background che la fa girare.</summary>
     public static IServiceCollection AddFlarelyticsSync(this IServiceCollection services)
     {
@@ -121,6 +138,7 @@ public static class CoreServices
         services.AddSingleton<SyncCoordinator>();
         services.AddHostedService<SyncWorker>();
         services.AddHostedService<Management.BuildUploadWorker>();
+        services.AddHostedService<Social.SocialPublishWorker>();
         return services;
     }
 }

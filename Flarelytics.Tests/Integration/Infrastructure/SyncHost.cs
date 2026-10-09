@@ -33,7 +33,9 @@ public sealed class SyncHost : IAsyncDisposable
             ["Secrets:StorageDirectory"] = app.SecretsDirectory,
             ["Reports:StorageDirectory"] = ReportsDirectory,
             ["Sync:RequestDelay"] = "00:00:00",
-            ["Sync:BackfillDays"] = backfillDays.ToString()
+            ["Sync:BackfillDays"] = backfillDays.ToString(),
+            ["Auth:PublicAppUrl"] = "http://app.test",
+            ["Social:PollDelay"] = "00:00:00"
         }).Build();
 
         var services = new ServiceCollection();
@@ -41,6 +43,7 @@ public sealed class SyncHost : IAsyncDisposable
         services.AddLogging(l => l.SetMinimumLevel(LogLevel.Warning));
         services.AddFlarelyticsDatabase(configuration);
         services.AddFlarelyticsSecretsAndStores(configuration, createDevelopmentKey: false);
+        services.AddFlarelyticsSocial();
         services.AddFlarelyticsSync();
         services.RemoveAll<IAppleSalesReports>();
         services.AddSingleton<IAppleSalesReports>(Apple);
@@ -50,6 +53,11 @@ public sealed class SyncHost : IAsyncDisposable
         {
             services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
                 o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = app.StoreApis));
+        }
+        foreach (var client in FlarelyticsAppFactory.SocialClients)
+        {
+            services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
+                o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = app.SocialApis));
         }
         services.RemoveAll<IAppIconSource>();
         services.AddSingleton<IAppIconSource>(Icons);

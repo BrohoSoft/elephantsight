@@ -16,7 +16,7 @@ namespace Flarelytics.Tests.Integration.Infrastructure;
 /// </remarks>
 public class FakeStoreServer : HttpMessageHandler
 {
-    public record Recorded(HttpMethod Method, string Url, string? Body, byte[]? Bytes);
+    public record Recorded(HttpMethod Method, string Url, string? Body, byte[]? Bytes, string Headers);
 
     private readonly List<(HttpMethod Method, Regex Path, Func<HttpRequestMessage, HttpResponseMessage> Respond)> _routes = [];
     public ConcurrentQueue<Recorded> Requests { get; } = new();
@@ -41,7 +41,7 @@ public class FakeStoreServer : HttpMessageHandler
         var bytes = request.Content is null ? null : await request.Content.ReadAsByteArrayAsync(ct);
         var url = request.RequestUri!.ToString();
         var text = bytes is null ? null : Encoding.UTF8.GetString(bytes);
-        Requests.Enqueue(new Recorded(request.Method, url, text, bytes));
+        Requests.Enqueue(new Recorded(request.Method, url, text, bytes, request.Headers.ToString()));
 
         // Si confronta l'URL senza la query, che resta comunque registrata.
         var path = url.Split('?')[0];

@@ -181,6 +181,7 @@ public static class ServiceRegistration
         // all'avvio ricorda di salvarla fuori dal server.
         builder.Services.AddFlarelyticsSecretsAndStores(builder.Configuration,
             createDevelopmentKey: builder.Configuration.GetValue("Secrets:CreateKeyIfMissing", builder.Environment.IsDevelopment()));
+        builder.Services.AddFlarelyticsSocial();
         builder.Services.AddScoped<TwoFactorService>();
     }
 

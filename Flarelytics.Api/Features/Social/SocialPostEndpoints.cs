@@ -1,0 +1,275 @@
+using System.Security.Claims;
+using Flarelytics.Api.Common;
+using Flarelytics.Api.Features.Orgs;
+using Flarelytics.Core.Database;
+using Flarelytics.Core.Database.Entities;
+using Flarelytics.Core.Social;
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+
+namespace Flarelytics.Api.Features.Social;
+
+/// <summary>
+/// Il calendario dei post. Rotte sotto <c>/orgs/{orgId}/social/posts</c> e
+/// <c>/orgs/{orgId}/social/media</c>; le immagini si leggono da
+/// <c>/social/media/{id}.jpg</c> con un indirizzo firmato.
+/// </summary>
+/// <remarks>
+/// Un post si salva con l'elenco degli account su cui va: la pubblicazione la
+/// fa il <see cref="SocialPublishWorker"/> all'ora indicata. Un post non in
+/// bozza si controlla subito contro i limiti di ogni rete, così l'errore si
+/// vede mentre lo si scrive e non a mezzanotte.
+/// </remarks>
+public static class SocialPostEndpoints
+{
+    public const long MaxImageBytes = 10 * 1024 * 1024;
+
+    public static void MapSocialPosts(this IEndpointRouteBuilder api)
+    {
+        var social = api.MapOrgGroup("/social");
+        social.MapGet("/posts", List);
+        social.MapGet("/posts/{postId:guid}", Get);
+
+        var admin = social.MapGroup("").RequireOrgRole(OrgRole.Admin);
+        admin.MapPost("/posts", Create).Validating<SavePostRequest>();
+        admin.MapPut("/posts/{postId:guid}", Update).Validating<SavePostRequest>();
+        admin.MapDelete("/posts/{postId:guid}", Delete);
+        admin.MapPost("/posts/{postId:guid}/retry", Retry);
+        admin.MapPost("/media", UploadMedia).DisableAntiforgery();
+
+        // Anonima: la usa Instagram, che scarica l'immagine da sé, e i tag
+        // <img> del pannello, che non possono mandare l'access token. La firma
+        // nell'indirizzo è il permesso.
+        api.MapGet("/social/media/{file}", ServeMedia).AllowAnonymous();
+    }
+
+    /// <summary>I post fra due istanti (il mese che il calendario sta mostrando), con i loro esiti.</summary>
+    private static async Task<IResult> List(DateTime from, DateTime to, Guid? projectId, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    {
+        if (to <= from || to - from > TimeSpan.FromDays(100)) throw ApiProblem.BadRequest("range", "Un periodo di al massimo 100 giorni.");
+        var (start, end) = (DateTime.SpecifyKind(from.ToUniversalTime(), DateTimeKind.Utc), DateTime.SpecifyKind(to.ToUniversalTime(), DateTimeKind.Utc));
+
+        var query = db.Set<SocialPost>().AsNoTracking().Include(p => p.Targets).Include(p => p.Media)
+            .Where(p => p.ScheduledAtUtc >= start && p.ScheduledAtUtc < end);
+        if (projectId is { } pid) query = query.Where(p => p.ProjectId == pid);
+
+        var posts = await query.OrderBy(p => p.ScheduledAtUtc).ToListAsync(ct);
+        return Results.Ok(posts.Select(p => SocialPostResponse.From(p, signer)));
+    }
+
+    private static async Task<IResult> Get(Guid postId, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct) =>
+        Results.Ok(SocialPostResponse.From(await LoadAsync(db, postId, ct), signer));
+
+    private static async Task<IResult> Create(SavePostRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
+        MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
+    {
+        var post = SocialPost.Create(org.TenantId, principal.UserId());
+        db.Add(post);
+        await ApplyAsync(post, req, db, storage, ct);
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/v1/orgs/{org.TenantId}/social/posts/{post.Id}", SocialPostResponse.From(post, signer));
+    }
+
+    private static async Task<IResult> Update(Guid postId, SavePostRequest req, FlarelyticsDbContext db, MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
+    {
+        var post = await LoadAsync(db, postId, ct);
+        if (!post.IsEditable)
+            throw ApiProblem.Conflict("post_published", "Il post è già uscito (o sta uscendo) su almeno un account: non si modifica più.");
+
+        await ApplyAsync(post, req, db, storage, ct);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialPostResponse.From(post, signer));
+    }
+
+    /// <summary>
+    /// Toglie il post dal calendario. Se è già uscito su qualche rete lì resta:
+    /// si cancella solo da qui.
+    /// </summary>
+    private static async Task<IResult> Delete(Guid postId, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    {
+        var post = await LoadAsync(db, postId, ct);
+        if (post.Targets.Any(t => t.Status == SocialTargetStatus.Publishing))
+            throw ApiProblem.Conflict("post_publishing", "Il post si sta pubblicando proprio adesso: riprova fra un momento.");
+
+        var media = post.Media.ToList();
+        db.Remove(post);
+        await db.SaveChangesAsync(ct);
+        foreach (var m in media) storage.Delete(m.TenantId, m.Id);
+        return Results.NoContent();
+    }
+
+    /// <summary>Rimette in coda gli account falliti, per pubblicarli al prossimo giro.</summary>
+    private static async Task<IResult> Retry(Guid postId, FlarelyticsDbContext db, MediaUrlSigner signer, CancellationToken ct)
+    {
+        var post = await LoadAsync(db, postId, ct);
+        var failed = post.Targets.Where(t => t.Status == SocialTargetStatus.Failed).ToList();
+        if (failed.Count == 0) throw ApiProblem.BadRequest("nothing_to_retry", "Nessun account da riprovare.");
+
+        foreach (var t in failed) t.Requeue();
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialPostResponse.From(post, signer));
+    }
+
+    /// <summary>
+    /// Un'immagine, già in JPEG: la conversione la fa il pannello, così il
+    /// server non ha bisogno di librerie grafiche. Qui si controlla che sia
+    /// davvero un JPEG e se ne leggono le dimensioni.
+    /// </summary>
+    private static async Task<IResult> UploadMedia(HttpRequest request, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
+        SocialMediaStorage storage, MediaUrlSigner signer, CancellationToken ct)
+    {
+        var form = await request.ReadFormAsync(ct);
+        var file = form.Files.GetFile("file") ?? throw ApiProblem.BadRequest("file_missing", "Manca l'immagine.");
+        if (file.Length is 0 or > MaxImageBytes) throw ApiProblem.BadRequest("file_size", "L'immagine deve pesare meno di 10 MB.");
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer, ct);
+        var content = buffer.ToArray();
+        if (!JpegInfo.TryReadSize(content, out var width, out var height))
+            throw ApiProblem.BadRequest("file_type", "Serve un'immagine JPEG.");
+
+        var media = SocialMedia.Create(org.TenantId, Path.GetFileName(file.FileName), content.Length, width, height, principal.UserId());
+        await storage.WriteAsync(org.TenantId, media.Id, content, ct);
+        db.Add(media);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialMediaResponse.From(media, signer));
+    }
+
+    private static IResult ServeMedia(string file, long? e, string? s, MediaUrlSigner signer, SocialMediaStorage storage)
+    {
+        if (!file.EndsWith(".jpg") || e is null || !signer.TryVerify(file[..^4], e.Value, s, DateTime.UtcNow, out var tenantId, out var mediaId))
+            return Results.NotFound();
+
+        var path = storage.PathFor(tenantId, mediaId);
+        if (!File.Exists(path)) return Results.NotFound();
+        return Results.File(path, "image/jpeg", enableRangeProcessing: false);
+    }
+
+    /// <summary>Scrive sul post testo, data, account e immagini della richiesta, e lo controlla contro i limiti delle reti.</summary>
+    private static async Task ApplyAsync(SocialPost post, SavePostRequest req, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    {
+        if (req.ProjectId is { } projectId && !await db.Set<Project>().AnyAsync(p => p.Id == projectId, ct))
+            throw ApiProblem.NotFound("Progetto");
+
+        post.Update(req.Text, req.ScheduledAtUtc, req.IsDraft, req.ProjectId);
+
+        // Gli account: si tolgono quelli non più scelti, si aggiungono i nuovi.
+        var accounts = await db.Set<SocialAccount>().Where(a => req.AccountIds.Contains(a.Id)).ToListAsync(ct);
+        if (accounts.Count != req.AccountIds.Distinct().Count()) throw ApiProblem.NotFound("Account");
+
+        foreach (var t in post.Targets.Where(t => t.AccountId is not { } id || !req.AccountIds.Contains(id)).ToList())
+        {
+            post.RemoveTarget(t);
+            db.Remove(t);
+        }
+        foreach (var a in accounts.Where(a => post.Targets.All(t => t.AccountId != a.Id)))
+        {
+            var target = SocialPostTarget.For(post, a);
+            post.AddTarget(target);
+            db.Add(target);
+        }
+        foreach (var t in post.Targets)
+        {
+            t.SetTextOverride(req.Overrides?.GetValueOrDefault(t.AccountId!.Value));
+            // Salvare un post fallito lo rimette in coda: è la correzione dopo l'errore.
+            if (t.Status == SocialTargetStatus.Failed) t.Requeue();
+        }
+
+        // Le immagini: nell'ordine della richiesta. Quelle tolte si cancellano.
+        var mediaIds = req.Media.Select(m => m.Id).ToList();
+        var media = await db.Set<SocialMedia>().Where(m => mediaIds.Contains(m.Id) && (m.PostId == null || m.PostId == post.Id)).ToListAsync(ct);
+        if (media.Count != mediaIds.Distinct().Count()) throw ApiProblem.NotFound("Immagine");
+
+        foreach (var m in post.Media.Where(m => !mediaIds.Contains(m.Id)).ToList())
+        {
+            post.RemoveMedia(m);
+            db.Remove(m);
+            storage.Delete(m.TenantId, m.Id);
+        }
+        foreach (var (item, position) in req.Media.Select((m, i) => (m, i)))
+        {
+            var m = media.Single(x => x.Id == item.Id);
+            m.AttachTo(post.Id, position, item.AltText);
+            if (!post.Media.Contains(m)) post.AddMedia(m);
+        }
+
+        if (post.IsDraft) return;
+
+        if (post.Targets.Count == 0) throw ApiProblem.BadRequest("no_accounts", "Scegli almeno un account su cui pubblicare.");
+        var ordered = post.Media.OrderBy(m => m.Position).ToList();
+        var problems = post.Targets
+            .Select(t => (Account: accounts.Single(a => a.Id == t.AccountId), Problems: SocialRules.Problems(t.TextOverride ?? post.Text, ordered, SocialRules.For(accounts.Single(a => a.Id == t.AccountId)))))
+            .Where(x => x.Problems.Count > 0)
+            .Select(x => $"{NetworkName(x.Account.Network)} ({x.Account.Handle ?? x.Account.Name}): {string.Join("; ", x.Problems)}.")
+            .ToList();
+        if (problems.Count > 0) throw ApiProblem.BadRequest("post_invalid", string.Join(" ", problems));
+    }
+
+    private static string NetworkName(SocialNetwork n) => n switch
+    {
+        SocialNetwork.FacebookPage => "Facebook",
+        _ => n.ToString()
+    };
+
+    private static async Task<SocialPost> LoadAsync(FlarelyticsDbContext db, Guid postId, CancellationToken ct) =>
+        await db.Set<SocialPost>().Include(p => p.Targets).Include(p => p.Media).SingleOrDefaultAsync(p => p.Id == postId, ct)
+        ?? throw ApiProblem.NotFound("Post");
+}
+
+public enum SocialPostStatus { Draft, Scheduled, Publishing, Published, PartiallyFailed, Failed }
+
+public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, SocialPostStatus Status, bool Editable,
+    IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc)
+{
+    public static SocialPostResponse From(SocialPost p, MediaUrlSigner signer) => new(
+        p.Id, p.Text, p.ScheduledAtUtc, p.IsDraft, p.ProjectId, StatusOf(p), p.IsEditable,
+        p.Media.OrderBy(m => m.Position).Select(m => SocialMediaResponse.From(m, signer)).ToList(),
+        p.Targets.OrderBy(t => t.Network).ThenBy(t => t.AccountName).Select(SocialTargetResponse.From).ToList(),
+        p.CreatedAtUtc);
+
+    /// <summary>Uno stato solo per il calendario, dagli esiti dei singoli account.</summary>
+    private static SocialPostStatus StatusOf(SocialPost p)
+    {
+        var t = p.Targets;
+        if (p.IsDraft) return SocialPostStatus.Draft;
+        if (t.Count > 0 && t.All(x => x.Status == SocialTargetStatus.Published)) return SocialPostStatus.Published;
+        if (t.Any(x => x.Status == SocialTargetStatus.Publishing)) return SocialPostStatus.Publishing;
+        if (t.Any(x => x.Status == SocialTargetStatus.Failed))
+            return t.Any(x => x.Status == SocialTargetStatus.Published) ? SocialPostStatus.PartiallyFailed : SocialPostStatus.Failed;
+        return t.Any(x => x.Status == SocialTargetStatus.Published) ? SocialPostStatus.Publishing : SocialPostStatus.Scheduled;
+    }
+}
+
+public record SocialTargetResponse(Guid Id, Guid? AccountId, SocialNetwork Network, string AccountName, string? TextOverride,
+    SocialTargetStatus Status, string? ExternalUrl, string? Error, DateTime? NextAttemptAtUtc, DateTime? PublishedAtUtc)
+{
+    public static SocialTargetResponse From(SocialPostTarget t) =>
+        new(t.Id, t.AccountId, t.Network, t.AccountName, t.TextOverride, t.Status, t.ExternalUrl, t.Error, t.NextAttemptAtUtc, t.PublishedAtUtc);
+}
+
+/// <param name="Url">Firmato: vale per le anteprime del pannello finché la pagina resta aperta un pomeriggio.</param>
+public record SocialMediaResponse(Guid Id, int Width, int Height, long SizeBytes, string? AltText, string Url)
+{
+    public static readonly TimeSpan PreviewValidity = TimeSpan.FromHours(12);
+
+    public static SocialMediaResponse From(SocialMedia m, MediaUrlSigner signer) =>
+        new(m.Id, m.Width, m.Height, m.SizeBytes, m.AltText, signer.PathFor(m.TenantId, m.Id, DateTime.UtcNow.Add(PreviewValidity)));
+}
+
+public record SavePostMedia(Guid Id, string? AltText);
+
+/// <param name="Overrides">Testi diversi per account: id dell'account → testo.</param>
+public record SavePostRequest(string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, IReadOnlyList<Guid> AccountIds,
+    IReadOnlyList<SavePostMedia> Media, Dictionary<Guid, string>? Overrides);
+
+public class SavePostRequestValidator : AbstractValidator<SavePostRequest>
+{
+    public SavePostRequestValidator()
+    {
+        RuleFor(x => x.Text).NotNull().MaximumLength(10000);
+        RuleFor(x => x.AccountIds).NotNull().Must(a => a.Count <= 50);
+        RuleFor(x => x.Media).NotNull().Must(m => m.Count <= 10).WithMessage("Al massimo 10 immagini.");
+        RuleForEach(x => x.Media).ChildRules(m => m.RuleFor(x => x.AltText).MaximumLength(1500));
+        RuleFor(x => x.Overrides).Must(o => o is null || o.Values.All(v => v.Length <= 10000));
+    }
+}

@@ -19,6 +19,9 @@ import { OverviewPage } from "./pages/Overview";
 import { ProjectDetailPage } from "./pages/ProjectDetail";
 import { ProjectsPage } from "./pages/Projects";
 import { ReviewsPage } from "./pages/Reviews";
+import { SocialAccountsPage } from "./pages/social/Accounts";
+import { SocialCalendarPage } from "./pages/social/Calendar";
+import { MetaCallbackPage } from "./pages/social/MetaCallback";
 
 /** Le pagine interne: chi non ha una sessione va all'accesso, e poi torna qui. */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -99,6 +102,10 @@ export function App() {
         <Route path="/o/:orgId/projects/:projectId/:tab" element={<OrgGuard><ProjectDetailPage /></OrgGuard>} />
         <Route path="/o/:orgId/reviews" element={<OrgGuard><ReviewsPage /></OrgGuard>} />
         <Route path="/o/:orgId/credentials" element={<OrgGuard><CredentialsPage /></OrgGuard>} />
+        <Route path="/o/:orgId/social" element={<OrgGuard><SocialCalendarPage /></OrgGuard>} />
+        <Route path="/o/:orgId/social/accounts" element={<OrgGuard><SocialAccountsPage /></OrgGuard>} />
+        {/* Il ritorno dal login di Facebook: un indirizzo fisso, registrato nell'app Meta. */}
+        <Route path="/social/meta/callback" element={<MetaCallbackPage />} />
         <Route path="/o/:orgId/members" element={<OrgGuard><MembersPage /></OrgGuard>} />
         <Route path="/o/:orgId/settings" element={<OrgGuard><OrgSettingsPage /></OrgGuard>} />
       </Route>

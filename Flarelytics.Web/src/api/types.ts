@@ -141,6 +141,10 @@ export interface Metrics {
 export interface InstanceInfo {
   setupRequired: boolean;
   emailEnabled: boolean;
+  /** C'è un'app Meta configurata: si collegano Instagram e le Pagine Facebook. */
+  metaEnabled: boolean;
+  /** Da registrare nell'app Meta come URI di reindirizzamento OAuth. */
+  metaRedirectUri: string;
   version: string;
 }
 
@@ -300,4 +304,83 @@ export interface BuildUploadItem {
   message: string | null;
   createdAtUtc: string;
   finishedAtUtc: string | null;
+}
+
+export type SocialNetwork = "Bluesky" | "Mastodon" | "Instagram" | "FacebookPage";
+export type SocialAccountStatus = "Connected" | "NeedsReconnect";
+
+/** I limiti di una rete, gli stessi che il server ricontrolla (SocialRules). */
+export interface NetworkLimits {
+  maxCharacters: number;
+  maxImages: number;
+  requiresMedia: boolean;
+  maxImageBytes: number;
+  minAspectRatio: number | null;
+  maxAspectRatio: number | null;
+  maxHashtags: number | null;
+  characterCounting: "graphemes" | "codepoints" | "mastodon";
+}
+
+export interface SocialAccount {
+  id: string;
+  network: SocialNetwork;
+  name: string;
+  handle: string | null;
+  serverUrl: string | null;
+  status: SocialAccountStatus;
+  statusMessage: string | null;
+  limits: NetworkLimits;
+  createdAtUtc: string;
+}
+
+export interface SocialMediaItem {
+  id: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  altText: string | null;
+  /** Firmato e a scadenza: si usa così com'è in un <img>. */
+  url: string;
+}
+
+export type SocialTargetStatus = "Pending" | "Publishing" | "Published" | "Failed";
+export type SocialPostStatus = "Draft" | "Scheduled" | "Publishing" | "Published" | "PartiallyFailed" | "Failed";
+
+export interface SocialTarget {
+  id: string;
+  accountId: string | null;
+  network: SocialNetwork;
+  accountName: string;
+  textOverride: string | null;
+  status: SocialTargetStatus;
+  externalUrl: string | null;
+  error: string | null;
+  nextAttemptAtUtc: string | null;
+  publishedAtUtc: string | null;
+}
+
+export interface SocialPost {
+  id: string;
+  text: string;
+  scheduledAtUtc: string;
+  isDraft: boolean;
+  projectId: string | null;
+  status: SocialPostStatus;
+  editable: boolean;
+  media: SocialMediaItem[];
+  targets: SocialTarget[];
+  createdAtUtc: string;
+}
+
+export interface MetaCandidate {
+  key: string;
+  network: SocialNetwork;
+  name: string;
+  handle: string | null;
+  alreadyConnected: boolean;
+}
+
+export interface MetaCandidates {
+  candidates: MetaCandidate[];
+  selection: string;
 }

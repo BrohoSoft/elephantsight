@@ -27,6 +27,13 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
     /// <summary>Le API di gestione degli store (versioni, recensioni, pagina, build).</summary>
     public FakeStoreServer StoreApis { get; } = new();
 
+    /// <summary>Le reti social: Bluesky, Mastodon, Graph API di Meta.</summary>
+    public FakeStoreServer SocialApis { get; } = new();
+
+    /// <summary>I client che parlano con le reti social, da attaccare a <see cref="SocialApis"/>.</summary>
+    public static readonly string[] SocialClients =
+        [nameof(Flarelytics.Core.Social.BlueskyClient), nameof(Flarelytics.Core.Social.MastodonClient), nameof(Flarelytics.Core.Social.MetaGraphClient)];
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         KeyRing.CreateKeyFile(KeysDirectory, "v1");
@@ -46,6 +53,9 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
         builder.UseSetting("Secrets:KeysDirectory", KeysDirectory);
         builder.UseSetting("Secrets:StorageDirectory", SecretsDirectory);
         builder.UseSetting("Reports:StorageDirectory", Path.Combine(Root, "reports"));
+        builder.UseSetting("Social:PollDelay", "00:00:00");
+        builder.UseSetting("Social:Meta:AppId", "app-meta");
+        builder.UseSetting("Social:Meta:AppSecret", "segreto-meta");
 
         builder.ConfigureTestServices(services =>
         {
@@ -58,6 +68,12 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
             {
                 services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
                     o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = StoreApis));
+            }
+
+            foreach (var client in SocialClients)
+            {
+                services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
+                    o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = SocialApis));
             }
 
             services.RemoveAll<IStoreGateway>();

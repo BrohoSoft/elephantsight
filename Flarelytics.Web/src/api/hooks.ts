@@ -9,6 +9,8 @@ import type {
   ListingResponse,
   ReviewPage,
   SecretFile,
+  SocialAccount,
+  SocialPost,
   Store,
   StoreReleases,
   Invitation,
@@ -36,6 +38,8 @@ export const keys = {
   screenshots: (orgId: string, projectId: string, store: Store, locale: string) => ["org", orgId, "projects", projectId, "listing", store, locale] as const,
   files: (orgId: string, projectId: string) => ["org", orgId, "projects", projectId, "files"] as const,
   uploads: (orgId: string, projectId: string) => ["org", orgId, "projects", projectId, "uploads"] as const,
+  socialAccounts: (orgId: string) => ["org", orgId, "social", "accounts"] as const,
+  socialPosts: (orgId: string) => ["org", orgId, "social", "posts"] as const,
 };
 
 export const useMe = (enabled = true) => useQuery({ queryKey: keys.me, queryFn: () => request<Me>("/me"), enabled });
@@ -134,4 +138,24 @@ export const useBuildUploads = (orgId: string, projectId: string) =>
     queryKey: keys.uploads(orgId, projectId),
     queryFn: () => request<BuildUploadItem[]>(`/orgs/${orgId}/projects/${projectId}/builds/uploads`),
     refetchInterval: (q) => (q.state.data?.some((u) => u.status === "Queued" || u.status === "Uploading" || u.status === "Processing") ? 5000 : false),
+  });
+
+export const useSocialAccounts = (orgId: string) =>
+  useQuery({ queryKey: keys.socialAccounts(orgId), queryFn: () => request<SocialAccount[]>(`/orgs/${orgId}/social/accounts`) });
+
+/**
+ * I post fra due istanti. Si aggiorna da sola finché c'è qualcosa in uscita
+ * (in pubblicazione, o programmato per un momento già passato): lo stato lo
+ * cambia il worker.
+ */
+export const useSocialPosts = (orgId: string, from: Date, to: Date, projectId?: string) =>
+  useQuery({
+    queryKey: [...keys.socialPosts(orgId), from.toISOString(), to.toISOString(), projectId ?? "all"],
+    queryFn: () =>
+      request<SocialPost[]>(
+        `/orgs/${orgId}/social/posts?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${projectId ? `&projectId=${projectId}` : ""}`,
+      ),
+    placeholderData: (previous) => previous,
+    refetchInterval: (q) =>
+      q.state.data?.some((p) => p.status === "Publishing" || (p.status === "Scheduled" && Date.parse(p.scheduledAtUtc) <= Date.now() + 60_000)) ? 10_000 : false,
   });

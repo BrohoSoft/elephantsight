@@ -1,6 +1,6 @@
 # WatchStore
 
-Le tue app su App Store e Google Play in un pannello solo, iOS e Android affiancati: download e paesi, versioni e build, recensioni con risposta, testi e screenshot della pagina dello store, file di firma cifrati, caricamento delle build. Self-hosted: gira sul tuo server, con le tue chiavi.
+Le tue app su App Store e Google Play in un pannello solo, iOS e Android affiancati: download e paesi, versioni e build, recensioni con risposta, testi e screenshot della pagina dello store, file di firma cifrati, caricamento delle build, e un calendario per programmare i post su Bluesky, Mastodon, Instagram e Pagine Facebook. Self-hosted: gira sul tuo server, con le tue chiavi.
 
 ## Le chiavi degli store
 
@@ -33,6 +33,9 @@ Le build passano dal pannello: se usi un proxy davanti, alza il limite della dim
 ### Email (facoltativa)
 Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero password non c'è. Per attivarla aggiungi a `.env` `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`.
 
+### Social (facoltativo)
+Bluesky e Mastodon si collegano dal pannello (Account social) con una password per app o un token. Per Instagram e le Pagine Facebook serve un'app Meta della tua installazione: il pannello spiega come crearla; poi aggiungi a `.env` `META_APP_ID` e `META_APP_SECRET`. Instagram scarica le immagini da `PUBLIC_URL`, che quindi deve essere raggiungibile da internet: se davanti c'è Cloudflare Access, lascia libero `/api/v1/social/media/` (gli indirizzi sono firmati e scadono dopo un'ora).
+
 ## Backup
 
 | Cosa | Dove | Perché |
@@ -40,7 +43,7 @@ Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero pa
 | Database | volume `postgres-data` (`docker compose exec postgres pg_dump -U postgres -Fc flarelytics > flarelytics.dump`) | utenti, progetti, metriche |
 | **Chiavi** | volume `flarelytics-keys` | senza la chiave master le credenziali degli store non si decifrano più |
 | Credenziali cifrate | volume `flarelytics-data` | |
-| Report scaricati | volume `flarelytics-reports` | gli store non tengono lo storico per sempre: sono l'unica copia del passato |
+| Report scaricati e immagini dei post | volume `flarelytics-reports` | gli store non tengono lo storico per sempre: sono l'unica copia del passato |
 
 Salva le **chiavi in un posto diverso** dal resto: se finiscono nello stesso backup, chi lo ruba ha anche la chiave per aprirlo.
 

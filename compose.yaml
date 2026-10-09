@@ -28,6 +28,12 @@ services:
       Email__Smtp__Username: ${SMTP_USERNAME:-}
       Email__Smtp__Password: ${SMTP_PASSWORD:-}
       Email__Smtp__FromAddress: ${SMTP_FROM:-}
+      # Facoltativo: l'app Meta per pubblicare su Instagram e sulle Pagine
+      # Facebook (il pannello spiega come crearla). Senza, restano Bluesky e
+      # Mastodon. Instagram scarica le immagini da PUBLIC_URL: deve essere
+      # raggiungibile da internet.
+      Social__Meta__AppId: ${META_APP_ID:-}
+      Social__Meta__AppSecret: ${META_APP_SECRET:-}
     volumes:
       # Le chiavi: quella che cifra le credenziali degli store e quella dei
       # login. Vanno salvate a parte rispetto al resto: senza la chiave master
