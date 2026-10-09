@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { ArrowLeft, AtSign, CalendarDays, Check, ChevronsUpDown, FolderKanban, Inbox, KeyRound, KeySquare, LayoutDashboard, LogOut, MessageSquare, Plus, Repeat, ScrollText, Settings, UserRound, Users } from "lucide-react";
+import { ArrowLeft, AtSign, CalendarDays, ChartColumn, Check, ChevronsUpDown, FolderKanban, Inbox, KeyRound, KeySquare, LayoutDashboard, LogOut, MessageSquare, Plus, Repeat, ScrollText, ServerCog, Settings, UserRound, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useApiMutation, keys, useInstance, useMe, useSocialInbox } from "../api/hooks";
@@ -54,8 +54,9 @@ export function AppShell() {
         {navOrg && (
           <nav className="flex-1 space-y-0.5 p-2">
             {/* Il menu segue l'accesso del membro (progetti e sezioni); il server ricontrolla comunque. */}
-            {hasStore(navOrg) && <NavItem to={`/o/${navOrg.id}`} end icon={<LayoutDashboard className="size-4" />}>Panoramica</NavItem>}
+            <NavItem to={`/o/${navOrg.id}`} end icon={<LayoutDashboard className="size-4" />}>Panoramica</NavItem>
             <NavItem to={`/o/${navOrg.id}/projects`} icon={<FolderKanban className="size-4" />}>Progetti</NavItem>
+            {hasStore(navOrg) && <NavItem to={`/o/${navOrg.id}/analytics`} icon={<ChartColumn className="size-4" />}>Download</NavItem>}
             {hasStore(navOrg) && <NavItem to={`/o/${navOrg.id}/reviews`} icon={<MessageSquare className="size-4" />}>Recensioni</NavItem>}
             {hasStore(navOrg) && isFull(navOrg) && <NavItem to={`/o/${navOrg.id}/credentials`} icon={<KeyRound className="size-4" />}>Chiavi degli store</NavItem>}
             {hasSocial(navOrg) && (
@@ -263,6 +264,11 @@ function UserMenu({ me }: { me: Me }) {
           <Menu.Item className={menuItem} onSelect={() => navigate("/account")}>
             <UserRound className="size-3.5" /> Il tuo account
           </Menu.Item>
+          {me.isInstanceAdmin && (
+            <Menu.Item className={menuItem} onSelect={() => navigate("/instance")}>
+              <ServerCog className="size-3.5" /> Impostazioni dell'istanza
+            </Menu.Item>
+          )}
           <Menu.Separator className="my-1 h-px bg-line" />
           <div className="flex items-center justify-between gap-3 px-2 py-1.5">
             <span className="text-[0.8125rem] text-muted">Tema</span>
@@ -313,8 +319,9 @@ function MobileBar({ me, org, projectId, section }: { me: Me; org?: OrgSummary; 
       {org && (
         <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[0.8125rem]">
           {([
-            ["", "Panoramica", hasStore(org)],
+            ["", "Panoramica", true],
             ["/projects", "Progetti", true],
+            ["/analytics", "Download", hasStore(org)],
             ["/reviews", "Recensioni", hasStore(org)],
             ["/credentials", "Chiavi", hasStore(org) && isFull(org)],
             ["/social", "Calendario", hasSocial(org)],
@@ -329,6 +336,7 @@ function MobileBar({ me, org, projectId, section }: { me: Me; org?: OrgSummary; 
             <NavLink key={path} to={`/o/${orgId}${path}`} end={path === "" || path === "/social"} className={link}>{label}</NavLink>
           ))}
           <NavLink to="/account" className={link}>Account</NavLink>
+          {me.isInstanceAdmin && <NavLink to="/instance" className={link}>Istanza</NavLink>}
         </nav>
       )}
     </div>

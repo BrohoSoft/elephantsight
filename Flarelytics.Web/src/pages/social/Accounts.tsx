@@ -130,7 +130,7 @@ function MetaCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: str
           </li>
           <li>Nei ruoli dell'app aggiungi come amministratore o tester l'account Facebook che gestisce le Pagine.</li>
           <li>
-            Nel file <Mono>.env</Mono> accanto a <Mono>compose.yaml</Mono> metti <Mono>META_APP_ID</Mono> e <Mono>META_APP_SECRET</Mono> (da Impostazioni → Di base), poi <Mono>docker compose up -d</Mono>.
+            Un amministratore dell'istanza inserisce App ID e App secret (da Impostazioni → Di base) in <b className="text-fg">Impostazioni dell'istanza</b>, nel menu utente: valgono subito. In alternativa, nel file <Mono>.env</Mono>: <Mono>META_APP_ID</Mono> e <Mono>META_APP_SECRET</Mono>, poi <Mono>docker compose up -d</Mono>.
           </li>
           <li>L'account Instagram deve essere professionale (Business o Creator) e collegato a una Pagina Facebook. Se non ha una Pagina, usa la scheda "Instagram".</li>
         </ol>
@@ -192,7 +192,7 @@ function InstagramCard({ enabled, redirectUri }: { enabled: boolean; redirectUri
           </li>
           <li>Nei ruoli dell'app aggiungi i tuoi account Instagram come <b className="text-fg">tester Instagram</b>, poi accetta l'invito dall'app Instagram (Impostazioni → Sito web e app).</li>
           <li>
-            Nel file <Mono>.env</Mono> metti <Mono>INSTAGRAM_APP_ID</Mono> e <Mono>INSTAGRAM_APP_SECRET</Mono>: sono l'<b className="text-fg">Instagram App ID</b> e il suo secret, che trovi nella pagina del prodotto Instagram, non quelli dell'app Meta. Poi <Mono>docker compose up -d</Mono>.
+            In <b className="text-fg">Impostazioni dell'istanza</b> (menu utente, per gli amministratori dell'istanza) inserisci l'<b className="text-fg">Instagram App ID</b> e il suo secret, che trovi nella pagina del prodotto Instagram, non quelli dell'app Meta. In alternativa nel file <Mono>.env</Mono>: <Mono>INSTAGRAM_APP_ID</Mono> e <Mono>INSTAGRAM_APP_SECRET</Mono>.
           </li>
           <li>L'account Instagram deve essere professionale: si passa a Business o Creator dalle impostazioni di Instagram, gratis.</li>
         </ol>
@@ -252,7 +252,7 @@ function TikTokCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: s
             In Login Kit, fra i Redirect URI, metti:
             <span className="mt-1 flex items-center gap-1"><Mono>{redirectUri}</Mono><CopyButton value={redirectUri} /></span>
           </li>
-          <li>Nel file <Mono>.env</Mono> metti <Mono>TIKTOK_CLIENT_KEY</Mono> e <Mono>TIKTOK_CLIENT_SECRET</Mono> (dalla pagina dell'app), poi <Mono>docker compose up -d</Mono>.</li>
+          <li>In <b className="text-fg">Impostazioni dell'istanza</b> (menu utente) inserisci client key e client secret dalla pagina dell'app; in alternativa nel file <Mono>.env</Mono>: <Mono>TIKTOK_CLIENT_KEY</Mono> e <Mono>TIKTOK_CLIENT_SECRET</Mono>.</li>
         </ol>
         <div className="mt-4">
           <Alert tone="warn" title="Finché TikTok non approva l'app">
@@ -316,7 +316,7 @@ function ThreadsCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: 
           </li>
           <li>Nei ruoli dell'app aggiungi i tuoi account come <b className="text-fg">Threads tester</b>, poi accetta l'invito dall'app Threads (Impostazioni → Account → Autorizzazioni dei siti web → Inviti).</li>
           <li>
-            Nel file <Mono>.env</Mono> metti <Mono>THREADS_APP_ID</Mono> e <Mono>THREADS_APP_SECRET</Mono>: sono il <b className="text-fg">Threads App ID</b> e il suo secret, nelle impostazioni del caso d'uso, non quelli dell'app. Poi <Mono>docker compose up -d</Mono>.
+            In <b className="text-fg">Impostazioni dell'istanza</b> (menu utente) inserisci il <b className="text-fg">Threads App ID</b> e il suo secret, dalle impostazioni del caso d'uso, non quelli dell'app. In alternativa nel file <Mono>.env</Mono>: <Mono>THREADS_APP_ID</Mono> e <Mono>THREADS_APP_SECRET</Mono>.
           </li>
         </ol>
         <div className="mt-4 space-y-2">

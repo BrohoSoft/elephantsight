@@ -12,7 +12,7 @@ namespace Flarelytics.Core.Social;
 /// <c>write:statuses</c>, <c>write:media</c>). Niente OAuth: ogni istanza è un
 /// server diverso, e il token incollato funziona con tutte.
 /// </summary>
-public class MastodonClient(HttpClient http, IOptions<SocialOptions> options)
+public class MastodonClient(HttpClient http, IOptionsMonitor<SocialOptions> options)
 {
     public record Account(string Id, string Username, string Name);
 
@@ -57,7 +57,7 @@ public class MastodonClient(HttpClient http, IOptions<SocialOptions> options)
         for (var attempt = 0; status == HttpStatusCode.Accepted || status == HttpStatusCode.PartialContent; attempt++)
         {
             if (attempt == 20) throw new SocialApiException("Mastodon: l'istanza non ha finito di elaborare l'immagine.", transient: true);
-            await Task.Delay(options.Value.PollDelay, ct);
+            await Task.Delay(options.CurrentValue.PollDelay, ct);
             (status, _) = await SendWithStatusAsync(HttpMethod.Get, $"{instance}/api/v1/media/{id}", token, null, ct);
         }
 

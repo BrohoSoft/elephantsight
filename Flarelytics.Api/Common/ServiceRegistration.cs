@@ -168,23 +168,16 @@ public static class ServiceRegistration
     }
 
     /// <summary>
-    /// SMTP se configurato, altrimenti niente email. È facoltativo: senza, gli
-    /// inviti si mandano copiando il link dal pannello e il recupero password
-    /// non è disponibile (il pannello lo sa da <c>/instance</c>).
+    /// SMTP se configurato (nel .env o dalle impostazioni dell'istanza),
+    /// altrimenti niente email. È facoltativo: senza, gli inviti si mandano
+    /// copiando il link dal pannello e il recupero password non è disponibile
+    /// (il pannello lo sa da <c>/instance</c>). Si decide a ogni invio, non all'avvio.
     /// </summary>
     public static void ConfigureEmail(this WebApplicationBuilder builder)
     {
         builder.Services.AddScoped<AccountEmails>();
-
-        if (!string.IsNullOrWhiteSpace(builder.Configuration[$"{SmtpOptions.Section}:Host"]))
-        {
-            builder.Services.AddOptions<SmtpOptions>().BindConfiguration(SmtpOptions.Section).ValidateDataAnnotations().ValidateOnStart();
-            builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
-        }
-        else
-        {
-            builder.Services.AddScoped<IEmailSender, LogEmailSender>();
-        }
+        builder.Services.AddOptions<SmtpOptions>().BindConfiguration(SmtpOptions.Section);
+        builder.Services.AddScoped<IEmailSender, ConfiguredEmailSender>();
     }
 
     public static void ConfigureSecrets(this WebApplicationBuilder builder)

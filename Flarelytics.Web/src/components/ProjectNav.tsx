@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { ArrowLeft, CalendarDays, Check, ChevronsUpDown, FileKey2, LayoutDashboard, MessageSquare, Package, Repeat, Settings, Store as StoreIcon } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChartColumn, Check, ChevronsUpDown, FileKey2, LayoutDashboard, MessageSquare, Package, Repeat, Settings, Store as StoreIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router";
 import { useProjects } from "../api/hooks";
@@ -14,13 +14,14 @@ const menuItem =
 
 /**
  * Le sezioni di un progetto: le stesse nella barra laterale e in quella per il
- * telefono, secondo le sezioni che il membro vede. Senza Store la panoramica è
- * il calendario del progetto.
+ * telefono, secondo le sezioni che il membro vede. La panoramica c'è per tutti
+ * e mostra le parti che il membro vede.
  */
 export const projectSections = (base: string, org: OrgSummary) => [
+  { to: base, label: "Panoramica", icon: <LayoutDashboard className="size-4" />, end: true },
   ...(hasStore(org)
     ? [
-        { to: base, label: "Panoramica", icon: <LayoutDashboard className="size-4" />, end: true },
+        { to: `${base}/analytics`, label: "Analitiche", icon: <ChartColumn className="size-4" /> },
         { to: `${base}/releases`, label: "Versioni e build", icon: <Package className="size-4" /> },
         { to: `${base}/reviews`, label: "Recensioni", icon: <MessageSquare className="size-4" /> },
         { to: `${base}/listing`, label: "Pagina dello store", icon: <StoreIcon className="size-4" /> },
@@ -29,7 +30,7 @@ export const projectSections = (base: string, org: OrgSummary) => [
     : []),
   ...(hasSocial(org)
     ? [
-        { to: hasStore(org) ? `${base}/social` : base, label: "Calendario social", icon: <CalendarDays className="size-4" />, end: !hasStore(org) },
+        { to: `${base}/social`, label: "Calendario social", icon: <CalendarDays className="size-4" /> },
         { to: `${base}/recurring`, label: "Post ricorrenti", icon: <Repeat className="size-4" /> },
       ]
     : []),

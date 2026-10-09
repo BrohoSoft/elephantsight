@@ -30,8 +30,11 @@ Mettilo dietro un proxy con HTTPS (Caddy, Traefik, nginx…) che inoltra alla po
 ### Caricamento delle build
 Le build passano dal pannello: se usi un proxy davanti, alza il limite della dimensione delle richieste (nginx `client_max_body_size 4g;`, Caddy di suo non ne ha).
 
+### Impostazioni dell'istanza
+Chi fa l'installazione è **amministratore dell'istanza**: dal menu utente apre *Impostazioni dell'istanza* e inserisce SMTP e chiavi delle app social senza toccare `.env` né riavviare. I valori sono cifrati; password e secret, una volta salvati, non si rileggono più. Quello che si mette dal pannello vince sul `.env`, che resta come alternativa. Da lì si nominano anche altri amministratori dell'istanza (separati dai ruoli delle organizzazioni).
+
 ### Email (facoltativa)
-Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero password non c'è. Per attivarla aggiungi a `.env` `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`.
+Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero password non c'è. Si configura da *Impostazioni dell'istanza* (con un'email di prova), oppure in `.env` con `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`.
 
 ### Social (facoltativo)
 Bluesky e Mastodon si collegano dal pannello (Account social) con una password per app o un token. Per Instagram e le Pagine Facebook serve un'app Meta della tua installazione (il pannello spiega come crearla). Due modi, anche insieme: con l'accesso a Facebook (Pagine, e Instagram collegati a una Pagina) aggiungi a `.env` `META_APP_ID` e `META_APP_SECRET`; con l'accesso a Instagram (account Instagram professionali senza Pagina) `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET`, cioè l'Instagram App ID del prodotto Instagram, non quello dell'app Meta. Instagram scarica le immagini da `PUBLIC_URL`, che quindi deve essere raggiungibile da internet: se davanti c'è Cloudflare Access, lascia libero `/api/v1/social/media/` (gli indirizzi sono firmati e scadono dopo un'ora).

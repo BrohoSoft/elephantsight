@@ -36,5 +36,5 @@ export const canManageOrg = (org: OrgSummary) => isAdminRole(org.role) && isFull
 export const canSeeProject = (org: OrgSummary, projectId: string | null) =>
   org.access.allProjects || (projectId !== null && org.access.projectIds.includes(projectId));
 
-/** La prima pagina dell'organizzazione per questo membro: la dashboard se ha lo Store, se no il calendario. */
-export const homePath = (org: OrgSummary) => (org.access.store ? `/o/${org.id}` : org.access.social ? `/o/${org.id}/social` : `/o/${org.id}/projects`);
+/** La prima pagina dell'organizzazione: la panoramica, che ognuno vede con le sue sezioni. */
+export const homePath = (org: OrgSummary) => `/o/${org.id}`;

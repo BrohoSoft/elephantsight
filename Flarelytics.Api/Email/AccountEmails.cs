@@ -7,7 +7,11 @@ namespace Flarelytics.Api.Email;
 public class AccountEmails(IEmailSender sender, IOptions<AuthOptions> options)
 {
     /// <summary>False se l'installazione non ha SMTP: le email non partono, e il pannello lo deve sapere.</summary>
-    public bool Enabled => sender is not LogEmailSender;
+    public bool Enabled => sender switch
+    {
+        ConfiguredEmailSender configured => configured.Enabled,
+        _ => true // un mittente sostituito (i test) manda sempre
+    };
 
     private string AppUrl => options.Value.PublicAppUrl.TrimEnd('/');
 

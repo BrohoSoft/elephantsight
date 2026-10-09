@@ -18,6 +18,7 @@ import { CredentialsPage } from "./pages/Credentials";
 import { MembersPage } from "./pages/Members";
 import { OrgSettingsPage } from "./pages/OrgSettings";
 import { OverviewPage } from "./pages/Overview";
+import { AnalyticsPage } from "./pages/Analytics";
 import { ProjectDetailPage } from "./pages/ProjectDetail";
 import { ProjectsPage } from "./pages/Projects";
 import { ReviewsPage } from "./pages/Reviews";
@@ -27,6 +28,7 @@ import { SocialInboxPage } from "./pages/social/Inbox";
 import { SocialRecurringPage } from "./pages/social/Recurring";
 import { ApiKeysPage } from "./pages/ApiKeys";
 import { LogsPage } from "./pages/Logs";
+import { InstanceSettingsPage } from "./pages/InstanceSettings";
 import { PrivacyPage, TermsPage } from "./pages/Legal";
 import { MetaCallbackPage, SingleAccountCallbackPage } from "./pages/social/OAuthCallback";
 
@@ -118,7 +120,9 @@ export function App() {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<Home />} />
         <Route path="/account" element={<AccountPage />} />
-        <Route path="/o/:orgId" element={<OrgGuard><Allowed when={hasStore}><OverviewPage /></Allowed></OrgGuard>} />
+        <Route path="/instance" element={<InstanceSettingsPage />} />
+        <Route path="/o/:orgId" element={<OrgGuard><OverviewPage /></OrgGuard>} />
+        <Route path="/o/:orgId/analytics" element={<OrgGuard><Allowed when={hasStore}><AnalyticsPage /></Allowed></OrgGuard>} />
         <Route path="/o/:orgId/projects" element={<OrgGuard><ProjectsPage /></OrgGuard>} />
         <Route path="/o/:orgId/projects/:projectId" element={<OrgGuard><ProjectDetailPage /></OrgGuard>} />
         <Route path="/o/:orgId/projects/:projectId/:tab" element={<OrgGuard><ProjectDetailPage /></OrgGuard>} />

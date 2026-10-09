@@ -43,6 +43,8 @@ export interface Me {
   email: string;
   fullName: string;
   twoFactorEnabled: boolean;
+  /** Amministra l'installazione (SMTP, app social): vede le Impostazioni dell'istanza. */
+  isInstanceAdmin: boolean;
   organizations: OrgSummary[];
 }
 
@@ -547,4 +549,50 @@ export interface LogItem {
 export interface LogPage {
   items: LogItem[];
   hasMore: boolean;
+}
+
+/** Un campo delle impostazioni dell'istanza: i segreti non tornano mai (value null). */
+export interface SettingValue {
+  name: string;
+  secret: boolean;
+  value: string | null;
+  set: boolean;
+  /** panel = impostato dal pannello, env = dal file .env, null = non impostato. */
+  source: "panel" | "env" | null;
+}
+
+export interface SettingsGroup {
+  group: "smtp" | "meta" | "instagram" | "tiktok" | "threads";
+  fields: SettingValue[];
+}
+
+export interface InstanceAdminItem {
+  userId: string;
+  email: string;
+  fullName: string;
+}
+
+/** Un post in arrivo nella panoramica: programmato (postId) o uscita di un post ricorrente (recurringPostId). */
+export interface UpcomingItem {
+  atUtc: string;
+  text: string;
+  networks: SocialNetwork[];
+  postId: string | null;
+  recurringPostId: string | null;
+  projectId: string | null;
+}
+
+export interface SocialOverview {
+  scheduled: number;
+  inbox: number;
+  recurringActive: number;
+  failedLastWeek: number;
+  upcoming: UpcomingItem[];
+}
+
+/** La panoramica (GET /overview): ogni parte c'è solo se il membro la può vedere. */
+export interface Overview {
+  projects: number;
+  social: SocialOverview | null;
+  logs: LogItem[] | null;
 }

@@ -3,10 +3,12 @@ using Flarelytics.Api.Features.Account;
 using Flarelytics.Api.Features.Auth;
 using Flarelytics.Api.Features.Credentials;
 using Flarelytics.Api.Features.Icons;
+using Flarelytics.Api.Features.Instance;
 using Flarelytics.Api.Features.Logs;
 using Flarelytics.Api.Features.Manage;
 using Flarelytics.Api.Features.Metrics;
 using Flarelytics.Api.Features.Orgs;
+using Flarelytics.Api.Features.Overview;
 using Flarelytics.Api.Features.Projects;
 using Flarelytics.Api.Features.PublicApi;
 using Flarelytics.Api.Features.Setup;
@@ -27,6 +29,13 @@ builder.ConfigureAuthentication();
 builder.ConfigureRateLimiting();
 builder.ConfigureEmail();
 builder.ConfigureSecrets();
+
+// Le impostazioni dell'istanza inserite dal pannello (SMTP, app social):
+// aggiunte per ultime, vincono sul .env, e cambiano senza riavviare.
+var instanceSettings = new Flarelytics.Core.Instance.InstanceSettingsConfigurationSource();
+((IConfigurationBuilder)builder.Configuration).Add(instanceSettings);
+builder.Services.AddSingleton(instanceSettings.Provider);
+builder.Services.AddScoped<Flarelytics.Core.Instance.InstanceSettingsStore>();
 
 // La sincronizzazione con gli store gira in questo stesso processo: in
 // un'installazione self-hosted c'è un'istanza sola, e un container solo è più
@@ -57,6 +66,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 var app = builder.Build();
 
 await app.MigrateDatabaseAsync();
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    await scope.ServiceProvider.GetRequiredService<Flarelytics.Core.Instance.InstanceSettingsStore>().LoadAsync(CancellationToken.None);
+}
 
 app.UseForwardedHeaders();
 app.UseSecurityHeaders();
@@ -93,6 +106,8 @@ api.MapSocialAccounts();
 api.MapSocialPosts();
 api.MapSocialRecurring();
 api.MapLogs();
+api.MapInstance();
+api.MapOverview();
 api.MapApiKeys();
 api.MapPublicApi();
 

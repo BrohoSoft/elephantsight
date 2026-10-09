@@ -17,14 +17,14 @@ namespace Flarelytics.Core.Social;
 /// prima che scada (si può dopo 24 ore di vita). Un token non rinnovato entro
 /// i 60 giorni non si recupera più: va rifatto il login.
 /// </remarks>
-public class InstagramLoginClient(HttpClient http, IOptions<SocialOptions> options)
+public class InstagramLoginClient(HttpClient http, IOptionsMonitor<SocialOptions> options)
 {
     /// <summary>Su <see cref="Database.Entities.SocialAccount.ServerUrl"/> distingue questi account da quelli collegati tramite Facebook.</summary>
     public const string Host = "https://graph.instagram.com";
 
     public const string Scopes = "instagram_business_basic,instagram_business_content_publish";
 
-    private InstagramOptions Instagram => options.Value.Instagram;
+    private InstagramOptions Instagram => options.CurrentValue.Instagram;
 
     public string AuthorizeUrl(string redirectUri, string state) =>
         $"https://www.instagram.com/oauth/authorize?client_id={E(Instagram.AppId!)}&redirect_uri={E(redirectUri)}" +
@@ -67,7 +67,7 @@ public class InstagramLoginClient(HttpClient http, IOptions<SocialOptions> optio
     public async Task<Profile> ProfileAsync(string token, CancellationToken ct)
     {
         var node = await SendAsync(HttpMethod.Get,
-            $"{Host}/{options.Value.Meta.GraphVersion}/me?fields=user_id,username,name,account_type&access_token={E(token)}", null, ct);
+            $"{Host}/{options.CurrentValue.Meta.GraphVersion}/me?fields=user_id,username,name,account_type&access_token={E(token)}", null, ct);
         return new Profile(
             node?["user_id"]?.ToString() ?? throw new SocialApiException("Instagram non ha restituito l'id dell'account."),
             node["username"]?.GetValue<string>() ?? "",

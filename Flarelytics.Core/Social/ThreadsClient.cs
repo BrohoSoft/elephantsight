@@ -20,13 +20,13 @@ namespace Flarelytics.Core.Social;
 /// login. Le credenziali sono quelle del caso d'uso Threads dell'app Meta
 /// ("Threads App ID"), diverse da quelle dell'app e da quelle di Instagram.</para>
 /// </remarks>
-public class ThreadsClient(HttpClient http, IOptions<SocialOptions> options)
+public class ThreadsClient(HttpClient http, IOptionsMonitor<SocialOptions> options)
 {
     public const string Host = "https://graph.threads.net";
     public const string Version = "v1.0";
     public const string Scopes = "threads_basic,threads_content_publish";
 
-    private ThreadsOptions Threads => options.Value.Threads;
+    private ThreadsOptions Threads => options.CurrentValue.Threads;
     private static string Api => $"{Host}/{Version}";
 
     public string AuthorizeUrl(string redirectUri, string state) =>

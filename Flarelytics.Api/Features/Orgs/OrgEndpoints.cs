@@ -33,7 +33,7 @@ public static class OrgEndpoints
             .Select(m => new { m.TenantId, m.Tenant.Name, m.Role, m.AllProjects, m.ProjectIds, m.Sections })
             .ToListAsync(ct);
 
-        return Results.Ok(new MeResponse(user.Id, user.Email, user.FullName, user.IsTwoFactorEnabled,
+        return Results.Ok(new MeResponse(user.Id, user.Email, user.FullName, user.IsTwoFactorEnabled, user.IsInstanceAdmin,
             orgs.Select(m => new OrgSummary(m.TenantId, m.Name, m.Role, AccessResponse.From(new MemberAccess(m.AllProjects, m.ProjectIds, m.Sections)))).ToList()));
     }
 
@@ -64,7 +64,8 @@ public static class OrgEndpoints
 
 /// <param name="Access">Progetti e sezioni che il membro vede: il pannello ci costruisce il menu (il server li ricontrolla comunque).</param>
 public record OrgSummary(Guid Id, string Name, OrgRole Role, AccessResponse Access);
-public record MeResponse(Guid Id, string Email, string FullName, bool TwoFactorEnabled, IReadOnlyList<OrgSummary> Organizations);
+/// <param name="IsInstanceAdmin">Amministra l'installazione: vede le impostazioni dell'istanza.</param>
+public record MeResponse(Guid Id, string Email, string FullName, bool TwoFactorEnabled, bool IsInstanceAdmin, IReadOnlyList<OrgSummary> Organizations);
 
 public record CreateOrgRequest(string Name);
 public record CreateOrgResponse(Guid Id);

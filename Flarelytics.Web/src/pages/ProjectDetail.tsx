@@ -1,8 +1,8 @@
 import { Link2, Search, Trash2, Unlink } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
 import { errorMessage } from "../api/client";
-import { keys, useApiMutation, useCredentialApps, useCredentials, useProject } from "../api/hooks";
+import { keys, useApiMutation, useCredentialApps, useCredentials, useMetrics, useOverview, useProject } from "../api/hooks";
 import type { Project, ProjectApp, Store } from "../api/types";
 import { AppIcon } from "../components/AppIcon";
 import { StoreBadge, StoreGlyph, storeName } from "../components/StoreIcons";
@@ -11,12 +11,16 @@ import { canManageOrg, hasSocial, hasStore, useOrg } from "../components/org";
 import { SocialCalendarPage } from "./social/Calendar";
 import { SocialRecurringPage } from "./social/Recurring";
 import { Dashboard } from "../components/Dashboard";
+import { formatInt } from "../components/format";
+import { MoreLink, ProjectVersions, StatTile, UpcomingList } from "../components/OverviewParts";
+import { rememberProject } from "../components/recentProjects";
 import { ReviewList } from "../components/ReviewList";
 import { ListingTab } from "./project/ListingTab";
 import { ReleasesTab } from "./project/ReleasesTab";
 import { SecretFilesTab } from "./project/SecretFilesTab";
 
 const SECTIONS: Record<string, { title: string; description: string }> = {
+  analytics: { title: "Analitiche", description: "Download, riscaricamenti, aggiornamenti e disinstallazioni, App Store e Google Play insieme." },
   releases: { title: "Versioni e build", description: "Le versioni sugli store, le build caricate, e il caricamento di quelle nuove." },
   reviews: { title: "Recensioni", description: "App Store e Google Play insieme, dalla più recente. La risposta arriva sullo store." },
   listing: { title: "Pagina dello store", description: "Testi e immagini della scheda, per lingua." },
@@ -32,6 +36,10 @@ export function ProjectDetailPage() {
   const org = useOrg();
   const { projectId = "", tab } = useParams();
   const project = useProject(org.id, projectId);
+  // Per "Ultimi progetti aperti" nella panoramica dell'organizzazione.
+  useEffect(() => {
+    if (project.data) rememberProject(org.id, project.data.id);
+  }, [org.id, project.data]);
 
   if (project.isPending) return <PageLoader />;
   if (project.error) return <Alert tone="bad">{errorMessage(project.error)}</Alert>;
@@ -40,10 +48,8 @@ export function ProjectDetailPage() {
   const section = tab ? SECTIONS[tab] : undefined;
   const base = `/o/${org.id}/projects/${p.id}`;
 
-  // Il Social del progetto: calendario e post ricorrenti solo di questo
-  // progetto. Senza lo Store è anche la sua panoramica.
-  const socialHome = !tab && !hasStore(org);
-  if (tab === "social" || tab === "recurring" || socialHome) {
+  // Il Social del progetto: calendario e post ricorrenti solo di questo progetto.
+  if (tab === "social" || tab === "recurring") {
     if (!hasSocial(org)) return <Navigate to={base} replace />;
     return tab === "recurring" ? <SocialRecurringPage project={p} /> : <SocialCalendarPage key={p.id} project={p} />;
   }
@@ -66,7 +72,8 @@ export function ProjectDetailPage() {
         </div>
       )}
 
-      {tab === "releases" ? <ReleasesTab project={p} />
+      {tab === "analytics" ? <Dashboard orgId={org.id} projectId={p.id} />
+        : tab === "releases" ? <ReleasesTab project={p} />
         : tab === "reviews" ? <ReviewList projectId={p.id} />
         : tab === "listing" ? <ListingTab project={p} />
         : tab === "files" ? <SecretFilesTab project={p} />
@@ -76,13 +83,48 @@ export function ProjectDetailPage() {
   );
 }
 
-/** I numeri del progetto, con un invito a collegare lo store che manca. */
+/**
+ * La panoramica del progetto: download degli ultimi 30 giorni, post in arrivo
+ * e in coda, versioni sugli store. Ognuno vede le parti delle sue sezioni;
+ * il dettaglio sta nelle schede (Analitiche, Calendario social, Versioni).
+ */
 function ProjectOverview({ project: p }: { project: Project }) {
   const org = useOrg();
-  const missing = (["AppStore", "GooglePlay"] as Store[]).filter((s) => !p.apps.some((a) => a.store === s));
+  const store = hasStore(org);
+  const missing = store ? (["AppStore", "GooglePlay"] as Store[]).filter((s) => !p.apps.some((a) => a.store === s)) : [];
+  const overview = useOverview(org.id, p.id);
+  const metrics = useMetrics(org.id, 30, p.id, store && p.apps.length > 0);
+  const base = `/o/${org.id}/projects/${p.id}`;
+  const social = overview.data?.social;
+  const downloads = store && p.apps.length > 0 && metrics.data?.to ? metrics.data.byStore.reduce((sum, t) => sum + t.downloads, 0) : null;
 
   return (
     <>
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        {store && <StatTile label="Download (30 giorni)" value={downloads === null ? "—" : formatInt(downloads)} to={`${base}/analytics`} />}
+        {social && (
+          <>
+            <StatTile label="Post programmati" value={social.scheduled} to={`${base}/social`} />
+            <StatTile label="Da programmare" value={social.inbox} to={`/o/${org.id}/social/inbox`} tone={social.inbox > 0 ? "warn" : undefined} />
+            <StatTile label="Post ricorrenti attivi" value={social.recurringActive} to={`${base}/recurring`} />
+            <StatTile label="Non usciti (7 giorni)" value={social.failedLastWeek} to={`${base}/social`} tone={social.failedLastWeek > 0 ? "bad" : undefined} />
+          </>
+        )}
+      </div>
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        {social && (
+          <Panel title="Prossimi post" actions={<MoreLink to={`${base}/social`}>Calendario</MoreLink>}>
+            <UpcomingList items={social.upcoming} calendarTo={`${base}/social`} />
+          </Panel>
+        )}
+        {store && p.apps.length > 0 && (
+          <Panel title="Versioni sugli store" actions={<MoreLink to={`${base}/releases`}>Versioni e build</MoreLink>}>
+            <ProjectVersions orgId={org.id} project={p} />
+          </Panel>
+        )}
+      </div>
+
       {missing.length > 0 && (
         <div className="mb-6 space-y-2">
           {missing.map((store) => (
@@ -97,7 +139,6 @@ function ProjectOverview({ project: p }: { project: Project }) {
           ))}
         </div>
       )}
-      <Dashboard orgId={org.id} projectId={p.id} />
     </>
   );
 }

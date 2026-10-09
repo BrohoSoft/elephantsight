@@ -2,6 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { RefreshCw, ScrollText, Search } from "lucide-react";
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { errorMessage, request } from "../api/client";
 import type { LogItem, LogPage } from "../api/types";
 import { useOrg } from "../components/org";
@@ -26,7 +27,9 @@ const timeFormat = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "sh
  */
 export function LogsPage() {
   const org = useOrg();
-  const [level, setLevel] = useState<Level>("Information");
+  // Il filtro può arrivare dall'indirizzo (dalla panoramica: ?level=Warning).
+  const [params] = useSearchParams();
+  const [level, setLevel] = useState<Level>(() => (["Information", "Warning", "Error"].includes(params.get("level") ?? "") ? params.get("level") as Level : "Information"));
   const [area, setArea] = useState("");
   const [text, setText] = useState("");
   const [q, setQ] = useState("");

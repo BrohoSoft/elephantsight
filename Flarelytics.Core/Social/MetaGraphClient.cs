@@ -19,7 +19,7 @@ namespace Flarelytics.Core.Social;
 /// pubblico (vedi <see cref="MediaUrlSigner"/>). Lo stesso URL va bene per le
 /// foto delle Pagine.</para>
 /// </remarks>
-public class MetaGraphClient(HttpClient http, IOptions<SocialOptions> options)
+public class MetaGraphClient(HttpClient http, IOptionsMonitor<SocialOptions> options)
 {
     /// <summary>
     /// Pagine (elenco, pubblicazione) e Instagram (lettura, pubblicazione).
@@ -27,7 +27,7 @@ public class MetaGraphClient(HttpClient http, IOptions<SocialOptions> options)
     /// </summary>
     public const string Scopes = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management";
 
-    private MetaOptions Meta => options.Value.Meta;
+    private MetaOptions Meta => options.CurrentValue.Meta;
     private string Graph => $"https://graph.facebook.com/{Meta.GraphVersion}";
 
     public string AuthorizeUrl(string redirectUri, string state) =>

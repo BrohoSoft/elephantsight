@@ -48,6 +48,15 @@ public class User : BaseEntity
 
     public bool IsTwoFactorEnabled => TotpEnabledAtUtc is not null;
 
+    /// <summary>
+    /// Amministra l'installazione (SMTP, app social, altri amministratori), al
+    /// di sopra delle organizzazioni: un owner di un'organizzazione cliente non
+    /// tocca l'istanza. Lo è chi ha fatto l'installazione, e chi nomina lui.
+    /// </summary>
+    public bool IsInstanceAdmin { get; private set; }
+
+    public void SetInstanceAdmin(bool value) => IsInstanceAdmin = value;
+
     private User() { }
 
     public static User Create(string email, string password, string fullName) => new()

@@ -139,10 +139,10 @@ public static class SocialAccountEndpoints
 
     // --- Meta (Instagram e Pagine Facebook) ---
 
-    private static IResult StartMeta(ClaimsPrincipal principal, CurrentOrg org, MetaGraphClient meta, IOptions<SocialOptions> options,
+    private static IResult StartMeta(ClaimsPrincipal principal, CurrentOrg org, MetaGraphClient meta, IOptionsMonitor<SocialOptions> options,
         IDataProtectionProvider protection)
     {
-        if (!options.Value.Meta.Enabled)
+        if (!options.CurrentValue.Meta.Enabled)
             throw ApiProblem.BadRequest("meta_not_configured", "Per Instagram e Facebook serve un'app Meta: imposta META_APP_ID e META_APP_SECRET e riavvia.");
 
         var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
@@ -156,7 +156,7 @@ public static class SocialAccountEndpoints
     /// browser lo porta avanti ma non lo può leggere.
     /// </summary>
     private static async Task<IResult> CompleteMeta(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        MetaGraphClient meta, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
+        MetaGraphClient meta, IOptionsMonitor<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
     {
         CheckState(protection, req.State, org, principal, "Facebook");
         var userToken = await meta.ExchangeCodeAsync(req.Code, MetaRedirectUri(options), ct);
@@ -206,10 +206,10 @@ public static class SocialAccountEndpoints
 
     // --- Instagram Login (account senza Pagina Facebook) ---
 
-    private static IResult StartInstagram(ClaimsPrincipal principal, CurrentOrg org, InstagramLoginClient instagram, IOptions<SocialOptions> options,
+    private static IResult StartInstagram(ClaimsPrincipal principal, CurrentOrg org, InstagramLoginClient instagram, IOptionsMonitor<SocialOptions> options,
         IDataProtectionProvider protection)
     {
-        if (!options.Value.Instagram.Enabled)
+        if (!options.CurrentValue.Instagram.Enabled)
             throw ApiProblem.BadRequest("instagram_not_configured", "Per collegare Instagram senza Facebook imposta INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET e riavvia.");
 
         var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
@@ -221,7 +221,7 @@ public static class SocialAccountEndpoints
     /// non c'è niente da scegliere: si collega subito (o si ricollega, se c'era).
     /// </summary>
     private static async Task<IResult> CompleteInstagram(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        InstagramLoginClient instagram, FieldProtector protector, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
+        InstagramLoginClient instagram, FieldProtector protector, IOptionsMonitor<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
     {
         CheckState(protection, req.State, org, principal, "Instagram");
 
@@ -239,10 +239,10 @@ public static class SocialAccountEndpoints
 
     // --- TikTok ---
 
-    private static IResult StartTikTok(ClaimsPrincipal principal, CurrentOrg org, TikTokClient tiktok, IOptions<SocialOptions> options,
+    private static IResult StartTikTok(ClaimsPrincipal principal, CurrentOrg org, TikTokClient tiktok, IOptionsMonitor<SocialOptions> options,
         IDataProtectionProvider protection)
     {
-        if (!options.Value.TikTok.Enabled)
+        if (!options.CurrentValue.TikTok.Enabled)
             throw ApiProblem.BadRequest("tiktok_not_configured", "Per TikTok imposta TIKTOK_CLIENT_KEY e TIKTOK_CLIENT_SECRET e riavvia.");
 
         var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
@@ -254,7 +254,7 @@ public static class SocialAccountEndpoints
     /// insieme, e nome e handle dalle informazioni del creator.
     /// </summary>
     private static async Task<IResult> CompleteTikTok(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        TikTokClient tiktok, FieldProtector protector, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
+        TikTokClient tiktok, FieldProtector protector, IOptionsMonitor<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
     {
         CheckState(protection, req.State, org, principal, "TikTok");
 
@@ -301,10 +301,10 @@ public static class SocialAccountEndpoints
 
     // --- Threads ---
 
-    private static IResult StartThreads(ClaimsPrincipal principal, CurrentOrg org, ThreadsClient threads, IOptions<SocialOptions> options,
+    private static IResult StartThreads(ClaimsPrincipal principal, CurrentOrg org, ThreadsClient threads, IOptionsMonitor<SocialOptions> options,
         IDataProtectionProvider protection)
     {
-        if (!options.Value.Threads.Enabled)
+        if (!options.CurrentValue.Threads.Enabled)
             throw ApiProblem.BadRequest("threads_not_configured", "Per Threads imposta THREADS_APP_ID e THREADS_APP_SECRET e riavvia.");
 
         var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
@@ -313,7 +313,7 @@ public static class SocialAccountEndpoints
 
     /// <summary>Il ritorno dal login di Threads: un account solo, collegato subito con il token di 60 giorni.</summary>
     private static async Task<IResult> CompleteThreads(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        ThreadsClient threads, FieldProtector protector, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
+        ThreadsClient threads, FieldProtector protector, IOptionsMonitor<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
     {
         CheckState(protection, req.State, org, principal, "Threads");
 
@@ -352,10 +352,10 @@ public static class SocialAccountEndpoints
     // Gli indirizzi di ritorno devono essere identici nella richiesta di login e
     // nello scambio del codice, e registrati nell'app. Stanno sul pannello
     // (AppUrl), dove il browser ha la sessione, non sull'indirizzo delle immagini.
-    public static string MetaRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + MetaCallbackPath;
-    public static string InstagramRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + InstagramCallbackPath;
-    public static string TikTokRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + TikTokCallbackPath;
-    public static string ThreadsRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + ThreadsCallbackPath;
+    public static string MetaRedirectUri(IOptionsMonitor<SocialOptions> options) => options.CurrentValue.AppUrl + MetaCallbackPath;
+    public static string InstagramRedirectUri(IOptionsMonitor<SocialOptions> options) => options.CurrentValue.AppUrl + InstagramCallbackPath;
+    public static string TikTokRedirectUri(IOptionsMonitor<SocialOptions> options) => options.CurrentValue.AppUrl + TikTokCallbackPath;
+    public static string ThreadsRedirectUri(IOptionsMonitor<SocialOptions> options) => options.CurrentValue.AppUrl + ThreadsCallbackPath;
 
     // --- in comune ---
 

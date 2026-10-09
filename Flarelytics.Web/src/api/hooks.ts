@@ -11,6 +11,7 @@ import type {
   SecretFile,
   SocialAccount,
   SocialPost,
+  Overview,
   RecurringOccurrence,
   RecurringPost,
   ApiKeyItem,
@@ -52,11 +53,12 @@ export const useMe = (enabled = true) => useQuery({ queryKey: keys.me, queryFn: 
 export const useInstance = () =>
   useQuery({ queryKey: keys.instance, queryFn: () => request<InstanceInfo>("/instance", { anonymous: true }), staleTime: 60_000 });
 
-export const useMetrics = (orgId: string, days: number, projectId?: string) =>
+export const useMetrics = (orgId: string, days: number, projectId?: string, enabled = true) =>
   useQuery({
     queryKey: [...keys.metrics(orgId), days, projectId ?? "all"],
     queryFn: () => request<Metrics>(`/orgs/${orgId}/metrics?days=${days}${projectId ? `&projectId=${projectId}` : ""}`),
     placeholderData: (previous) => previous,
+    enabled,
   });
 
 export const useProjects = (orgId: string) =>
@@ -65,8 +67,9 @@ export const useProjects = (orgId: string) =>
 export const useProject = (orgId: string, id: string) =>
   useQuery({ queryKey: keys.project(orgId, id), queryFn: () => request<Project>(`/orgs/${orgId}/projects/${id}`) });
 
-export const useCredentials = (orgId: string) =>
-  useQuery({ queryKey: keys.credentials(orgId), queryFn: () => request<Credential[]>(`/orgs/${orgId}/credentials`) });
+/** Le chiavi degli store: le vede solo chi gestisce l'organizzazione (per gli altri, enabled = false). */
+export const useCredentials = (orgId: string, enabled = true) =>
+  useQuery({ queryKey: keys.credentials(orgId), queryFn: () => request<Credential[]>(`/orgs/${orgId}/credentials`), enabled });
 
 export const useCredentialApps = (orgId: string, id: string | null) =>
   useQuery({
@@ -186,6 +189,14 @@ export const useRecurringOccurrences = (orgId: string, from: Date, to: Date, pro
         `/orgs/${orgId}/social/recurring/occurrences?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${projectId ? `&projectId=${projectId}` : ""}`,
       ),
     placeholderData: (previous) => previous,
+  });
+
+/** La panoramica dell'organizzazione o (con projectId) di un progetto: si aggiorna ogni minuto. */
+export const useOverview = (orgId: string, projectId?: string) =>
+  useQuery({
+    queryKey: ["org", orgId, "overview", projectId ?? "all"],
+    queryFn: () => request<Overview>(`/orgs/${orgId}/overview${projectId ? `?projectId=${projectId}` : ""}`),
+    refetchInterval: 60_000,
   });
 
 export const useApiKeys = (orgId: string, enabled: boolean) =>

@@ -15,7 +15,7 @@ namespace Flarelytics.Core.Social;
 /// <summary>Pubblica un post su un account, e ne registra l'esito.</summary>
 public class SocialPublisher(
     FlarelyticsDbContext db, FieldProtector protector, SocialMediaStorage storage, MediaUrlSigner signer,
-    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, TikTokClient tiktok, ThreadsClient threads, IOptions<SocialOptions> options, ILogger<SocialPublisher> log)
+    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, TikTokClient tiktok, ThreadsClient threads, IOptionsMonitor<SocialOptions> options, ILogger<SocialPublisher> log)
 {
     /// <summary>Ogni quanto si ricontrolla un video che la rete sta ancora elaborando.</summary>
     public static readonly TimeSpan ProcessingCheckInterval = TimeSpan.FromSeconds(30);
@@ -250,7 +250,7 @@ public class SocialPublisher(
                 throw new SocialApiException("Instagram non è riuscito a scaricare o a usare l'immagine: controlla che l'indirizzo dell'istanza sia raggiungibile da internet.");
             }
             if (attempt == 10) throw new StillProcessingException();
-            await Task.Delay(options.Value.PollDelay, ct);
+            await Task.Delay(options.CurrentValue.PollDelay, ct);
         }
 
         var mediaId = await meta.PublishInstagramAsync(graph, account.ExternalId, token, container, ct);
@@ -357,7 +357,7 @@ public class SocialPublisher(
                 throw new SocialApiException($"Threads non è riuscito a usare {what} ({error ?? status}): controlla che l'indirizzo dell'istanza sia raggiungibile da internet.");
             }
             if (attempt == 10) throw new StillProcessingException();
-            await Task.Delay(options.Value.PollDelay, ct);
+            await Task.Delay(options.CurrentValue.PollDelay, ct);
         }
     }
 
@@ -423,7 +423,7 @@ public class SocialPublisher(
                     target.SetProgress(null);
                     throw new SocialApiException($"TikTok non ha pubblicato il video ({status.FailReason ?? "motivo non indicato"}).");
             }
-            if (attempt < 4) await Task.Delay(options.Value.PollDelay, ct);
+            if (attempt < 4) await Task.Delay(options.CurrentValue.PollDelay, ct);
         }
         throw new StillProcessingException();
     }
@@ -482,7 +482,7 @@ public class SocialPublisher(
     /// </summary>
     private string PublicImageUrl(SocialMedia m)
     {
-        var publicUrl = options.Value.PublicUrl?.TrimEnd('/');
+        var publicUrl = options.CurrentValue.PublicUrl?.TrimEnd('/');
         if (string.IsNullOrEmpty(publicUrl) || Uri.TryCreate(publicUrl, UriKind.Absolute, out var uri) && (uri.IsLoopback || uri.Host == "localhost"))
             throw new SocialApiException($"Meta scarica le immagini dall'indirizzo pubblico dell'istanza, e '{publicUrl}' non è raggiungibile da internet: imposta PUBLIC_URL.");
 

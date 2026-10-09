@@ -21,12 +21,12 @@ namespace Flarelytics.Core.Social;
 /// privati, su account privati, per al massimo 5 utenti al giorno: è una
 /// regola di TikTok, e i suoi errori lo dicono.</para>
 /// </remarks>
-public class TikTokClient(HttpClient http, IOptions<SocialOptions> options)
+public class TikTokClient(HttpClient http, IOptionsMonitor<SocialOptions> options)
 {
     public const string Api = "https://open.tiktokapis.com";
     public const string Scopes = "user.info.basic,video.publish";
 
-    private TikTokOptions TikTok => options.Value.TikTok;
+    private TikTokOptions TikTok => options.CurrentValue.TikTok;
 
     public string AuthorizeUrl(string redirectUri, string state) =>
         $"https://www.tiktok.com/v2/auth/authorize/?client_key={E(TikTok.ClientKey!)}&scope={E(Scopes)}" +

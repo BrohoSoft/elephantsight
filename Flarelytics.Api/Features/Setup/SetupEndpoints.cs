@@ -37,17 +37,17 @@ public static class SetupEndpoints
     }
 
     /// <summary>Quello che il pannello deve sapere prima ancora del login.</summary>
-    private static async Task<IResult> Instance(FlarelyticsDbContext db, AccountEmails emails, IOptions<SocialOptions> social, IConfiguration configuration, CancellationToken ct) =>
+    private static async Task<IResult> Instance(FlarelyticsDbContext db, AccountEmails emails, IOptionsMonitor<SocialOptions> social, IConfiguration configuration, CancellationToken ct) =>
         Results.Ok(new InstanceInfo(
             SetupRequired: !await db.Set<User>().AnyAsync(ct),
             EmailEnabled: emails.Enabled,
-            MetaEnabled: social.Value.Meta.Enabled,
+            MetaEnabled: social.CurrentValue.Meta.Enabled,
             MetaRedirectUri: Social.SocialAccountEndpoints.MetaRedirectUri(social),
-            InstagramEnabled: social.Value.Instagram.Enabled,
+            InstagramEnabled: social.CurrentValue.Instagram.Enabled,
             InstagramRedirectUri: Social.SocialAccountEndpoints.InstagramRedirectUri(social),
-            TikTokEnabled: social.Value.TikTok.Enabled,
+            TikTokEnabled: social.CurrentValue.TikTok.Enabled,
             TikTokRedirectUri: Social.SocialAccountEndpoints.TikTokRedirectUri(social),
-            ThreadsEnabled: social.Value.Threads.Enabled,
+            ThreadsEnabled: social.CurrentValue.Threads.Enabled,
             ThreadsRedirectUri: Social.SocialAccountEndpoints.ThreadsRedirectUri(social),
             LegalOwner: NullIfEmpty(configuration["Legal:Owner"]),
             LegalContactEmail: NullIfEmpty(configuration["Legal:ContactEmail"]),
@@ -74,6 +74,8 @@ public static class SetupEndpoints
 
         var user = User.Create(req.Email, req.Password, req.FullName);
         user.ConfirmEmail(now);
+        // Chi installa amministra l'istanza.
+        user.SetInstanceAdmin(true);
         var org = Tenant.Create(req.OrganizationName);
         db.AddRange(user, org, Membership.Create(org.Id, user.Id, OrgRole.Owner));
 
