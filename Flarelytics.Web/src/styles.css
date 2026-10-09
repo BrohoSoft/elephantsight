@@ -55,10 +55,18 @@
   --muted: #52525b;
   --faint: #8e8e96;
 
-  --brand: #f59e0b;
-  --brand-strong: #e08e06;
-  --brand-ink: #1a1203;
-  --brand-fg: #b45309;
+  /* Il blu di ElephantSight: più verso il cielo del blu di iOS (--ios), per
+     non confondere un pulsante con i dati dell'App Store nei grafici. */
+  --brand: #0b72b9;
+  --brand-strong: #095f9b;
+  --brand-ink: #ffffff;
+  --brand-fg: #0a64a3;
+
+  /* Il logo (src/components/Logo.tsx). */
+  --logo-ear: #8cc3ec;
+  --logo-head: #1f6fb5;
+  --logo-tusk: #f3eee2;
+  --logo-eye: #0b2540;
 
   --ok: #15803d;
   --warn: #b45309;
@@ -82,10 +90,15 @@
   --muted: #a1a1a1;
   --faint: #707070;
 
-  --brand: #f59e0b;
-  --brand-strong: #fbbf24;
-  --brand-ink: #1a1203;
-  --brand-fg: #f59e0b;
+  --brand: #3aa3e8;
+  --brand-strong: #63b6ee;
+  --brand-ink: #06233a;
+  --brand-fg: #5bb3ec;
+
+  --logo-ear: #2f74b0;
+  --logo-head: #7fbcec;
+  --logo-tusk: #f3eee2;
+  --logo-eye: #121212;
 
   --ok: #3ecf8e;
   --warn: #f5a524;

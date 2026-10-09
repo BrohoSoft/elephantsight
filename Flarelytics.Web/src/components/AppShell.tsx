@@ -38,7 +38,7 @@ export function AppShell() {
   return (
     <div className="flex min-h-full">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-panel md:flex">
-        <div className="flex h-12 items-center border-b border-line px-4">
+        <div className="flex h-16 items-center border-b border-line px-4">
           <Logo />
         </div>
         {/* Dentro un progetto tutta la barra diventa del progetto: chiavi,
@@ -289,7 +289,7 @@ function MobileBar({ me, orgId, projectId, section }: { me: Me; orgId?: string; 
 
   return (
     <div className="border-b border-line bg-panel md:hidden">
-      <div className="flex h-12 items-center justify-between gap-2 px-4">
+      <div className="flex h-14 items-center justify-between gap-2 px-4">
         <Logo />
         <div className="w-48">
           <OrgSwitcher me={me} currentId={orgId} />

@@ -10,8 +10,8 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
       <div className="absolute top-4 right-4">
         <ThemeSwitcher compact />
       </div>
-      <div className="mb-8">
-        <Logo />
+      <div className="mb-10">
+        <Logo size="lg" />
       </div>
       <div className="w-full max-w-sm">
         <h1 className="text-xl font-medium tracking-tight text-fg">{title}</h1>
