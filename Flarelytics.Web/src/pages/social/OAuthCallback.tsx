@@ -23,17 +23,17 @@ function useOAuthOrg(): string | null {
 }
 
 /**
- * Dove Instagram e TikTok rimandano dopo il login. Un login è un account solo:
+ * Dove Instagram, TikTok e Threads rimandano dopo il login. Un login è un account solo:
  * l'API lo collega subito, e si torna agli account.
  */
-export function SingleAccountCallbackPage({ provider }: { provider: "instagram" | "tiktok" }) {
+export function SingleAccountCallbackPage({ provider }: { provider: "instagram" | "tiktok" | "threads" }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const orgId = useOAuthOrg();
   const [error, setError] = useState<unknown>(null);
   const started = useRef(false);
-  const name = provider === "tiktok" ? "TikTok" : "Instagram";
+  const name = { instagram: "Instagram", tiktok: "TikTok", threads: "Threads" }[provider];
 
   const code = params.get("code");
   const state = params.get("state");

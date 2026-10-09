@@ -73,7 +73,7 @@ export function PrivacyPage() {
         <p>
           ElephantSight at <strong>{site}</strong> is a private, self-hosted tool operated by <strong>{owner}</strong> (the "Operator").
           It is used internally by the Operator and by people the Operator invites, to manage the Operator's own mobile apps
-          and to prepare, schedule and publish content on the Operator's own social media accounts (TikTok, Instagram, Facebook Pages, Bluesky, Mastodon).
+          and to prepare, schedule and publish content on the Operator's own social media accounts (TikTok, Instagram, Threads, Facebook Pages, Bluesky, Mastodon).
           It is not a public service: there is no open sign-up, and every user is invited by the Operator.
         </p>
 
@@ -86,7 +86,7 @@ export function PrivacyPage() {
             whether comments, duets and stitches are enabled, maximum video length), and the access and refresh tokens.
             Scopes requested: <code>user.info.basic</code> and <code>video.publish</code>.
           </li>
-          <li><strong>Data received from Meta (Instagram, Facebook)</strong>, Bluesky and Mastodon after the account owner connects them: account ID, name or username, access tokens, and the account's own recently published posts (caption, date, link and a preview image), shown in the calendar.</li>
+          <li><strong>Data received from Meta (Instagram, Threads, Facebook)</strong>, Bluesky and Mastodon after the account owner connects them: account ID, name or username, access tokens, and the account's own recently published posts (caption, date, link and a preview image), shown in the calendar.</li>
           <li><strong>Content uploaded by users</strong>: videos, images, captions, schedule and per-post settings, and the publishing result returned by each platform.</li>
         </ul>
         <p>We do not collect data about other TikTok or Instagram users, followers, comments or messages, and we do not use any data for advertising, profiling or analytics.</p>
@@ -135,10 +135,10 @@ export function PrivacyPage() {
         <p>
           ElephantSight su <strong>{site}</strong> è uno strumento privato e installato sui propri server da <strong>{ownerIt}</strong> (il "Titolare"),
           usato dal Titolare e dalle persone che invita per gestire le proprie app e preparare, programmare e pubblicare contenuti sui propri account social
-          (TikTok, Instagram, Pagine Facebook, Bluesky, Mastodon). Non è un servizio aperto al pubblico: non c'è registrazione libera.
+          (TikTok, Instagram, Threads, Pagine Facebook, Bluesky, Mastodon). Non è un servizio aperto al pubblico: non c'è registrazione libera.
         </p>
         <ul>
-          <li><strong>Dati trattati</strong>: dati degli utenti invitati (nome, email, password solo come hash); da TikTok, dopo il login del titolare dell'account, open ID, nome e username, le informazioni del creator e i token d'accesso (scope <code>user.info.basic</code> e <code>video.publish</code>); da Meta, Bluesky e Mastodon ID, nome e token, e i post già pubblicati dall'account; i video, le immagini e i testi caricati.</li>
+          <li><strong>Dati trattati</strong>: dati degli utenti invitati (nome, email, password solo come hash); da TikTok, dopo il login del titolare dell'account, open ID, nome e username, le informazioni del creator e i token d'accesso (scope <code>user.info.basic</code> e <code>video.publish</code>); da Meta (Instagram, Threads, Facebook), Bluesky e Mastodon ID, nome e token, e i post già pubblicati dall'account; i video, le immagini e i testi caricati.</li>
           <li><strong>Finalità</strong>: solo pubblicare i contenuti che un utente crea e programma, sugli account collegati, con le impostazioni che sceglie per ogni post; mostrare l'esito e il link. Niente pubblicità, profilazione o statistiche, nessun dato di altri utenti dei social.</li>
           <li><strong>Conservazione e sicurezza</strong>: su un server del Titolare; token cifrati (AES-256-GCM) e mai mostrati; dati delle organizzazioni separati nel database; connessioni HTTPS.</li>
           <li><strong>Comunicazione a terzi</strong>: nessuna vendita né cessione; i contenuti vanno solo alla piattaforma scelta per quel post.</li>

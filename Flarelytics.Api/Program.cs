@@ -87,6 +87,7 @@ api.MapSecretFiles();
 api.MapBuilds();
 api.MapSocialAccounts();
 api.MapSocialPosts();
+api.MapSocialRecurring();
 api.MapApiKeys();
 api.MapPublicApi();
 

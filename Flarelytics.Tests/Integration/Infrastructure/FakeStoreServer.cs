@@ -33,6 +33,13 @@ public class FakeStoreServer : HttpMessageHandler
         return this;
     }
 
+    /// <summary>Una risposta che cambia a ogni richiesta (un id nuovo per ogni oggetto creato, per esempio).</summary>
+    public FakeStoreServer On(HttpMethod method, string pathPattern, Func<HttpRequestMessage, string> json)
+    {
+        _routes.Insert(0, (method, new Regex(pathPattern), r => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json(r), Encoding.UTF8, "application/json") }));
+        return this;
+    }
+
     /// <summary>Un file (un'immagine di un CDN, per esempio) invece di un JSON.</summary>
     public FakeStoreServer OnBytes(HttpMethod method, string pathPattern, byte[] content, string contentType)
     {

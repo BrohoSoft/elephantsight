@@ -34,7 +34,7 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
     public static readonly string[] SocialClients =
         [nameof(Flarelytics.Core.Social.BlueskyClient), nameof(Flarelytics.Core.Social.MastodonClient), nameof(Flarelytics.Core.Social.MetaGraphClient),
          nameof(Flarelytics.Core.Social.InstagramLoginClient), nameof(Flarelytics.Core.Social.RemoteImageClient),
-         nameof(Flarelytics.Core.Social.TikTokClient)];
+         nameof(Flarelytics.Core.Social.TikTokClient), nameof(Flarelytics.Core.Social.ThreadsClient)];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -62,6 +62,8 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
         builder.UseSetting("Social:Instagram:AppSecret", "segreto-instagram");
         builder.UseSetting("Social:TikTok:ClientKey", "chiave-tiktok");
         builder.UseSetting("Social:TikTok:ClientSecret", "segreto-tiktok");
+        builder.UseSetting("Social:Threads:AppId", "app-threads");
+        builder.UseSetting("Social:Threads:AppSecret", "segreto-threads");
 
         builder.ConfigureTestServices(services =>
         {

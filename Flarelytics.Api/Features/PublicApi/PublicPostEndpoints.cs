@@ -144,7 +144,7 @@ public static class PublicPostEndpoints
 
         // I media già caricati (id) si controllano prima di scrivere qualsiasi cosa.
         var ids = items.Where(m => m.Id is not null).Select(m => m.Id!.Value).ToList();
-        var uploaded = await db.Set<SocialMedia>().Where(m => ids.Contains(m.Id) && m.PostId == null).ToListAsync(ct);
+        var uploaded = await db.Set<SocialMedia>().Where(m => ids.Contains(m.Id) && m.PostId == null && m.RecurringPostId == null).ToListAsync(ct);
         if (uploaded.Count != ids.Distinct().Count())
             throw ApiProblem.BadRequest("media_not_found", "Un'immagine o un video non esiste o è già usato in un altro post: caricalo con POST /public/media.");
         foreach (var (item, position) in items.Select((m, i) => (m, i)).Where(x => x.m.Id is null))

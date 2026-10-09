@@ -34,6 +34,7 @@ public static class SocialAccountEndpoints
     public const string MetaCallbackPath = "/social/meta/callback";
     public const string InstagramCallbackPath = "/social/instagram/callback";
     public const string TikTokCallbackPath = "/social/tiktok/callback";
+    public const string ThreadsCallbackPath = "/social/threads/callback";
 
     public static void MapSocialAccounts(this IEndpointRouteBuilder api)
     {
@@ -55,6 +56,9 @@ public static class SocialAccountEndpoints
         admin.MapPost("/tiktok/start", StartTikTok);
         admin.MapPost("/tiktok/complete", CompleteTikTok).Validating<CompleteMetaRequest>();
         admin.MapGet("/accounts/{accountId:guid}/tiktok-creator", TikTokCreator);
+
+        admin.MapPost("/threads/start", StartThreads);
+        admin.MapPost("/threads/complete", CompleteThreads).Validating<CompleteMetaRequest>();
     }
 
     private static async Task<IResult> List(FlarelyticsDbContext db, CancellationToken ct)
@@ -93,7 +97,8 @@ public static class SocialAccountEndpoints
 
     /// <summary>
     /// Scollega l'account. I post già pubblicati restano nello storico; quelli
-    /// ancora da pubblicare su questo account non partiranno più.
+    /// ancora da pubblicare su questo account non partiranno più, e l'account
+    /// esce anche dai post ricorrenti.
     /// </summary>
     private static async Task<IResult> Delete(Guid accountId, FlarelyticsDbContext db, CancellationToken ct)
     {
@@ -102,6 +107,8 @@ public static class SocialAccountEndpoints
             .Where(t => t.AccountId == accountId && (t.Status == SocialTargetStatus.Pending || t.Status == SocialTargetStatus.Failed)).ToListAsync(ct);
 
         db.RemoveRange(pending);
+        foreach (var recurring in await db.Set<SocialRecurringPost>().Where(r => r.AccountIds.Contains(accountId)).ToListAsync(ct))
+            recurring.RemoveAccount(accountId);
         db.Remove(account);
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
@@ -269,6 +276,34 @@ public static class SocialAccountEndpoints
         }
     }
 
+    // --- Threads ---
+
+    private static IResult StartThreads(ClaimsPrincipal principal, CurrentOrg org, ThreadsClient threads, IOptions<SocialOptions> options,
+        IDataProtectionProvider protection)
+    {
+        if (!options.Value.Threads.Enabled)
+            throw ApiProblem.BadRequest("threads_not_configured", "Per Threads imposta THREADS_APP_ID e THREADS_APP_SECRET e riavvia.");
+
+        var state = StateProtector(protection).Protect($"{org.TenantId:N}|{principal.UserId():N}", TimeSpan.FromMinutes(15));
+        return Results.Ok(new { url = threads.AuthorizeUrl(ThreadsRedirectUri(options), state) });
+    }
+
+    /// <summary>Il ritorno dal login di Threads: un account solo, collegato subito con il token di 60 giorni.</summary>
+    private static async Task<IResult> CompleteThreads(CompleteMetaRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
+        ThreadsClient threads, FieldProtector protector, IOptions<SocialOptions> options, IDataProtectionProvider protection, CancellationToken ct)
+    {
+        CheckState(protection, req.State, org, principal, "Threads");
+
+        var token = await threads.ExchangeCodeAsync(req.Code, ThreadsRedirectUri(options), ct);
+        var profile = await threads.ProfileAsync(token.AccessToken, ct);
+
+        var account = await UpsertAsync(db, org.TenantId, SocialNetwork.Threads, profile.Id, null, principal.UserId(), ct);
+        account.Reconnect(Protect(protector, account, token.AccessToken), string.IsNullOrWhiteSpace(profile.Name) ? profile.Username : profile.Name,
+            "@" + profile.Username, null, token.ExpiresAtUtc);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialAccountResponse.From(account));
+    }
+
     /// <summary>Lo <c>state</c> del login: firmato, a scadenza, e partito da questo utente in questa organizzazione.</summary>
     private static void CheckState(IDataProtectionProvider protection, string state, CurrentOrg org, ClaimsPrincipal principal, string network)
     {
@@ -297,6 +332,7 @@ public static class SocialAccountEndpoints
     public static string MetaRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + MetaCallbackPath;
     public static string InstagramRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + InstagramCallbackPath;
     public static string TikTokRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + TikTokCallbackPath;
+    public static string ThreadsRedirectUri(IOptions<SocialOptions> options) => options.Value.AppUrl + ThreadsCallbackPath;
 
     // --- in comune ---
 

@@ -32,6 +32,15 @@ public class SocialMediaStorage(IOptions<ReportsOptions> options)
 
     public FileStream OpenRead(Database.Entities.SocialMedia media) => File.OpenRead(PathFor(media));
 
+    /// <summary>Il file di <paramref name="source"/> anche per <paramref name="copy"/>. Falso se l'originale non c'è più.</summary>
+    public bool Copy(Database.Entities.SocialMedia source, Database.Entities.SocialMedia copy)
+    {
+        var from = PathFor(source);
+        if (!File.Exists(from)) return false;
+        File.Copy(from, PathFor(copy), overwrite: true);
+        return true;
+    }
+
     public void Delete(Database.Entities.SocialMedia media)
     {
         var path = PathFor(media);

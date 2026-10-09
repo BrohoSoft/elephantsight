@@ -1,14 +1,15 @@
 import clsx from "clsx";
-import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Plus, Repeat } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { canAdmin, useProjects, useSocialAccounts, useSocialPosts } from "../../api/hooks";
-import type { SocialPost } from "../../api/types";
+import { canAdmin, useProjects, useRecurringOccurrences, useSocialAccounts, useSocialPosts, useSocialRecurring } from "../../api/hooks";
+import type { RecurringPost, SocialAccount, SocialPost } from "../../api/types";
 import { useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
 import { Badge, Button, EmptyState, PageHeader, PageLoader, Select } from "../../components/ui";
 import { BulkAccounts } from "../../social/BulkAccounts";
 import { PostEditor, postStatus } from "../../social/PostEditor";
+import { RecurringEditor } from "../../social/RecurringEditor";
 
 const monthFormat = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
 const timeFormat = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
@@ -35,6 +36,9 @@ const chipTone: Record<SocialPost["status"], string> = {
   Inbox: "border-l-line-strong bg-panel-2 text-muted", // non sta sul calendario, ma il tipo lo vuole
 };
 
+/** Una casella del calendario: un post vero, o un'uscita futura di un post ricorrente (non ancora un post). */
+type Entry = { kind: "post"; at: Date; post: SocialPost } | { kind: "next"; at: Date; recurring: RecurringPost };
+
 /**
  * Il calendario dei post: il mese, con i post di ogni giorno. Un clic su un
  * giorno vuoto apre un post nuovo per quel giorno, un clic su un post lo apre.
@@ -46,6 +50,7 @@ export function SocialCalendarPage() {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [projectId, setProjectId] = useState("");
   const [editing, setEditing] = useState<{ post?: SocialPost; date?: Date } | null>(null);
+  const [editingRecurring, setEditingRecurring] = useState<RecurringPost | null>(null);
   // Modalità selezione: i clic sui post li selezionano invece di aprirli.
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -54,17 +59,23 @@ export function SocialCalendarPage() {
   const from = days[0];
   const to = new Date(days[41].getFullYear(), days[41].getMonth(), days[41].getDate() + 1);
   const posts = useSocialPosts(org.id, from, to, projectId || undefined);
+  const occurrences = useRecurringOccurrences(org.id, from, to, projectId || undefined);
+  const recurring = useSocialRecurring(org.id);
   const accounts = useSocialAccounts(org.id);
   const projects = useProjects(org.id);
 
+  // I post e le prossime uscite dei post ricorrenti, in ordine di ora.
   const byDay = useMemo(() => {
-    const map = new Map<string, SocialPost[]>();
-    for (const p of posts.data ?? []) {
-      const key = dayKey(new Date(p.scheduledAtUtc));
-      map.set(key, [...(map.get(key) ?? []), p]);
+    const entries: Entry[] = (posts.data ?? []).map((p) => ({ kind: "post" as const, at: new Date(p.scheduledAtUtc), post: p }));
+    for (const o of occurrences.data ?? []) {
+      const r = recurring.data?.find((x) => x.id === o.recurringPostId);
+      if (r) entries.push({ kind: "next", at: new Date(o.atUtc), recurring: r });
     }
+    entries.sort((a, b) => a.at.getTime() - b.at.getTime());
+    const map = new Map<string, Entry[]>();
+    for (const e of entries) map.set(dayKey(e.at), [...(map.get(dayKey(e.at)) ?? []), e]);
     return map;
-  }, [posts.data]);
+  }, [posts.data, occurrences.data, recurring.data]);
 
   if (accounts.isPending || projects.isPending) return <PageLoader />;
 
@@ -90,7 +101,7 @@ export function SocialCalendarPage() {
     <>
       <PageHeader
         title="Calendario social"
-        description="I post di tutti gli account dell'organizzazione: quelli programmati qui, che ElephantSight pubblica all'ora indicata, e quelli usciti da altre app negli ultimi 90 giorni (tratteggiati)."
+        description="I post di tutti gli account dell'organizzazione: quelli programmati qui, che ElephantSight pubblica all'ora indicata, le prossime uscite dei post ricorrenti e quelli usciti da altre app negli ultimi 90 giorni (tratteggiati)."
         actions={
           <>
             {(projects.data?.length ?? 0) > 0 && (
@@ -109,7 +120,7 @@ export function SocialCalendarPage() {
         <div className="mb-6 rounded-lg border border-dashed border-line-strong">
           <EmptyState icon={<CalendarDays className="size-5" />} title="Nessun account social collegato"
             action={<Link to={`/o/${org.id}/social/accounts`}><Button variant="primary">Collega un account</Button></Link>}>
-            Bluesky, Mastodon, Instagram e Pagine Facebook. Puoi già scrivere bozze, ma per pubblicare serve almeno un account.
+            Bluesky, Mastodon, Instagram, Pagine Facebook, TikTok e Threads. Puoi già scrivere bozze, ma per pubblicare serve almeno un account.
           </EmptyState>
         </div>
       )}
@@ -156,8 +167,10 @@ export function SocialCalendarPage() {
                   {admin && <Plus className="size-3.5 text-faint opacity-0 group-hover:opacity-100" />}
                 </div>
                 <div className="space-y-1">
-                  {(selecting ? list : list.slice(0, 3)).map((p) => (
-                    <PostChip key={p.id} post={p} onOpen={() => onChip(p)} selecting={selecting} selected={selectedIds.includes(p.id)} disabled={selecting && !selectable(p)} />
+                  {(selecting ? list : list.slice(0, 3)).map((e) => e.kind === "post" ? (
+                    <PostChip key={e.post.id} post={e.post} onOpen={() => onChip(e.post)} selecting={selecting} selected={selectedIds.includes(e.post.id)} disabled={selecting && !selectable(e.post)} />
+                  ) : (
+                    <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} disabled={selecting} onOpen={() => setEditingRecurring(e.recurring)} />
                   ))}
                   {!selecting && list.length > 3 && <p className="px-1 text-[0.6875rem] text-faint">+{list.length - 3} altri</p>}
                 </div>
@@ -174,8 +187,10 @@ export function SocialCalendarPage() {
         ) : visibleDays.map((day) => (
           <section key={dayKey(day)}>
             <h3 className="mb-1.5 text-xs font-medium text-muted first-letter:uppercase">{dayFormat.format(day)}</h3>
-            <div className="space-y-1.5">{byDay.get(dayKey(day))!.map((p) => (
-              <PostChip key={p.id} post={p} onOpen={() => onChip(p)} large selecting={selecting} selected={selectedIds.includes(p.id)} disabled={selecting && !selectable(p)} />
+            <div className="space-y-1.5">{byDay.get(dayKey(day))!.map((e) => e.kind === "post" ? (
+              <PostChip key={e.post.id} post={e.post} onOpen={() => onChip(e.post)} large selecting={selecting} selected={selectedIds.includes(e.post.id)} disabled={selecting && !selectable(e.post)} />
+            ) : (
+              <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} large disabled={selecting} onOpen={() => setEditingRecurring(e.recurring)} />
             ))}</div>
           </section>
         ))}
@@ -183,6 +198,9 @@ export function SocialCalendarPage() {
 
       {editing && (
         <PostEditor post={editing.post} initialDate={editing.date} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />
+      )}
+      {editingRecurring && (
+        <RecurringEditor recurring={editingRecurring} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditingRecurring(null)} />
       )}
     </>
   );
@@ -209,14 +227,49 @@ function PostChip({ post, onOpen, large, selecting, selected, disabled }: {
         post.imported ? "border border-l-2 border-dashed border-ok/40 border-l-ok bg-transparent text-fg" : chipTone[post.status],
         large ? "px-3 py-2" : "px-1.5 py-1",
       )}>
-      <span className="flex items-center gap-1">
+      <span className="flex items-center gap-1 overflow-hidden">
         {selecting && !disabled && <input type="checkbox" readOnly tabIndex={-1} checked={!!selected} className="size-3 accent-brand" aria-hidden />}
         <span className="font-mono text-[0.6875rem] text-muted">{timeFormat.format(new Date(post.scheduledAtUtc))}</span>
         {networks.map((n) => <NetworkGlyph key={n} network={n} className="size-3 text-muted" />)}
+        {post.recurringPostId && <Repeat className="size-3 text-muted" aria-label="Uscita di un post ricorrente" />}
         {large && <Badge tone={status.tone} className="ml-auto">{status.label}</Badge>}
       </span>
       <span className={clsx("block truncate", large ? "mt-1 text-[0.8125rem]" : "text-xs")}>
         {post.text || (post.media.length > 0 ? `${post.media.length} immagini` : "Senza testo")}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Un'uscita futura di un post ricorrente: non è ancora un post (lo diventa
+ * all'ora giusta), quindi è tratteggiata e apre il post ricorrente.
+ */
+function NextChip({ entry, accounts, large, disabled, onOpen }: {
+  entry: Extract<Entry, { kind: "next" }>;
+  accounts: SocialAccount[];
+  large?: boolean;
+  disabled?: boolean;
+  onOpen: () => void;
+}) {
+  const r = entry.recurring;
+  const networks = [...new Set(accounts.filter((a) => r.accountIds.includes(a.id)).map((a) => a.network))];
+  return (
+    <button type="button" title={`Post ricorrente: ${r.text}`} disabled={disabled}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onOpen(); }}
+      className={clsx(
+        "block w-full rounded border border-l-2 border-dashed border-brand/40 border-l-brand bg-transparent text-left text-fg transition-opacity",
+        disabled ? "cursor-not-allowed opacity-40" : "hover:opacity-80",
+        large ? "px-3 py-2" : "px-1.5 py-1",
+      )}>
+      <span className="flex items-center gap-1 overflow-hidden">
+        <span className="font-mono text-[0.6875rem] text-muted">{timeFormat.format(entry.at)}</span>
+        {networks.map((n) => <NetworkGlyph key={n} network={n} className="size-3 text-muted" />)}
+        <Repeat className="size-3 text-brand-fg" aria-label="Post ricorrente" />
+        {large && <Badge tone="brand" className="ml-auto">Ricorrente</Badge>}
+      </span>
+      <span className={clsx("block truncate", large ? "mt-1 text-[0.8125rem]" : "text-xs")}>
+        {r.text || (r.media.length > 0 ? `${r.media.length} immagini` : "Senza testo")}
       </span>
     </button>
   );

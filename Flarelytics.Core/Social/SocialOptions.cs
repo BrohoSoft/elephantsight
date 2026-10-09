@@ -25,6 +25,8 @@ public class SocialOptions
 
     public TikTokOptions TikTok { get; set; } = new();
 
+    public ThreadsOptions Threads { get; set; } = new();
+
     /// <summary>Quanto aspettare fra un controllo e l'altro di un'elaborazione (Instagram, Mastodon). Zero nei test.</summary>
     public TimeSpan PollDelay { get; set; } = TimeSpan.FromSeconds(3);
 }
@@ -63,4 +65,17 @@ public class TikTokOptions
     public string? ClientSecret { get; set; }
 
     public bool Enabled => !string.IsNullOrWhiteSpace(ClientKey) && !string.IsNullOrWhiteSpace(ClientSecret);
+}
+
+/// <summary>
+/// Threads: il caso d'uso "Access the Threads API" di un'app Meta. Le
+/// credenziali sono il Threads App ID e il suo secret (dalle impostazioni del
+/// caso d'uso), non quelli dell'app né quelli di Instagram.
+/// </summary>
+public class ThreadsOptions
+{
+    public string? AppId { get; set; }
+    public string? AppSecret { get; set; }
+
+    public bool Enabled => !string.IsNullOrWhiteSpace(AppId) && !string.IsNullOrWhiteSpace(AppSecret);
 }

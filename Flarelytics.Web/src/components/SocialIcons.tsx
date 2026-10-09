@@ -41,6 +41,14 @@ export function NetworkGlyph({ network, className }: { network: SocialNetwork; c
           <path d="M9 2.5c.4 1.8 1.7 3 3.5 3.2" />
         </svg>
       );
+    case "Threads":
+      // Una "@" tracciata in un tratto solo.
+      return (
+        <svg {...common} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.6 7.6c-.3-1.5-1.3-2.2-2.6-2.2-1.6 0-2.6 1.1-2.6 2.6S6.4 10.6 8 10.6c1.5 0 2.4-.9 2.6-2.4.2-1.7-.4-3-1.6-3" />
+          <path d="M10.6 8c0 1.6.6 2.4 1.5 2.4 1.2 0 1.9-1.1 1.9-2.9C14 4.4 11.6 2 8 2S2 4.6 2 8s2.5 6 6 6c1.4 0 2.6-.4 3.6-1.1" />
+        </svg>
+      );
     case "FacebookPage":
       // Una "f" in un riquadro.
       return (

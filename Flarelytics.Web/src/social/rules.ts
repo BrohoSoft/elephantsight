@@ -69,6 +69,7 @@ export const networkName: Record<SocialNetwork, string> = {
   Instagram: "Instagram",
   FacebookPage: "Facebook",
   TikTok: "TikTok",
+  Threads: "Threads",
 };
 
 export const accountLabel = (a: Pick<SocialAccount, "handle" | "name">) => a.handle ?? a.name;

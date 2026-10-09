@@ -22,6 +22,7 @@ import { ReviewsPage } from "./pages/Reviews";
 import { SocialAccountsPage } from "./pages/social/Accounts";
 import { SocialCalendarPage } from "./pages/social/Calendar";
 import { SocialInboxPage } from "./pages/social/Inbox";
+import { SocialRecurringPage } from "./pages/social/Recurring";
 import { ApiKeysPage } from "./pages/ApiKeys";
 import { PrivacyPage, TermsPage } from "./pages/Legal";
 import { MetaCallbackPage, SingleAccountCallbackPage } from "./pages/social/OAuthCallback";
@@ -112,11 +113,13 @@ export function App() {
         <Route path="/o/:orgId/social" element={<OrgGuard><SocialCalendarPage /></OrgGuard>} />
         <Route path="/o/:orgId/social/accounts" element={<OrgGuard><SocialAccountsPage /></OrgGuard>} />
         <Route path="/o/:orgId/social/inbox" element={<OrgGuard><SocialInboxPage /></OrgGuard>} />
+        <Route path="/o/:orgId/social/recurring" element={<OrgGuard><SocialRecurringPage /></OrgGuard>} />
         <Route path="/o/:orgId/api-keys" element={<OrgGuard><ApiKeysPage /></OrgGuard>} />
-        {/* I ritorni dai login di Facebook e Instagram: indirizzi fissi, registrati nelle app. */}
+        {/* I ritorni dai login di Facebook, Instagram, TikTok e Threads: indirizzi fissi, registrati nelle app. */}
         <Route path="/social/meta/callback" element={<MetaCallbackPage />} />
         <Route path="/social/instagram/callback" element={<SingleAccountCallbackPage provider="instagram" />} />
         <Route path="/social/tiktok/callback" element={<SingleAccountCallbackPage provider="tiktok" />} />
+        <Route path="/social/threads/callback" element={<SingleAccountCallbackPage provider="threads" />} />
         <Route path="/o/:orgId/members" element={<OrgGuard><MembersPage /></OrgGuard>} />
         <Route path="/o/:orgId/settings" element={<OrgGuard><OrgSettingsPage /></OrgGuard>} />
       </Route>

@@ -20,7 +20,7 @@ const describeMedia = (media: SocialPost["media"]) =>
   media.some((m) => m.kind === "Video") ? "video" : media.length === 1 ? "1 immagine" : `${media.length} immagini (carosello)`;
 
 /** L'anteprima del primo media: per un video il primo fotogramma, con l'icona e la durata sopra. */
-function MediaThumb({ media }: { media: SocialPost["media"] }) {
+export function MediaThumb({ media }: { media: SocialPost["media"] }) {
   const first = media[0];
   if (!first) return <div className="size-16 shrink-0 rounded border border-dashed border-line-strong" />;
   if (first.kind === "Video") {

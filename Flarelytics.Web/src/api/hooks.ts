@@ -11,6 +11,8 @@ import type {
   SecretFile,
   SocialAccount,
   SocialPost,
+  RecurringOccurrence,
+  RecurringPost,
   ApiKeyItem,
   Store,
   StoreReleases,
@@ -42,6 +44,7 @@ export const keys = {
   socialAccounts: (orgId: string) => ["org", orgId, "social", "accounts"] as const,
   socialPosts: (orgId: string) => ["org", orgId, "social", "posts"] as const,
   socialInbox: (orgId: string) => ["org", orgId, "social", "inbox"] as const,
+  socialRecurring: (orgId: string) => ["org", orgId, "social", "recurring"] as const,
   apiKeys: (orgId: string) => ["org", orgId, "api-keys"] as const,
 };
 
@@ -166,6 +169,20 @@ export const useSocialPosts = (orgId: string, from: Date, to: Date, projectId?: 
 /** La coda "Da programmare": si ricarica ogni minuto, i post arrivano dall'esterno. */
 export const useSocialInbox = (orgId: string) =>
   useQuery({ queryKey: keys.socialInbox(orgId), queryFn: () => request<SocialPost[]>(`/orgs/${orgId}/social/inbox`), refetchInterval: 60_000 });
+
+export const useSocialRecurring = (orgId: string) =>
+  useQuery({ queryKey: keys.socialRecurring(orgId), queryFn: () => request<RecurringPost[]>(`/orgs/${orgId}/social/recurring`) });
+
+/** Le uscite future dei post ricorrenti nel periodo del calendario: calcolate dal server con la regola. */
+export const useRecurringOccurrences = (orgId: string, from: Date, to: Date, projectId?: string) =>
+  useQuery({
+    queryKey: [...keys.socialRecurring(orgId), "occurrences", from.toISOString(), to.toISOString(), projectId ?? "all"],
+    queryFn: () =>
+      request<RecurringOccurrence[]>(
+        `/orgs/${orgId}/social/recurring/occurrences?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${projectId ? `&projectId=${projectId}` : ""}`,
+      ),
+    placeholderData: (previous) => previous,
+  });
 
 export const useApiKeys = (orgId: string, enabled: boolean) =>
   useQuery({ queryKey: keys.apiKeys(orgId), queryFn: () => request<ApiKeyItem[]>(`/orgs/${orgId}/api-keys`), enabled });

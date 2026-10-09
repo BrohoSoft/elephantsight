@@ -1,17 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { ArrowLeft, ArrowRight, ExternalLink, ImagePlus, RotateCcw, Trash2, Video, X } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { ExternalLink, Repeat, RotateCcw, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { errorMessage, request } from "../api/client";
 import { keys } from "../api/hooks";
 import { defaultPostOptions, type PostOptions, type Project, type SocialAccount, type SocialMediaItem, type SocialPost, type SocialPostStatus, type SocialTarget } from "../api/types";
 import { formatDateTime, useOrg } from "../components/org";
 import { NetworkGlyph } from "../components/SocialIcons";
-import { Alert, Badge, Button, Field, Input, Modal, Segmented, Select, Spinner, Textarea } from "../components/ui";
+import { Alert, Badge, Button, Field, Input, Modal, Segmented, Select, Textarea } from "../components/ui";
+import { AccountPicker, MediaField, mediaHint } from "./EditorParts";
 import { commercialIncomplete, NetworkOptions } from "./NetworkOptions";
 import { accountLabel, countCharacters, networkName, optionProblems, problems } from "./rules";
-import { formatDuration, uploadMedia } from "./upload";
 
 type Tone = "neutral" | "ok" | "warn" | "bad" | "brand";
 
@@ -60,13 +60,11 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   const [time, setTime] = useState(timeInput(start));
   const [projectId, setProjectId] = useState(post?.projectId ?? "");
   const [uploading, setUploading] = useState(0);
-  const [progress, setProgress] = useState<number | null>(null);
   const [options, setOptions] = useState<PostOptions>(post?.options ?? defaultPostOptions);
   const [commercial, setCommercial] = useState(!!(post?.options.tikTokBrandOrganic || post?.options.tikTokBrandedContent));
   const [busy, setBusy] = useState<"draft" | "save" | "delete" | "retry" | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const chosen = accounts.filter((a) => selected.includes(a.id));
   const issues = chosen
@@ -75,30 +73,6 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
   const incomplete = chosen.some((a) => a.network === "TikTok") && commercialIncomplete(options, commercial);
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-
-  async function addFiles(files: FileList | null) {
-    if (!files) return;
-    setError(null);
-    for (const file of Array.from(files)) {
-      setUploading((n) => n + 1);
-      try {
-        const item = await uploadMedia(org.id, file, setProgress);
-        setMedia((m) => [...m, { ...item, altText: "" }]);
-      } catch (e) {
-        setError(e);
-      } finally {
-        setUploading((n) => n - 1);
-        setProgress(null);
-      }
-    }
-  }
-
-  const move = (i: number, delta: number) =>
-    setMedia((m) => {
-      const next = [...m];
-      [next[i], next[i + delta]] = [next[i + delta], next[i]];
-      return next;
-    });
 
   async function save(draft: boolean) {
     setBusy(draft ? "draft" : "save");
@@ -179,35 +153,19 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
         ? <Badge tone="ok">Pubblicato fuori da ElephantSight</Badge>
         : post.inbox
           ? <span>Arrivato {post.source ? <>da <b className="text-fg">{post.source}</b></> : "con una chiave API"}{post.suggestedAtUtc ? `, proposto per il ${formatDateTime(post.suggestedAtUtc)}` : ", senza data proposta"}. Scegli gli account e programmalo.</span>
-          : <Badge tone={postStatus[post.status].tone}>{postStatus[post.status].label}</Badge>)}>
+          : <span className="flex flex-wrap items-center gap-2">
+              <Badge tone={postStatus[post.status].tone}>{postStatus[post.status].label}</Badge>
+              {post.recurringPostId && (
+                <Link to={`/o/${org.id}/social/recurring`} className="inline-flex items-center gap-1 text-xs text-brand-fg hover:underline">
+                  <Repeat className="size-3" /> Uscita di un post ricorrente
+                </Link>
+              )}
+            </span>)}>
       <div className="space-y-5">
         {post && post.targets.some((t) => t.status !== "Pending" || t.error) && <TargetList targets={post.targets} />}
 
         <Field label="Dove">
-          {accounts.length === 0 ? (
-            <p className="text-[0.8125rem] text-muted">
-              Nessun account collegato. <Link to={`/o/${org.id}/social/accounts`} className="text-brand-fg hover:underline">Collegane uno</Link>.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {accounts.map((a) => {
-                const on = selected.includes(a.id);
-                const broken = a.status === "NeedsReconnect";
-                return (
-                  <button key={a.id} type="button" disabled={readOnly || (broken && !on)} onClick={() => toggle(a.id)} aria-pressed={on}
-                    title={broken ? "Da ricollegare" : undefined}
-                    className={clsx(
-                      "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[0.8125rem] transition-colors disabled:cursor-not-allowed",
-                      on ? "border-brand/60 bg-brand/10 text-fg" : "border-line-strong bg-panel-2 text-muted hover:text-fg",
-                      broken && "opacity-60",
-                    )}>
-                    <NetworkGlyph network={a.network} className="size-3.5" />
-                    {accountLabel(a)}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <AccountPicker accounts={accounts} selected={selected} onToggle={toggle} readOnly={readOnly} />
         </Field>
 
         <div className="space-y-2">
@@ -231,42 +189,8 @@ export function PostEditor({ post, initialDate, accounts, projects, admin, onClo
           )}
         </div>
 
-        <Field label="Immagini o video" hint={!readOnly ? "Le immagini si convertono in JPEG sotto 1 MB. Un video (MP4 o MOV) va da solo: su Instagram diventa un Reel, su TikTok un video. Il testo alternativo aiuta chi usa un lettore di schermo." : undefined}>
-          <div className="space-y-2">
-            {media.map((m, i) => (
-              <div key={m.id} className="flex items-start gap-3 rounded-md border border-line bg-panel-2/50 p-2">
-                {m.kind === "Video"
-                  ? <video src={m.url} controls preload="metadata" className="h-28 w-16 shrink-0 rounded bg-black object-cover" />
-                  : <img src={m.url} alt={m.altText ?? ""} className="size-16 shrink-0 rounded object-cover" />}
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <Input readOnly={readOnly} value={m.altText ?? ""} placeholder="Testo alternativo" aria-label={`Testo alternativo dell'immagine ${i + 1}`}
-                    onChange={(e) => setMedia((list) => list.map((x) => (x.id === m.id ? { ...x, altText: e.target.value } : x)))} />
-                  <p className="text-[0.6875rem] text-faint">
-                    {m.kind === "Video" ? <><Video className="mr-1 inline size-3" />{formatDuration(m.durationMs ?? 0)} · </> : null}
-                    {m.width}×{m.height} · {m.sizeBytes > 1024 * 1024 ? `${(m.sizeBytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(m.sizeBytes / 1024)} KB`}
-                  </p>
-                </div>
-                {!readOnly && (
-                  <div className="flex shrink-0 gap-0.5">
-                    <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} icon={<ArrowLeft className="size-3" />} aria-label="Sposta prima" />
-                    <Button size="sm" variant="ghost" disabled={i === media.length - 1} onClick={() => move(i, 1)} icon={<ArrowRight className="size-3" />} aria-label="Sposta dopo" />
-                    <Button size="sm" variant="ghost" onClick={() => setMedia((list) => list.filter((x) => x.id !== m.id))} icon={<X className="size-3" />} aria-label="Togli" />
-                  </div>
-                )}
-              </div>
-            ))}
-            {!readOnly && (
-              <button type="button" onClick={() => fileInput.current?.click()} disabled={uploading > 0}
-                onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-                className="flex w-full items-center gap-3 rounded-md border border-dashed border-line-strong bg-field px-3 py-3 text-left hover:border-brand/50">
-                {uploading > 0 ? <Spinner /> : <ImagePlus className="size-5 text-faint" />}
-                <span className="text-[0.8125rem] text-muted">
-                  {uploading > 0 ? `Caricamento…${progress !== null && progress < 1 ? ` ${Math.round(progress * 100)}%` : ""}` : "Aggiungi immagini o un video (o trascinali qui)"}
-                </span>
-                <input ref={fileInput} type="file" accept="image/*,video/mp4,video/quicktime" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-              </button>
-            )}
-          </div>
+        <Field label="Immagini o video" hint={!readOnly ? mediaHint : undefined}>
+          <MediaField media={media} onChange={setMedia} readOnly={readOnly} onUploading={setUploading} onError={setError} />
         </Field>
 
         <NetworkOptions accounts={chosen} media={media} options={options} onChange={setOptions} commercial={commercial} onCommercial={setCommercial} readOnly={readOnly} />

@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { ArrowLeft, AtSign, CalendarDays, Check, ChevronsUpDown, FolderKanban, Inbox, KeyRound, KeySquare, LayoutDashboard, LogOut, MessageSquare, Plus, Settings, UserRound, Users } from "lucide-react";
+import { ArrowLeft, AtSign, CalendarDays, Check, ChevronsUpDown, FolderKanban, Inbox, KeyRound, KeySquare, LayoutDashboard, LogOut, MessageSquare, Plus, Repeat, Settings, UserRound, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useApiMutation, keys, useMe, useSocialInbox } from "../api/hooks";
@@ -61,6 +61,7 @@ export function AppShell() {
             <NavItem to={`/o/${navOrg.id}/social/inbox`} icon={<Inbox className="size-4" />}>
               Da programmare <InboxCount orgId={navOrg.id} />
             </NavItem>
+            <NavItem to={`/o/${navOrg.id}/social/recurring`} icon={<Repeat className="size-4" />}>Post ricorrenti</NavItem>
             <NavItem to={`/o/${navOrg.id}/social/accounts`} icon={<AtSign className="size-4" />}>Account social</NavItem>
             <p className="px-2 pt-4 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Organizzazione</p>
             <NavItem to={`/o/${navOrg.id}/members`} icon={<Users className="size-4" />}>Membri</NavItem>
@@ -304,6 +305,7 @@ function MobileBar({ me, orgId, projectId, section }: { me: Me; orgId?: string; 
             ["/credentials", "Chiavi"],
             ["/social", "Calendario"],
             ["/social/inbox", "Da programmare"],
+            ["/social/recurring", "Ricorrenti"],
             ["/social/accounts", "Social"],
             ["/members", "Membri"],
             ["/api-keys", "Chiavi API"],

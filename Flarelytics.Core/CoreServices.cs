@@ -119,11 +119,13 @@ public static class CoreServices
         services.AddHttpClient<Social.MastodonClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddHttpClient<Social.MetaGraphClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddHttpClient<Social.InstagramLoginClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddHttpClient<Social.ThreadsClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         // Dieci minuti: i pezzi di un video arrivano fino a 20 MB l'uno.
         services.AddHttpClient<Social.TikTokClient>(c => c.Timeout = TimeSpan.FromMinutes(10));
         services.AddHttpClient<Social.RemoteImageClient>(c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<Social.SocialPublisher>();
         services.AddScoped<Social.SocialImporter>();
+        services.AddScoped<Social.RecurringPostScheduler>();
         return services;
     }
 

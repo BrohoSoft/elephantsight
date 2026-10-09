@@ -152,6 +152,10 @@ export interface InstanceInfo {
   tikTokEnabled: boolean;
   /** Da registrare nell'app TikTok (Login Kit → Redirect URI). */
   tikTokRedirectUri: string;
+  /** C'è un'app con il caso d'uso Threads: si collegano account Threads. */
+  threadsEnabled: boolean;
+  /** Da registrare nel caso d'uso Threads (Redirect Callback URLs). */
+  threadsRedirectUri: string;
   /** Chi gestisce l'installazione e l'email di contatto, per /privacy e /terms. */
   legalOwner: string | null;
   legalContactEmail: string | null;
@@ -316,7 +320,7 @@ export interface BuildUploadItem {
   finishedAtUtc: string | null;
 }
 
-export type SocialNetwork = "Bluesky" | "Mastodon" | "Instagram" | "FacebookPage" | "TikTok";
+export type SocialNetwork = "Bluesky" | "Mastodon" | "Instagram" | "FacebookPage" | "TikTok" | "Threads";
 export type SocialAccountStatus = "Connected" | "NeedsReconnect";
 
 /** I limiti di una rete, gli stessi che il server ricontrolla (SocialRules). */
@@ -402,6 +406,44 @@ export interface SocialPost {
   media: SocialMediaItem[];
   targets: SocialTarget[];
   createdAtUtc: string;
+  /** Un'uscita di questo post ricorrente. */
+  recurringPostId: string | null;
+}
+
+export type RecurrenceFrequency = "Daily" | "Weekly" | "Monthly";
+export type Weekday = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";
+
+/** Un post ricorrente (SocialRecurringPost): contenuto, account e regola. */
+export interface RecurringPost {
+  id: string;
+  text: string;
+  projectId: string | null;
+  accountIds: string[];
+  options: PostOptions;
+  media: SocialMediaItem[];
+  frequency: RecurrenceFrequency;
+  interval: number;
+  daysOfWeek: Weekday[];
+  /** "HH:mm" nel fuso timeZone. */
+  timeOfDay: string;
+  timeZone: string;
+  /** "yyyy-MM-dd": il primo giorno, e per il mensile il giorno del mese. */
+  startDate: string;
+  endDate: string | null;
+  isPaused: boolean;
+  nextOccurrenceUtc: string | null;
+  /** Le prossime uscite (vuoto se in pausa o finito). */
+  upcoming: string[];
+  occurrenceCount: number;
+  /** L'ultima uscita, con il suo esito (solo nell'elenco). */
+  lastPost: SocialPost | null;
+  createdAtUtc: string;
+}
+
+/** Un'uscita futura di un post ricorrente, per il calendario. */
+export interface RecurringOccurrence {
+  recurringPostId: string;
+  atUtc: string;
 }
 
 export interface MetaCandidate {

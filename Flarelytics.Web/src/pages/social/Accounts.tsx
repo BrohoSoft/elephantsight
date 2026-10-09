@@ -8,11 +8,11 @@ import { NetworkGlyph } from "../../components/SocialIcons";
 import { Alert, Badge, Button, CopyButton, EmptyState, Field, Input, Modal, Mono, PageHeader, PageLoader, Panel } from "../../components/ui";
 import { accountLabel, networkName } from "../../social/rules";
 
-/** Dove tornano i login di Facebook e Instagram: l'organizzazione da cui sono partiti, perché l'indirizzo di ritorno è uno solo. */
+/** Dove tornano i login (Facebook, Instagram, TikTok, Threads): l'organizzazione da cui sono partiti, perché l'indirizzo di ritorno è uno solo. */
 export const oauthOrgKey = "watchstore.oauthOrg";
 
 /** Chiede all'API l'indirizzo del login e ci manda il browser, ricordando l'organizzazione. */
-async function startOAuth(orgId: string, provider: "meta" | "instagram" | "tiktok") {
+async function startOAuth(orgId: string, provider: "meta" | "instagram" | "tiktok" | "threads") {
   const { url } = await request<{ url: string }>(`/orgs/${orgId}/social/${provider}/start`, { method: "POST" });
   try {
     sessionStorage.setItem(oauthOrgKey, orgId);
@@ -46,6 +46,7 @@ export function SocialAccountsPage() {
           <InstagramCard enabled={instance.data!.instagramEnabled} redirectUri={instance.data!.instagramRedirectUri} />
           <MetaCard enabled={instance.data!.metaEnabled} redirectUri={instance.data!.metaRedirectUri} />
           <TikTokCard enabled={instance.data!.tikTokEnabled} redirectUri={instance.data!.tikTokRedirectUri} />
+          <ThreadsCard enabled={instance.data!.threadsEnabled} redirectUri={instance.data!.threadsRedirectUri} />
         </div>
       )}
 
@@ -255,6 +256,72 @@ function TikTokCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: s
             I video escono solo con visibilità "Solo io", e l'account TikTok deve essere privato; al massimo 5 account al giorno. Per pubblicare in pubblico
             l'app va mandata in revisione a TikTok (servono un'informativa privacy, i termini d'uso e un video che mostri il flusso). ElephantSight mostra già
             le scelte che TikTok controlla in revisione.
+          </Alert>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/**
+ * Threads: il caso d'uso "Access the Threads API" di un'app Meta, con il suo
+ * App ID. Si entra con l'account Threads (o Instagram) e l'account si collega subito.
+ */
+function ThreadsCard({ enabled, redirectUri }: { enabled: boolean; redirectUri: string }) {
+  const org = useOrg();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [help, setHelp] = useState(false);
+  const privacyUri = redirectUri.replace(/\/social\/threads\/callback$/, "/privacy");
+
+  async function start() {
+    setBusy(true);
+    setError(null);
+    try {
+      await startOAuth(org.id, "threads");
+    } catch (e) {
+      setError(e);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-panel p-4">
+      <p className="flex items-center gap-2 text-sm font-medium text-fg"><NetworkGlyph network="Threads" /> Threads</p>
+      <p className="flex-1 text-xs text-muted">
+        Testi, immagini, caroselli e video sul profilo Threads.
+        {!enabled && " Prima serve l'app Threads per questa installazione."}
+      </p>
+      <div className="flex gap-2">
+        {enabled ? <Button size="sm" loading={busy} onClick={start}>Collega con Threads</Button> : <Button size="sm" onClick={() => setHelp(true)}>Come configurarla</Button>}
+        {enabled && <Button size="sm" variant="ghost" onClick={() => setHelp(true)}>Aiuto</Button>}
+      </div>
+      {error ? <Alert tone="bad">{errorMessage(error)}</Alert> : null}
+
+      <Modal open={help} onOpenChange={setHelp} wide title="L'app per Threads"
+        description="Una volta per installazione. L'app resta in modalità sviluppo: per pubblicare sui tuoi account non serve la revisione di Meta.">
+        <ol className="list-decimal space-y-2.5 pl-5 text-[0.8125rem] text-muted">
+          <li>Su <Mono>developers.facebook.com</Mono> crea un'app e scegli il caso d'uso <b className="text-fg">Access the Threads API</b>.</li>
+          <li>Nelle autorizzazioni del caso d'uso servono <Mono>threads_basic</Mono> e <Mono>threads_content_publish</Mono>.</li>
+          <li>
+            Nelle impostazioni del caso d'uso, fra i <b className="text-fg">Redirect Callback URLs</b>, metti:
+            <span className="mt-1 flex items-center gap-1"><Mono>{redirectUri}</Mono><CopyButton value={redirectUri} /></span>
+          </li>
+          <li>
+            Negli indirizzi di <b className="text-fg">Uninstall</b> e <b className="text-fg">Delete</b> callback puoi mettere la pagina della privacy:
+            <span className="mt-1 flex items-center gap-1"><Mono>{privacyUri}</Mono><CopyButton value={privacyUri} /></span>
+          </li>
+          <li>Nei ruoli dell'app aggiungi i tuoi account come <b className="text-fg">Threads tester</b>, poi accetta l'invito dall'app Threads (Impostazioni → Account → Autorizzazioni dei siti web → Inviti).</li>
+          <li>
+            Nel file <Mono>.env</Mono> metti <Mono>THREADS_APP_ID</Mono> e <Mono>THREADS_APP_SECRET</Mono>: sono il <b className="text-fg">Threads App ID</b> e il suo secret, nelle impostazioni del caso d'uso, non quelli dell'app. Poi <Mono>docker compose up -d</Mono>.
+          </li>
+        </ol>
+        <div className="mt-4 space-y-2">
+          <Alert tone="info">
+            L'accesso dura 60 giorni e ElephantSight lo rinnova da solo. Se l'istanza resta spenta per più di 60 giorni, l'account va ricollegato.
+          </Alert>
+          <Alert tone="info">
+            Come Instagram, Threads scarica immagini e video dall'indirizzo pubblico dell'istanza: deve essere raggiungibile da internet. Con Cloudflare Access davanti, lascia libero <Mono>/api/v1/social/media/</Mono>.
           </Alert>
         </div>
       </Modal>

@@ -41,6 +41,8 @@ public class SocialPostConfiguration : IEntityTypeConfiguration<SocialPost>
         // Cancellato il progetto, il post resta sul calendario senza etichetta.
         b.HasOne<Project>().WithMany().HasForeignKey(p => p.ProjectId).OnDelete(DeleteBehavior.SetNull);
 
+        // Cancellato il post ricorrente, le uscite già fatte restano sul calendario.
+        b.HasOne<SocialRecurringPost>().WithMany().HasForeignKey(p => p.RecurringPostId).OnDelete(DeleteBehavior.SetNull);
         b.HasMany(p => p.Targets).WithOne().HasForeignKey(t => t.PostId).OnDelete(DeleteBehavior.Cascade);
         b.Navigation(p => p.Targets).UsePropertyAccessMode(PropertyAccessMode.Field);
         b.HasMany(p => p.Media).WithOne().HasForeignKey(m => m.PostId).OnDelete(DeleteBehavior.Cascade);
@@ -79,6 +81,28 @@ public class SocialMediaConfiguration : IEntityTypeConfiguration<SocialMedia>
         b.Ignore(m => m.Extension);
 
         b.HasIndex(m => m.PostId);
+        b.HasIndex(m => m.RecurringPostId);
         b.HasOne<Tenant>().WithMany().HasForeignKey(m => m.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class SocialRecurringPostConfiguration : IEntityTypeConfiguration<SocialRecurringPost>
+{
+    public void Configure(EntityTypeBuilder<SocialRecurringPost> b)
+    {
+        b.Property(r => r.Text).HasMaxLength(10000);
+        b.Property(r => r.OptionsJson).HasColumnType("jsonb");
+        b.Property(r => r.TimeZone).HasMaxLength(100);
+        b.Ignore(r => r.Options);
+        b.Ignore(r => r.Rule);
+
+        // Il giro del worker: le serie attive arrivate alla prossima uscita.
+        b.HasIndex(r => new { r.TenantId, r.NextOccurrenceUtc });
+        b.HasOne<Tenant>().WithMany().HasForeignKey(r => r.TenantId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<Project>().WithMany().HasForeignKey(r => r.ProjectId).OnDelete(DeleteBehavior.SetNull);
+
+        // I file della serie si cancellano a mano insieme alla serie (sono su disco).
+        b.HasMany(r => r.Media).WithOne().HasForeignKey(m => m.RecurringPostId).OnDelete(DeleteBehavior.Cascade);
+        b.Navigation(r => r.Media).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

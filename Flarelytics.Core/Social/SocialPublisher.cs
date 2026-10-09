@@ -15,7 +15,7 @@ namespace Flarelytics.Core.Social;
 /// <summary>Pubblica un post su un account, e ne registra l'esito.</summary>
 public class SocialPublisher(
     FlarelyticsDbContext db, FieldProtector protector, SocialMediaStorage storage, MediaUrlSigner signer,
-    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, TikTokClient tiktok, IOptions<SocialOptions> options, ILogger<SocialPublisher> log)
+    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, TikTokClient tiktok, ThreadsClient threads, IOptions<SocialOptions> options, ILogger<SocialPublisher> log)
 {
     /// <summary>Ogni quanto si ricontrolla un video che la rete sta ancora elaborando.</summary>
     public static readonly TimeSpan ProcessingCheckInterval = TimeSpan.FromSeconds(30);
@@ -39,11 +39,11 @@ public class SocialPublisher(
             return;
         }
 
-        // Il token di Instagram Login scaduto non si recupera; quello di TikTok
-        // (24 ore) invece si rinnova qui sotto con il token di rinnovo.
+        // Il token di Instagram Login o di Threads scaduto non si recupera; quello
+        // di TikTok (24 ore) invece si rinnova qui sotto con il token di rinnovo.
         if (account.Network != SocialNetwork.TikTok && account.TokenExpiresAtUtc is { } expires && expires <= DateTime.UtcNow)
         {
-            account.MarkBroken("L'accesso a Instagram è scaduto: ricollega l'account.");
+            account.MarkBroken(ExpiredMessage(account.Network));
             target.Fail(account.StatusMessage!);
             await db.SaveChangesAsync(ct);
             return;
@@ -65,6 +65,7 @@ public class SocialPublisher(
                 SocialNetwork.Instagram => await PublishInstagramAsync(account, secret, target, post, text, media, ct),
                 SocialNetwork.FacebookPage => await PublishFacebookAsync(account, secret, text, media, ct),
                 SocialNetwork.TikTok => await PublishTikTokAsync(account, secret, target, post.Options, text, media, ct),
+                SocialNetwork.Threads => await PublishThreadsAsync(account, secret, target, text, media, ct),
                 _ => throw new SocialApiException("Rete non supportata.")
             };
             target.Published(externalId, url, DateTime.UtcNow);
@@ -102,6 +103,10 @@ public class SocialPublisher(
 
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>Il token che dura 60 giorni (Instagram Login, Threads) è scaduto: si rifà il login.</summary>
+    public static string ExpiredMessage(SocialNetwork network) =>
+        $"L'accesso a {(network == SocialNetwork.Threads ? "Threads" : "Instagram")} è scaduto: ricollega l'account.";
 
     private static bool IsTransient(Exception e, CancellationToken ct) => e switch
     {
@@ -228,6 +233,77 @@ public class SocialPublisher(
 
         var mediaId = await meta.PublishInstagramAsync(graph, account.ExternalId, token, container, ct);
         return (mediaId, await meta.InstagramPermalinkAsync(graph, mediaId, token, ct));
+    }
+
+    /// <summary>
+    /// Threads, come Instagram: il container (uno per elemento, più quello del
+    /// carosello), l'attesa che Threads scarichi i file, la pubblicazione. Il
+    /// container si salva subito, così un riavvio a metà non ne crea un secondo.
+    /// </summary>
+    private async Task<(string?, string?)> PublishThreadsAsync(SocialAccount account, string token, SocialPostTarget target, string text,
+        List<SocialMedia> media, CancellationToken ct)
+    {
+        var container = target.ProgressState;
+        if (container is not null)
+        {
+            switch ((await threads.ContainerStatusAsync(container, token, ct)).Status)
+            {
+                case "PUBLISHED":
+                    return (null, null); // era uscito prima dell'interruzione
+                case "EXPIRED" or "ERROR":
+                    container = null;
+                    break;
+            }
+        }
+
+        if (container is null)
+        {
+            KeyValuePair<string, string>[] Item(SocialMedia m) => m.Kind == MediaKind.Video
+                ? [new("media_type", "VIDEO"), new("video_url", PublicImageUrl(m))]
+                : [new("media_type", "IMAGE"), new("image_url", PublicImageUrl(m))];
+
+            var fields = new List<KeyValuePair<string, string>>();
+            if (media.Count == 0) fields.Add(new("media_type", "TEXT"));
+            else if (media.Count == 1)
+            {
+                fields.AddRange(Item(media[0]));
+                if (media[0].AltText is { } alt) fields.Add(new("alt_text", alt));
+            }
+            else
+            {
+                var children = new List<string>();
+                foreach (var m in media)
+                {
+                    var child = Item(m).Append(new("is_carousel_item", "true")).ToList();
+                    if (m.AltText is { } alt) child.Add(new("alt_text", alt));
+                    children.Add(await threads.CreateContainerAsync(account.ExternalId, token, child, ct));
+                }
+                fields.Add(new("media_type", "CAROUSEL"));
+                fields.Add(new("children", string.Join(',', children)));
+            }
+            if (text.Length > 0) fields.Add(new("text", text));
+
+            container = await threads.CreateContainerAsync(account.ExternalId, token, fields, ct);
+            target.SetProgress(container);
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Un testo è pronto subito; immagini e video vanno scaricati da Threads.
+        for (var attempt = 0; ; attempt++)
+        {
+            var (status, error) = await threads.ContainerStatusAsync(container, token, ct);
+            if (status is "FINISHED" or null) break;
+            if (status is "ERROR" or "EXPIRED")
+            {
+                target.SetProgress(null);
+                throw new SocialApiException($"Threads non è riuscito a usare il post ({error ?? status}): controlla che l'indirizzo dell'istanza sia raggiungibile da internet.");
+            }
+            if (attempt == 10) throw new StillProcessingException();
+            await Task.Delay(options.Value.PollDelay, ct);
+        }
+
+        var mediaId = await threads.PublishAsync(account.ExternalId, token, container, ct);
+        return (mediaId, await threads.PermalinkAsync(mediaId, token, ct));
     }
 
     /// <summary>
@@ -401,6 +477,10 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
             var publisher = scope.ServiceProvider.GetRequiredService<SocialPublisher>();
             var now = DateTime.UtcNow;
 
+            // Prima le uscite dei post ricorrenti arrivate all'ora: diventano post
+            // normali e partono qui sotto, nello stesso giro.
+            await scope.ServiceProvider.GetRequiredService<RecurringPostScheduler>().CreateDueAsync(now, ct);
+
             var due = await db.Set<SocialPost>().Include(p => p.Media).Include(p => p.Targets)
                 .Where(p => !p.IsDraft && p.ScheduledAtUtc <= now)
                 .Where(p => p.Targets.Any(t => t.Status == SocialTargetStatus.Pending && (t.NextAttemptAtUtc == null || t.NextAttemptAtUtc <= now)))
@@ -426,11 +506,11 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
         }
     }
 
-    /// <summary>Le immagini caricate nell'editor e mai salvate in un post.</summary>
+    /// <summary>Le immagini caricate nell'editor e mai salvate in un post (né in un post ricorrente).</summary>
     private static async Task DeleteOrphanMediaAsync(FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
     {
         var before = DateTime.UtcNow - OrphanMediaAge;
-        var orphans = await db.Set<SocialMedia>().Where(m => m.PostId == null && m.CreatedAtUtc < before).ToListAsync(ct);
+        var orphans = await db.Set<SocialMedia>().Where(m => m.PostId == null && m.RecurringPostId == null && m.CreatedAtUtc < before).ToListAsync(ct);
         if (orphans.Count == 0) return;
 
         db.RemoveRange(orphans);
@@ -440,7 +520,7 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
     }
 
     /// <summary>
-    /// I token che scadono. Instagram Login (60 giorni) si rinnova quando ha più
+    /// I token che scadono. Instagram Login e Threads (60 giorni) si rinnovano quando hanno più
     /// di una settimana: Instagram lo permette dopo 24 ore, e così restano
     /// settimane di margine se qualche giro va a vuoto. TikTok (24 ore) quando
     /// ne mancano meno di 2.
@@ -454,6 +534,7 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
         if (expiring.Count == 0) return;
 
         var instagram = services.GetRequiredService<InstagramLoginClient>();
+        var threads = services.GetRequiredService<ThreadsClient>();
         var tiktok = services.GetRequiredService<TikTokClient>();
         var protector = services.GetRequiredService<FieldProtector>();
         foreach (var account in expiring)
@@ -462,7 +543,7 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
             if (account.Network == SocialNetwork.TikTok && account.TokenExpiresAtUtc > DateTime.UtcNow.AddHours(2)) continue;
             if (account.Network != SocialNetwork.TikTok && account.TokenExpiresAtUtc <= DateTime.UtcNow)
             {
-                account.MarkBroken("L'accesso a Instagram è scaduto: ricollega l'account.");
+                account.MarkBroken(SocialPublisher.ExpiredMessage(account.Network));
                 continue;
             }
 
@@ -474,8 +555,11 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
                     await SocialPublisher.RenewTikTokAsync(account, TikTokSecret.Parse(Encoding.UTF8.GetString(secret)), protector, tiktok, ct);
                     continue;
                 }
-                var token = await instagram.RefreshAsync(Encoding.UTF8.GetString(secret), ct);
-                account.RenewToken(protector.Protect(Encoding.UTF8.GetBytes(token.AccessToken), account.SecretContext), token.ExpiresAtUtc);
+                string accessToken;
+                DateTime expiresAtUtc;
+                if (account.Network == SocialNetwork.Threads) (accessToken, expiresAtUtc) = await threads.RefreshAsync(Encoding.UTF8.GetString(secret), ct);
+                else (accessToken, expiresAtUtc) = await instagram.RefreshAsync(Encoding.UTF8.GetString(secret), ct);
+                account.RenewToken(protector.Protect(Encoding.UTF8.GetBytes(accessToken), account.SecretContext), expiresAtUtc);
             }
             catch (SocialApiException e) when (e.Unauthorized)
             {
@@ -503,7 +587,7 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
     /// <summary>
     /// All'avvio: un post rimasto "in pubblicazione" da un riavvio a metà si
     /// riprova solo dove ripetere non crea un doppione (Mastodon ha la chiave
-    /// di idempotenza, Instagram il container salvato); altrove si segna come
+    /// di idempotenza, Instagram e Threads il container salvato); altrove si segna come
     /// fallito e decide l'utente.
     /// </summary>
     public override async Task StartAsync(CancellationToken ct)

@@ -365,7 +365,8 @@ public static class SocialPostEndpoints
 
         // Le immagini: nell'ordine della richiesta. Quelle tolte si cancellano.
         var mediaIds = req.Media.Select(m => m.Id).ToList();
-        var media = await db.Set<SocialMedia>().Where(m => mediaIds.Contains(m.Id) && (m.PostId == null || m.PostId == post.Id)).ToListAsync(ct);
+        var media = await db.Set<SocialMedia>()
+            .Where(m => mediaIds.Contains(m.Id) && m.RecurringPostId == null && (m.PostId == null || m.PostId == post.Id)).ToListAsync(ct);
         if (media.Count != mediaIds.Distinct().Count()) throw ApiProblem.NotFound("Immagine");
 
         foreach (var m in post.Media.Where(m => !mediaIds.Contains(m.Id)).ToList())
@@ -390,19 +391,22 @@ public static class SocialPostEndpoints
 
     /// <summary>Quello che impedisce di pubblicare il post su ciascun account, in frasi da mostrare.</summary>
     private static List<string> ProblemsFor(SocialPost post, IEnumerable<SocialAccount> accounts, Func<SocialAccount, string?> textOverride,
-        PostOptions? options = null)
+        PostOptions? options = null) =>
+        ProblemsFor(post.Text, post.Media.OrderBy(m => m.Position).ToList(), accounts, textOverride, options ?? post.Options);
+
+    /// <summary>Lo stesso controllo per un contenuto qualsiasi (un post ricorrente non è un <see cref="SocialPost"/>).</summary>
+    public static List<string> ProblemsFor(string text, IReadOnlyList<SocialMedia> ordered, IEnumerable<SocialAccount> accounts,
+        Func<SocialAccount, string?> textOverride, PostOptions options)
     {
-        var ordered = post.Media.OrderBy(m => m.Position).ToList();
-        options ??= post.Options;
         return accounts
-            .Select(a => (Account: a, Problems: SocialRules.Problems(textOverride(a) ?? post.Text, ordered, SocialRules.For(a))
+            .Select(a => (Account: a, Problems: SocialRules.Problems(textOverride(a) ?? text, ordered, SocialRules.For(a))
                 .Concat(SocialRules.OptionProblems(a.Network, options)).ToList()))
             .Where(x => x.Problems.Count > 0)
             .Select(x => $"{NetworkName(x.Account.Network)} ({x.Account.Handle ?? x.Account.Name}): {string.Join("; ", x.Problems)}.")
             .ToList();
     }
 
-    private static string NetworkName(SocialNetwork n) => n switch
+    public static string NetworkName(SocialNetwork n) => n switch
     {
         SocialNetwork.FacebookPage => "Facebook",
         _ => n.ToString()
@@ -419,8 +423,10 @@ public enum SocialPostStatus { Draft, Scheduled, Publishing, Published, Partiall
 /// <param name="Inbox">Arrivato con una chiave API e in attesa nella coda "Da programmare".</param>
 /// <param name="SuggestedAtUtc">La data proposta da chi l'ha mandato.</param>
 /// <param name="Source">Il nome della chiave API da cui è arrivato (solo nell'elenco della coda).</param>
+/// <param name="RecurringPostId">Un'uscita di questo post ricorrente.</param>
 public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, bool IsDraft, Guid? ProjectId, SocialPostStatus Status, bool Editable, bool Imported,
-    bool Inbox, DateTime? SuggestedAtUtc, string? ExternalRef, PostOptions Options, IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc)
+    bool Inbox, DateTime? SuggestedAtUtc, string? ExternalRef, PostOptions Options, IReadOnlyList<SocialMediaResponse> Media, IReadOnlyList<SocialTargetResponse> Targets, DateTime CreatedAtUtc,
+    Guid? RecurringPostId)
 {
     public string? Source { get; init; }
 
@@ -429,7 +435,7 @@ public record SocialPostResponse(Guid Id, string Text, DateTime ScheduledAtUtc, 
         p.IsInbox, p.SuggestedAtUtc, p.ExternalRef, p.Options,
         p.Media.OrderBy(m => m.Position).Select(m => SocialMediaResponse.From(m, signer)).ToList(),
         p.Targets.OrderBy(t => t.Network).ThenBy(t => t.AccountName).Select(SocialTargetResponse.From).ToList(),
-        p.CreatedAtUtc);
+        p.CreatedAtUtc, p.RecurringPostId);
 
     /// <summary>Uno stato solo per il calendario, dagli esiti dei singoli account.</summary>
     private static SocialPostStatus StatusOf(SocialPost p)

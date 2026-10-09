@@ -6,7 +6,8 @@ public enum SocialNetwork
     Mastodon = 1,
     Instagram = 2,
     FacebookPage = 3,
-    TikTok = 4
+    TikTok = 4,
+    Threads = 5
 }
 
 public enum SocialAccountStatus
@@ -46,7 +47,7 @@ public class SocialAccount : BaseEntity, ITenantOwned
 
     public string ProtectedSecret { get; private set; } = null!;
 
-    /// <summary>Instagram Login: il token dura 60 giorni e il worker lo rinnova prima. Null se non scade.</summary>
+    /// <summary>Instagram Login e Threads: il token dura 60 giorni e il worker lo rinnova prima (TikTok: 24 ore). Null se non scade.</summary>
     public DateTime? TokenExpiresAtUtc { get; private set; }
 
     public SocialAccountStatus Status { get; private set; }
@@ -136,6 +137,12 @@ public class SocialPost : BaseEntity, ITenantOwned
     /// <summary>La data proposta da chi l'ha mandato, se l'ha proposta: si usa quando lo si programma.</summary>
     public DateTime? SuggestedAtUtc { get; private set; }
 
+    /// <summary>
+    /// Il post ricorrente da cui è nato (null se cancellato, o se è un post
+    /// singolo): il worker lo crea quando arriva l'ora di un'uscita.
+    /// </summary>
+    public Guid? RecurringPostId { get; private set; }
+
     /// <summary>La chiave con cui è arrivato (null se cancellata, o se creato dal pannello).</summary>
     public Guid? ApiKeyId { get; private set; }
 
@@ -166,6 +173,13 @@ public class SocialPost : BaseEntity, ITenantOwned
         // La data c'è sempre (vedi sopra): finché è in coda vale quella proposta, o il momento dell'arrivo.
         ScheduledAtUtc = suggestedAtUtc is { } at ? DateTime.SpecifyKind(at.ToUniversalTime(), DateTimeKind.Utc) : nowUtc,
         IsDraft = true, IsInbox = true, ExternalRef = string.IsNullOrWhiteSpace(externalRef) ? null : externalRef.Trim()
+    };
+
+    /// <summary>Un'uscita di un post ricorrente: programmata per adesso, con il testo e le scelte della serie.</summary>
+    public static SocialPost FromRecurring(SocialRecurringPost recurring, DateTime atUtc) => new()
+    {
+        TenantId = recurring.TenantId, CreatedByUserId = recurring.CreatedByUserId, Text = recurring.Text, ProjectId = recurring.ProjectId,
+        ScheduledAtUtc = DateTime.SpecifyKind(atUtc, DateTimeKind.Utc), RecurringPostId = recurring.Id, OptionsJson = recurring.OptionsJson
     };
 
     /// <summary>Programmato: esce dalla coda ed entra nel calendario come un post qualsiasi.</summary>
@@ -338,6 +352,13 @@ public class SocialMedia : BaseEntity, ITenantOwned
 {
     public Guid TenantId { get; private set; }
     public Guid? PostId { get; private set; }
+
+    /// <summary>
+    /// Il post ricorrente a cui appartiene (al posto di <see cref="PostId"/>):
+    /// a ogni uscita se ne fa una copia, attaccata al post creato.
+    /// </summary>
+    public Guid? RecurringPostId { get; private set; }
+
     public int Position { get; private set; }
     public MediaKind Kind { get; private set; }
 
@@ -372,6 +393,17 @@ public class SocialMedia : BaseEntity, ITenantOwned
         Kind = MediaKind.Video, ContentType = info.ContentType, DurationMs = info.DurationMs, FastStart = info.FastStart
     };
 
+    /// <summary>
+    /// Un'altra riga per lo stesso contenuto (il file va copiato a parte): ogni
+    /// uscita di un post ricorrente ha i suoi file, che restano con il post
+    /// anche se la serie cambia immagini o viene cancellata.
+    /// </summary>
+    public SocialMedia CopyFor(Guid postId, int position) => new()
+    {
+        TenantId = TenantId, FileName = FileName, SizeBytes = SizeBytes, Width = Width, Height = Height, CreatedByUserId = CreatedByUserId,
+        Kind = Kind, ContentType = ContentType, DurationMs = DurationMs, FastStart = FastStart, PostId = postId, Position = position, AltText = AltText
+    };
+
     /// <summary>L'estensione del file su disco e nell'indirizzo firmato.</summary>
     public string Extension => ContentType switch
     {
@@ -379,6 +411,13 @@ public class SocialMedia : BaseEntity, ITenantOwned
         "video/quicktime" => ".mov",
         _ => ".jpg"
     };
+
+    public void AttachToRecurring(Guid recurringPostId, int position, string? altText)
+    {
+        RecurringPostId = recurringPostId;
+        Position = position;
+        AltText = string.IsNullOrWhiteSpace(altText) ? null : altText.Trim();
+    }
 
     public void AttachTo(Guid postId, int position, string? altText)
     {

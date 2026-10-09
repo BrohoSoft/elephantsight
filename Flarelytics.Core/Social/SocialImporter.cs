@@ -52,7 +52,7 @@ public class RemoteImageClient(HttpClient http)
 /// </remarks>
 public class SocialImporter(
     FlarelyticsDbContext db, FieldProtector protector, SocialMediaStorage storage, RemoteImageClient images,
-    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, ILogger<SocialImporter> log)
+    BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, ThreadsClient threads, ILogger<SocialImporter> log)
 {
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
     public const int HistoryDays = 90;
@@ -94,6 +94,7 @@ public class SocialImporter(
             SocialNetwork.Mastodon => await mastodon.RecentPostsAsync(account.ServerUrl!, Secret(account), account.ExternalId.Split('@')[0], since, ct),
             SocialNetwork.Instagram => await meta.InstagramRecentPostsAsync(meta.InstagramBase(account), account.ExternalId, Secret(account), since, ct),
             SocialNetwork.FacebookPage => await meta.PageRecentPostsAsync(account.ExternalId, Secret(account), since, ct),
+            SocialNetwork.Threads => await threads.RecentPostsAsync(Secret(account), since, ct),
             _ => []
         };
 

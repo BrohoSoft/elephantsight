@@ -1,6 +1,6 @@
 # ElephantSight
 
-Le tue app su App Store e Google Play in un pannello solo, iOS e Android affiancati: download e paesi, versioni e build, recensioni con risposta, testi e screenshot della pagina dello store, file di firma cifrati, caricamento delle build, e un calendario per programmare i post su Bluesky, Mastodon, Instagram (anche Reel), Pagine Facebook e TikTok. Self-hosted: gira sul tuo server, con le tue chiavi.
+Le tue app su App Store e Google Play in un pannello solo, iOS e Android affiancati: download e paesi, versioni e build, recensioni con risposta, testi e screenshot della pagina dello store, file di firma cifrati, caricamento delle build, e un calendario per programmare i post su Bluesky, Mastodon, Instagram (anche Reel), Pagine Facebook, TikTok e Threads, anche ricorrenti (ogni giorno, certi giorni della settimana, una volta al mese). Self-hosted: gira sul tuo server, con le tue chiavi.
 
 ## Le chiavi degli store
 
@@ -37,6 +37,10 @@ Senza SMTP gli inviti si mandano copiando il link dal pannello, e il recupero pa
 Bluesky e Mastodon si collegano dal pannello (Account social) con una password per app o un token. Per Instagram e le Pagine Facebook serve un'app Meta della tua installazione (il pannello spiega come crearla). Due modi, anche insieme: con l'accesso a Facebook (Pagine, e Instagram collegati a una Pagina) aggiungi a `.env` `META_APP_ID` e `META_APP_SECRET`; con l'accesso a Instagram (account Instagram professionali senza Pagina) `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET`, cioè l'Instagram App ID del prodotto Instagram, non quello dell'app Meta. Instagram scarica le immagini da `PUBLIC_URL`, che quindi deve essere raggiungibile da internet: se davanti c'è Cloudflare Access, lascia libero `/api/v1/social/media/` (gli indirizzi sono firmati e scadono dopo un'ora).
 
 Per TikTok serve un'app su developers.tiktok.com (Login Kit e Content Posting API): metti `TIKTOK_CLIENT_KEY` e `TIKTOK_CLIENT_SECRET` in `.env`. Finché TikTok non approva l'app, i video escono solo privati su account privati.
+
+Per Threads serve un'app Meta con il caso d'uso "Access the Threads API": metti in `.env` `THREADS_APP_ID` e `THREADS_APP_SECRET`, cioè il Threads App ID e il suo secret (nelle impostazioni del caso d'uso), non quelli dell'app. Come Instagram, Threads scarica immagini e video da `PUBLIC_URL`.
+
+I **post ricorrenti** (Social → Post ricorrenti) escono da soli secondo una regola: ogni N giorni, certi giorni della settimana ogni N settimane, o un giorno del mese ogni N mesi, a un'ora del fuso di chi li crea. Ogni uscita diventa un post del calendario, con una copia di immagini e video (un video quotidiano occupa spazio ogni giorno). Un'uscita mancata di più di un'ora perché il server era spento si salta.
 
 ### Chiavi API (facoltative)
 Da Organizzazione → Chiavi API crei una chiave per ogni programma (un CMS, uno script, un'automazione). Con quella il programma manda post (testo, immagine o carosello in JPEG, data di pubblicazione), anche molti in una chiamata, su `/api/v1/public`: finiscono nella coda **Da programmare**, dove scegli account e ora. La chiave da sola non pubblica niente. La pagina delle chiavi ha gli esempi con `curl`.

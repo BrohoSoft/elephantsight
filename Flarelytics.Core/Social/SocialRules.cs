@@ -35,6 +35,11 @@ public static partial class SocialRules
         // si controlla al momento di pubblicare), 4 GB.
         SocialNetwork.TikTok => new(2200, 1, true, 0, null, null, null, "codepoints",
             Video: "required", MaxVideoBytes: 4L * 1024 * 1024 * 1024, MinVideoSeconds: 1, MaxVideoSeconds: 10 * 60),
+        // Testo fino a 500 caratteri; caroselli fino a 20 elementi (qui 10, come
+        // per tutti i post); immagini fino a 8 MB; video fino a 5 minuti e 1 GB.
+        // Le proporzioni vanno bene quasi tutte (fino a 10:1), quindi non si controllano.
+        SocialNetwork.Threads => new(500, 10, false, 8 * 1024 * 1024, null, null, null, "codepoints",
+            Video: "optional", MaxVideoBytes: 1024L * 1024 * 1024, MinVideoSeconds: 0, MaxVideoSeconds: 5 * 60),
         _ => throw new ArgumentOutOfRangeException(nameof(network))
     };
 
