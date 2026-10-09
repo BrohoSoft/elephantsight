@@ -152,6 +152,9 @@ export interface InstanceInfo {
   tikTokEnabled: boolean;
   /** Da registrare nell'app TikTok (Login Kit → Redirect URI). */
   tikTokRedirectUri: string;
+  /** Chi gestisce l'installazione e l'email di contatto, per /privacy e /terms. */
+  legalOwner: string | null;
+  legalContactEmail: string | null;
   version: string;
 }
 

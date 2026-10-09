@@ -43,6 +43,10 @@ services:
       # Facoltativo: TikTok (developers.tiktok.com, Login Kit + Content Posting API).
       Social__TikTok__ClientKey: ${TIKTOK_CLIENT_KEY:-}
       Social__TikTok__ClientSecret: ${TIKTOK_CLIENT_SECRET:-}
+      # Chi gestisce questa installazione e un'email di contatto: compaiono
+      # nelle pagine /privacy e /terms, che TikTok e Meta chiedono per le app.
+      Legal__Owner: ${LEGAL_OWNER:-}
+      Legal__ContactEmail: ${LEGAL_CONTACT_EMAIL:-}
     volumes:
       # Le chiavi: quella che cifra le credenziali degli store e quella dei
       # login. Vanno salvate a parte rispetto al resto: senza la chiave master

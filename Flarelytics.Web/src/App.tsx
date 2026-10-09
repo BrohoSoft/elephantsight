@@ -23,6 +23,7 @@ import { SocialAccountsPage } from "./pages/social/Accounts";
 import { SocialCalendarPage } from "./pages/social/Calendar";
 import { SocialInboxPage } from "./pages/social/Inbox";
 import { ApiKeysPage } from "./pages/ApiKeys";
+import { PrivacyPage, TermsPage } from "./pages/Legal";
 import { MetaCallbackPage, SingleAccountCallbackPage } from "./pages/social/OAuthCallback";
 
 /** Le pagine interne: chi non ha una sessione va all'accesso, e poi torna qui. */
@@ -84,10 +85,14 @@ export function App() {
   // Un'istanza appena installata non ha utenti: tutto porta all'installer,
   // e l'installer non si riapre dopo.
   const setupRequired = instance.data?.setupRequired ?? false;
-  if (setupRequired && location.pathname !== "/setup") return <Navigate to="/setup" replace />;
+  // Privacy e termini restano leggibili sempre: li aprono i revisori di TikTok e Meta.
+  const isLegal = location.pathname === "/privacy" || location.pathname === "/terms";
+  if (setupRequired && location.pathname !== "/setup" && !isLegal) return <Navigate to="/setup" replace />;
 
   return (
     <Routes>
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
       <Route path="/setup" element={setupRequired ? <SetupPage /> : <Navigate to="/" replace />} />
       <Route path="/login" element={<AnonymousOnly><LoginPage /></AnonymousOnly>} />
       <Route path="/register" element={<AnonymousOnly><RegisterPage /></AnonymousOnly>} />

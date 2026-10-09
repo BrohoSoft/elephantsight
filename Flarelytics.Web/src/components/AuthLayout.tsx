@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import { Logo } from "./Logo";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 
@@ -18,6 +19,9 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
         <div className="mt-6">{children}</div>
         {footer && <div className="mt-6 text-center text-[13px] text-muted">{footer}</div>}
       </div>
+      <p className="mt-10 text-xs text-faint">
+        <Link to="/privacy" className="hover:text-fg">Privacy Policy</Link> · <Link to="/terms" className="hover:text-fg">Terms of Service</Link>
+      </p>
     </div>
   );
 }

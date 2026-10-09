@@ -37,7 +37,7 @@ public static class SetupEndpoints
     }
 
     /// <summary>Quello che il pannello deve sapere prima ancora del login.</summary>
-    private static async Task<IResult> Instance(FlarelyticsDbContext db, AccountEmails emails, IOptions<SocialOptions> social, CancellationToken ct) =>
+    private static async Task<IResult> Instance(FlarelyticsDbContext db, AccountEmails emails, IOptions<SocialOptions> social, IConfiguration configuration, CancellationToken ct) =>
         Results.Ok(new InstanceInfo(
             SetupRequired: !await db.Set<User>().AnyAsync(ct),
             EmailEnabled: emails.Enabled,
@@ -47,7 +47,11 @@ public static class SetupEndpoints
             InstagramRedirectUri: Social.SocialAccountEndpoints.InstagramRedirectUri(social),
             TikTokEnabled: social.Value.TikTok.Enabled,
             TikTokRedirectUri: Social.SocialAccountEndpoints.TikTokRedirectUri(social),
+            LegalOwner: NullIfEmpty(configuration["Legal:Owner"]),
+            LegalContactEmail: NullIfEmpty(configuration["Legal:ContactEmail"]),
             Version: typeof(SetupEndpoints).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// Crea l'amministratore (owner della prima organizzazione) e apre subito
@@ -88,8 +92,10 @@ public static class SetupEndpoints
 /// <param name="InstagramEnabled">C'è un'app Instagram (Instagram Login): si collegano account Instagram senza Pagina Facebook.</param>
 /// <param name="InstagramRedirectUri">L'indirizzo da registrare nelle impostazioni di Business login di Instagram.</param>
 /// <param name="TikTokRedirectUri">L'indirizzo da registrare nell'app TikTok (Login Kit → Redirect URI).</param>
+/// <param name="LegalOwner">Chi gestisce l'installazione, per le pagine /privacy e /terms (<c>Legal:Owner</c>).</param>
+/// <param name="LegalContactEmail">L'email per le richieste sui dati (<c>Legal:ContactEmail</c>).</param>
 public record InstanceInfo(bool SetupRequired, bool EmailEnabled, bool MetaEnabled, string MetaRedirectUri, bool InstagramEnabled, string InstagramRedirectUri,
-    bool TikTokEnabled, string TikTokRedirectUri, string Version);
+    bool TikTokEnabled, string TikTokRedirectUri, string? LegalOwner, string? LegalContactEmail, string Version);
 
 public record SetupRequest(string Email, string Password, string FullName, string OrganizationName);
 
