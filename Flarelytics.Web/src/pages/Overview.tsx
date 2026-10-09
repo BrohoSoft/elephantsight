@@ -40,7 +40,7 @@ export function OverviewPage() {
             <SetupStep done={hasProjects} n={2} to={`/o/${org.id}/projects`} title="Crea un progetto">
               Un progetto è un'app vista come una cosa sola, anche se è su tutti e due gli store.
             </SetupStep>
-            <SetupStep done={hasApps} n={3} to={hasProjects ? `/o/${org.id}/projects/${projects.data![0].id}` : `/o/${org.id}/projects`} title="Collega le app al progetto">
+            <SetupStep done={hasApps} n={3} to={hasProjects ? `/o/${org.id}/projects/${projects.data![0].id}/settings` : `/o/${org.id}/projects`} title="Collega le app al progetto">
               Scegli l'app dall'elenco che la chiave vede.
             </SetupStep>
           </ol>

@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import clsx from "clsx";
-import { Check, ChevronsUpDown, FolderKanban, KeyRound, LayoutDashboard, LogOut, MessageSquare, Plus, Settings, UserRound, Users } from "lucide-react";
+import { ArrowLeft, Check, ChevronsUpDown, FolderKanban, KeyRound, LayoutDashboard, LogOut, MessageSquare, Plus, Settings, UserRound, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router";
 import { useApiMutation, keys, useMe } from "../api/hooks";
@@ -8,6 +8,7 @@ import { errorMessage } from "../api/client";
 import type { Me } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { Logo } from "./Logo";
+import { ProjectSwitcher, ProjectSidebarNav, projectSections } from "./ProjectNav";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Alert, Button, Field, Input, Modal, PageLoader } from "./ui";
 
@@ -17,7 +18,7 @@ const menuContent = "z-50 min-w-56 rounded-md border border-line-strong bg-panel
 
 /** La cornice di tutte le pagine interne: barra laterale con organizzazione e sezioni, contenuto a destra. */
 export function AppShell() {
-  const { orgId } = useParams();
+  const { orgId, projectId, tab } = useParams();
   const me = useMe();
 
   // Fuori da /o/:orgId (per esempio in /account) la barra laterale resta
@@ -39,6 +40,12 @@ export function AppShell() {
         <div className="flex h-12 items-center border-b border-line px-4">
           <Logo />
         </div>
+        {/* Dentro un progetto tutta la barra diventa del progetto: chiavi,
+            membri e impostazioni dell'organizzazione stanno nella vista globale. */}
+        {org && projectId ? (
+          <ProjectSidebarNav orgId={org.id} orgName={org.name} projectId={projectId} section={tab} />
+        ) : (
+        <>
         <div className="border-b border-line p-2">
           <OrgSwitcher me={me.data} currentId={navOrg?.id} />
         </div>
@@ -53,13 +60,15 @@ export function AppShell() {
             <NavItem to={`/o/${navOrg.id}/settings`} icon={<Settings className="size-4" />}>Impostazioni</NavItem>
           </nav>
         )}
+        </>
+        )}
         <div className="mt-auto border-t border-line p-2">
           <UserMenu me={me.data} />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileBar me={me.data} orgId={navOrg?.id} />
+        <MobileBar me={me.data} orgId={navOrg?.id} projectId={org ? projectId : undefined} section={tab} />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-8">
           <Outlet context={org} />
         </main>
@@ -220,7 +229,23 @@ function UserMenu({ me }: { me: Me }) {
 }
 
 /** Sotto i 768px la barra laterale non c'è: le stesse cose stanno in una barra in alto. */
-function MobileBar({ me, orgId }: { me: Me; orgId?: string }) {
+function MobileBar({ me, orgId, projectId, section }: { me: Me; orgId?: string; projectId?: string; section?: string }) {
+  const link = ({ isActive }: { isActive: boolean }) => clsx("rounded px-2 py-1 whitespace-nowrap", isActive ? "bg-hover text-fg" : "text-muted");
+
+  if (orgId && projectId) {
+    return (
+      <div className="border-b border-line bg-panel md:hidden">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <NavLink to={`/o/${orgId}`} className="rounded p-1.5 text-muted hover:text-fg" aria-label="Vista globale"><ArrowLeft className="size-4" /></NavLink>
+          <div className="min-w-0 flex-1"><ProjectSwitcher orgId={orgId} projectId={projectId} section={section} /></div>
+        </div>
+        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-[13px]">
+          {projectSections(`/o/${orgId}/projects/${projectId}`).map((s) => <NavLink key={s.to} to={s.to} end={s.end} className={link}>{s.label}</NavLink>)}
+        </nav>
+      </div>
+    );
+  }
+
   return (
     <div className="border-b border-line bg-panel md:hidden">
       <div className="flex h-12 items-center justify-between gap-2 px-4">
@@ -239,18 +264,9 @@ function MobileBar({ me, orgId }: { me: Me; orgId?: string }) {
             ["/members", "Membri"],
             ["/settings", "Impostazioni"],
           ].map(([path, label]) => (
-            <NavLink
-              key={path}
-              to={`/o/${orgId}${path}`}
-              end={path === ""}
-              className={({ isActive }) => clsx("rounded px-2 py-1 whitespace-nowrap", isActive ? "bg-hover text-fg" : "text-muted")}
-            >
-              {label}
-            </NavLink>
+            <NavLink key={path} to={`/o/${orgId}${path}`} end={path === ""} className={link}>{label}</NavLink>
           ))}
-          <NavLink to="/account" className={({ isActive }) => clsx("rounded px-2 py-1 whitespace-nowrap", isActive ? "bg-hover text-fg" : "text-muted")}>
-            Account
-          </NavLink>
+          <NavLink to="/account" className={link}>Account</NavLink>
         </nav>
       )}
     </div>

@@ -16,7 +16,7 @@ export function ReleasesTab({ project }: { project: Project }) {
   const queryClient = useQueryClient();
 
   if (project.apps.length === 0) {
-    return <EmptyState title="Nessuna app collegata">Collega l'app App Store o Google Play dalla Panoramica del progetto.</EmptyState>;
+    return <EmptyState title="Nessuna app collegata">Collega l'app App Store o Google Play dalle Impostazioni del progetto.</EmptyState>;
   }
 
   return (

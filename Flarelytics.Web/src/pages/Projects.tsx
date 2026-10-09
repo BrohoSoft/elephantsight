@@ -117,7 +117,7 @@ function CreateProjectModal({ orgId, open, onOpenChange }: { orgId: string; open
                   onOpenChange(false);
                   setName("");
                   setDescription("");
-                  navigate(`/o/${orgId}/projects/${p.id}`);
+                  navigate(`/o/${orgId}/projects/${p.id}/settings`);
                 },
               })
             }

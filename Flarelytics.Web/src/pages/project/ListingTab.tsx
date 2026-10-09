@@ -25,7 +25,7 @@ export function ListingTab({ project }: { project: Project }) {
   const stores = project.apps.map((a) => a.store);
   const [store, setStore] = useState<Store>(stores[0]);
 
-  if (stores.length === 0) return <EmptyState title="Nessuna app collegata">Collega un'app per gestirne la pagina sullo store.</EmptyState>;
+  if (stores.length === 0) return <EmptyState title="Nessuna app collegata">Collega un'app dalle Impostazioni del progetto per gestirne la pagina sullo store.</EmptyState>;
   if (listing.isPending) return <PageLoader />;
 
   const result = store === "AppStore" ? listing.data?.appStore : listing.data?.googlePlay;

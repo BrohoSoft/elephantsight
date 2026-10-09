@@ -1,4 +1,4 @@
-import { ArrowLeft, Link2, Search, Trash2, Unlink } from "lucide-react";
+import { Link2, Search, Trash2, Unlink } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { errorMessage } from "../api/client";
@@ -6,75 +6,107 @@ import { canAdmin, keys, useApiMutation, useCredentialApps, useCredentials, useP
 import type { Project, ProjectApp, Store } from "../api/types";
 import { AppIcon } from "../components/AppIcon";
 import { StoreBadge, StoreGlyph, storeName } from "../components/StoreIcons";
-import { Alert, Button, EmptyState, Field, Input, Modal, PageLoader, Select, Spinner, Textarea } from "../components/ui";
+import { Alert, Button, EmptyState, Field, Input, Modal, PageHeader, PageLoader, Panel, Select, Spinner, Textarea } from "../components/ui";
 import { useOrg } from "../components/org";
 import { Dashboard } from "../components/Dashboard";
 import { ReviewList } from "../components/ReviewList";
-import { Tabs } from "../components/Tabs";
 import { ListingTab } from "./project/ListingTab";
 import { ReleasesTab } from "./project/ReleasesTab";
 import { SecretFilesTab } from "./project/SecretFilesTab";
 
+const SECTIONS: Record<string, { title: string; description: string }> = {
+  releases: { title: "Versioni e build", description: "Le versioni sugli store, le build caricate, e il caricamento di quelle nuove." },
+  reviews: { title: "Recensioni", description: "App Store e Google Play insieme, dalla più recente. La risposta arriva sullo store." },
+  listing: { title: "Pagina dello store", description: "Testi e immagini della scheda, per lingua." },
+  files: { title: "File di firma", description: "Keystore, certificati, profili e configurazioni, cifrati." },
+  settings: { title: "Impostazioni", description: "Le app collegate, il nome del progetto, l'eliminazione." },
+};
+
+/**
+ * Il progetto. La navigazione fra le sezioni sta nella barra laterale
+ * (vedi ProjectNav): qui c'è solo il contenuto della sezione aperta.
+ */
 export function ProjectDetailPage() {
   const org = useOrg();
   const { projectId = "", tab } = useParams();
-  const base = `/o/${org.id}/projects/${projectId}`;
   const project = useProject(org.id, projectId);
-  const [linking, setLinking] = useState<Store | null>(null);
-  const [editing, setEditing] = useState(false);
 
   if (project.isPending) return <PageLoader />;
   if (project.error) return <Alert tone="bad">{errorMessage(project.error)}</Alert>;
 
   const p = project.data;
-  const admin = canAdmin(org.role);
+  const section = tab ? SECTIONS[tab] : undefined;
 
   return (
     <>
-      <Link to={`/o/${org.id}/projects`} className="mb-4 inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-        <ArrowLeft className="size-3" /> Progetti
-      </Link>
-
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-4">
+      {section ? (
+        <PageHeader title={section.title} description={section.description} />
+      ) : (
+        <div className="mb-6 flex min-w-0 items-center gap-4">
           <AppIcon src={p.iconUrl} name={p.name} size="lg" />
           <div className="min-w-0">
             <h1 className="text-xl font-medium tracking-tight text-fg">{p.name}</h1>
             {p.description && <p className="mt-1 text-[13px] text-muted">{p.description}</p>}
-            <div className="mt-2 flex gap-1.5">
-              {p.apps.map((a) => <StoreBadge key={a.id} store={a.store} />)}
-            </div>
+            <div className="mt-2 flex gap-1.5">{p.apps.map((a) => <StoreBadge key={a.id} store={a.store} />)}</div>
           </div>
         </div>
-        {admin && <Button onClick={() => setEditing(true)}>Modifica</Button>}
-      </div>
-
-      <Tabs items={[
-        { to: base, label: "Panoramica", end: true },
-        { to: `${base}/releases`, label: "Versioni e build" },
-        { to: `${base}/reviews`, label: "Recensioni" },
-        { to: `${base}/listing`, label: "Pagina dello store" },
-        { to: `${base}/files`, label: "File di firma" },
-      ]} />
+      )}
 
       {tab === "releases" ? <ReleasesTab project={p} />
         : tab === "reviews" ? <ReviewList projectId={p.id} />
         : tab === "listing" ? <ListingTab project={p} />
         : tab === "files" ? <SecretFilesTab project={p} />
-        : (
-          <>
-            <div className="mb-6 grid gap-3 md:grid-cols-2">
-              {(["AppStore", "GooglePlay"] as Store[]).map((store) => (
-                <StoreSlot key={store} orgId={org.id} project={p} store={store} admin={admin} onLink={() => setLinking(store)} />
-              ))}
-            </div>
-            <Dashboard orgId={org.id} projectId={p.id} />
-          </>
-        )}
-
-      {linking && <LinkAppModal orgId={org.id} project={p} store={linking} onClose={() => setLinking(null)} />}
-      <EditProjectModal orgId={org.id} project={p} open={editing} onOpenChange={setEditing} />
+        : tab === "settings" ? <ProjectSettings project={p} />
+        : <ProjectOverview project={p} />}
     </>
+  );
+}
+
+/** I numeri del progetto, con un invito a collegare lo store che manca. */
+function ProjectOverview({ project: p }: { project: Project }) {
+  const org = useOrg();
+  const missing = (["AppStore", "GooglePlay"] as Store[]).filter((s) => !p.apps.some((a) => a.store === s));
+
+  return (
+    <>
+      {missing.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {missing.map((store) => (
+            <Link key={store} to={`/o/${org.id}/projects/${p.id}/settings`}
+              className="flex items-center gap-3 rounded-lg border border-dashed border-line-strong bg-panel px-4 py-3 hover:bg-hover/50">
+              <StoreGlyph store={store} className={store === "AppStore" ? "text-ios" : "text-android"} />
+              <span className="flex-1 text-[13px] text-muted">
+                <span className="text-fg">{storeName(store)} non è ancora collegato.</span> Quando l'app è in {store === "GooglePlay" ? "Play Console" : "App Store Connect"}, collegala: da lì in poi ogni sezione mostra i due store insieme.
+              </span>
+              <span className="text-xs text-brand-fg">Collega →</span>
+            </Link>
+          ))}
+        </div>
+      )}
+      <Dashboard orgId={org.id} projectId={p.id} />
+    </>
+  );
+}
+
+/** Le app collegate (una per store), nome e descrizione, eliminazione. */
+function ProjectSettings({ project: p }: { project: Project }) {
+  const org = useOrg();
+  const admin = canAdmin(org.role);
+  const [linking, setLinking] = useState<Store | null>(null);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-fg">App collegate</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          {(["AppStore", "GooglePlay"] as Store[]).map((store) => (
+            <StoreSlot key={store} orgId={org.id} project={p} store={store} admin={admin} onLink={() => setLinking(store)} />
+          ))}
+        </div>
+      </div>
+      {admin && <ProjectDetailsForm orgId={org.id} project={p} />}
+      {linking && <LinkAppModal orgId={org.id} project={p} store={linking} onClose={() => setLinking(null)} />}
+    </div>
   );
 }
 
@@ -258,7 +290,7 @@ function ManualAppForm(props: {
   );
 }
 
-function EditProjectModal({ orgId, project, open, onOpenChange }: { orgId: string; project: Project; open: boolean; onOpenChange: (v: boolean) => void }) {
+function ProjectDetailsForm({ orgId, project }: { orgId: string; project: Project }) {
   const navigate = useNavigate();
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? "");
@@ -271,47 +303,34 @@ function EditProjectModal({ orgId, project, open, onOpenChange }: { orgId: strin
   const remove = useApiMutation(() => ({ path: `/orgs/${orgId}/projects/${project.id}`, method: "DELETE" }), [keys.projects(orgId)]);
 
   return (
-    <Modal
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Modifica progetto"
-      footer={
-        <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Annulla</Button>
-          <Button variant="primary" loading={save.isPending} disabled={!name.trim()} onClick={() => save.mutate(undefined, { onSuccess: () => onOpenChange(false) })}>
-            Salva
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <Field label="Nome">
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <Field label="Descrizione">
-          <Textarea rows={3} className="font-sans text-[13px]" value={description} onChange={(e) => setDescription(e.target.value)} />
-        </Field>
-        {(save.error || remove.error) && <Alert tone="bad">{errorMessage(save.error ?? remove.error)}</Alert>}
-
-        <div className="rounded-md border border-bad/30 p-3">
-          <p className="text-[13px] text-fg">Elimina il progetto</p>
-          <p className="mt-0.5 text-xs text-muted">Le app vengono scollegate; le chiavi restano.</p>
-          <div className="mt-3">
-            {confirmDelete ? (
-              <div className="flex gap-2">
-                <Button size="sm" variant="danger" loading={remove.isPending} onClick={() => remove.mutate(undefined, { onSuccess: () => navigate(`/o/${orgId}/projects`) })}>
-                  Sì, elimina
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>No</Button>
-              </div>
-            ) : (
-              <Button size="sm" variant="danger" icon={<Trash2 className="size-3" />} onClick={() => setConfirmDelete(true)}>
-                Elimina
-              </Button>
-            )}
-          </div>
+    <>
+      <Panel title="Progetto" footer={
+        <Button variant="primary" loading={save.isPending} disabled={!name.trim() || (name === project.name && description === (project.description ?? ""))} onClick={() => save.mutate()}>Salva</Button>
+      }>
+        <div className="max-w-xl space-y-4 p-4">
+          <Field label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label="Descrizione"><Textarea rows={3} className="font-sans text-[13px]" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+          {save.error && <Alert tone="bad">{errorMessage(save.error)}</Alert>}
         </div>
+      </Panel>
+
+      <div className="rounded-lg border border-bad/30 bg-panel p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[13px] font-medium text-fg">Elimina il progetto</p>
+            <p className="mt-0.5 text-xs text-muted">Le app vengono scollegate e i file di firma cancellati. Le chiavi degli store restano.</p>
+          </div>
+          {confirmDelete ? (
+            <div className="flex gap-2">
+              <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate(undefined, { onSuccess: () => navigate(`/o/${orgId}/projects`) })}>Sì, elimina</Button>
+              <Button variant="ghost" onClick={() => setConfirmDelete(false)}>No</Button>
+            </div>
+          ) : (
+            <Button variant="danger" icon={<Trash2 className="size-3" />} onClick={() => setConfirmDelete(true)}>Elimina</Button>
+          )}
+        </div>
+        {remove.error && <div className="mt-3"><Alert tone="bad">{errorMessage(remove.error)}</Alert></div>}
       </div>
-    </Modal>
+    </>
   );
 }
