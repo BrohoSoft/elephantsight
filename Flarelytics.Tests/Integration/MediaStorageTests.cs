@@ -115,7 +115,8 @@ public class MediaStorageTests(PostgresFixture postgres) : IAsyncLifetime
             scope.ServiceProvider.GetRequiredService<IOptionsMonitor<MediaStorageOptions>>().CurrentValue, CancellationToken.None);
     }
 
-    private string BunnyPath(Account a, Guid media, bool thumbnail = false) => $"social/{a.OrgId:N}/{media:N}{(thumbnail ? ".thumb" : "")}.bin";
+    // Nella cartella elephantsight della zone, mai nella radice.
+    private string BunnyPath(Account a, Guid media, bool thumbnail = false) => $"elephantsight/social/{a.OrgId:N}/{media:N}{(thumbnail ? ".thumb" : "")}.bin";
 
     [Fact]
     public async Task Con_Bunny_il_file_arriva_cifrato_e_la_rotta_firmata_lo_restituisce_in_chiaro()
@@ -353,6 +354,8 @@ public class MediaStorageTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal("remote", (await (await _app.CreateClient().GetAsync("/api/v1/instance")).ReadJsonAsync()).GetProperty("mediaStorage").GetString());
         Assert.Equal(HttpStatusCode.OK, (await admin.Client.PostAsync("/api/v1/instance/settings/bunny/test", null)).StatusCode);
         Assert.Empty(Bunny.Files); // il file di prova non resta
+        // Anche la prova sta nella cartella elephantsight, non nella radice della zone.
+        Assert.All(Bunny.Requests, r => Assert.StartsWith($"/{FakeBunny.Zone}/elephantsight/", r.Path));
         Assert.Equal("bunny_region", await (await admin.Client.PutAsJsonAsync("/api/v1/instance/settings/bunny", new { region = "marte" })).ProblemCodeAsync());
 
         var newImage = Jpeg(1000);

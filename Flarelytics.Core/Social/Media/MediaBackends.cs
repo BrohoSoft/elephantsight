@@ -125,7 +125,7 @@ public class LocalMediaBackend(IOptions<ReportsOptions> options) : IMediaBackend
 
 /// <summary>
 /// Bunny Storage, cifrato (<see cref="MediaCipher"/>): Bunny vede solo
-/// <c>social/{tenant}/{id}[.thumb].bin</c>, senza tipo né contenuto leggibile.
+/// <c>elephantsight/social/{tenant}/{id}[.thumb].bin</c>, senza tipo né contenuto leggibile.
 /// </summary>
 /// <remarks>
 /// Lo Storage API non documenta le richieste <c>Range</c>: si chiedono lo
@@ -242,13 +242,19 @@ public class BunnyMediaBackend(BunnyStorageClient bunny, MediaCipher cipher) : I
 /// </remarks>
 public class BunnyStorageClient(HttpClient http, IOptionsMonitor<MediaStorageOptions> options)
 {
+    /// <summary>
+    /// Tutto quello che scriviamo sta in questa cartella, mai nella radice:
+    /// la zone può servire anche ad altro, e i nostri file si riconoscono.
+    /// </summary>
+    public const string RootFolder = "elephantsight";
+
     private BunnyStorageOptions Bunny => options.CurrentValue.Bunny;
 
     private HttpRequestMessage Request(HttpMethod method, string path)
     {
         var b = Bunny;
         if (!b.Configured) throw new MediaStorageUnavailableException("Bunny Storage non è configurato.");
-        var request = new HttpRequestMessage(method, $"https://{b.Host}/{Uri.EscapeDataString(b.StorageZone!.Trim())}/{path}");
+        var request = new HttpRequestMessage(method, $"https://{b.Host}/{Uri.EscapeDataString(b.StorageZone!.Trim())}/{RootFolder}/{path}");
         request.Headers.Add("AccessKey", b.AccessKey!.Trim());
         return request;
     }
