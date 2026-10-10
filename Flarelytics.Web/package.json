@@ -2,7 +2,7 @@
   "name": "flarelytics-web",
   "private": true,
   "license": "Elastic-2.0",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "description": "Il pannello di ElephantSight. Parla solo con l'API, sullo stesso dominio.",
   "scripts": {
