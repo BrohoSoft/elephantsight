@@ -51,7 +51,7 @@ public class RemoteImageClient(HttpClient http)
 /// non li espone via API.
 /// </remarks>
 public class SocialImporter(
-    FlarelyticsDbContext db, FieldProtector protector, SocialMediaStorage storage, RemoteImageClient images,
+    FlarelyticsDbContext db, FieldProtector protector, Media.SocialMediaStore storage, RemoteImageClient images,
     BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, ThreadsClient threads, ILogger<SocialImporter> log)
 {
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
@@ -124,10 +124,18 @@ public class SocialImporter(
             if (item.ImageUrl is { } imageUrl && await TryDownloadAsync(imageUrl, ct) is { } jpeg && JpegInfo.TryReadSize(jpeg, out var w, out var h))
             {
                 var media = SocialMedia.Create(account.TenantId, "anteprima.jpg", jpeg.Length, w, h, account.CreatedByUserId);
-                await storage.WriteAsync(media, jpeg, ct);
-                media.AttachTo(post.Id, 0, null);
-                post.AddMedia(media);
-                db.Add(media);
+                try
+                {
+                    await storage.SaveAsync(media, jpeg, ct);
+                    media.AttachTo(post.Id, 0, null);
+                    post.AddMedia(media);
+                    db.Add(media);
+                }
+                catch (Media.MediaStorageUnavailableException e)
+                {
+                    // Senza storage il post si importa lo stesso, senza anteprima.
+                    log.LogWarning("Anteprima del post {Post} di {Account} non salvata: {Message}", item.ExternalId, account.Id, e.Message);
+                }
             }
             added++;
         }

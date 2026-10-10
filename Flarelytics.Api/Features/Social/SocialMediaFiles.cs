@@ -2,6 +2,7 @@ using Flarelytics.Api.Common;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using Flarelytics.Core.Social;
+using Flarelytics.Core.Social.Media;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -35,12 +36,13 @@ public static class SocialMediaFiles
     public const long MaxSingleRequestBytes = 100L * 1024 * 1024;
 
     /// <summary>
-    /// Il file di un campo multipart diventa un'immagine o un video, già su
-    /// disco al suo posto. Il chiamante lo aggiunge al contesto; se poi qualcosa
-    /// va storto, cancella il file con <see cref="SocialMediaStorage.Delete"/>.
+    /// Il file di un campo multipart diventa un'immagine o un video, già nello
+    /// storage attivo (disco o Bunny). Il chiamante lo aggiunge al contesto; se
+    /// poi qualcosa va storto, cancella il file con <see cref="SocialMediaStore.DeleteAsync"/>.
     /// </summary>
-    public static async Task<SocialMedia> FromFormFileAsync(IFormFile file, Guid tenantId, Guid userId, SocialMediaStorage storage, CancellationToken ct)
+    public static async Task<SocialMedia> FromFormFileAsync(IFormFile file, Guid tenantId, Guid userId, SocialMediaStore storage, CancellationToken ct)
     {
+        _ = storage.WritableLocation; // senza storage utilizzabile ci si ferma prima di leggere il file
         if (file.Length == 0) throw ApiProblem.BadRequest("file_size", $"Il file '{file.Name}' è vuoto.");
         var fileName = Path.GetFileName(file.FileName);
 
@@ -58,42 +60,62 @@ public static class SocialMediaFiles
                 throw ApiProblem.BadRequest("file_type", $"Non riesco a leggere il JPEG '{fileName}'.");
 
             var image = SocialMedia.Create(tenantId, fileName, content.Length, width, height, userId);
-            await storage.WriteAsync(image, content, ct);
+            await storage.SaveAsync(image, content, ct);
             return image;
         }
 
-        // Altrimenti dev'essere un video: si scrive su disco e se ne legge l'indice da lì.
+        // Altrimenti dev'essere un video: si scrive in un temporaneo e se ne legge l'indice da lì.
         var partId = Guid.NewGuid();
-        var part = storage.PartPath(tenantId, partId);
-        await using (var target = File.Create(part))
+        var part = storage.TempPath(tenantId, partId);
+        try
         {
-            await file.CopyToAsync(target, ct);
+            await using (var target = File.Create(part))
+            {
+                await file.CopyToAsync(target, ct);
+            }
         }
-        return VideoFromPart(tenantId, userId, partId, fileName, storage);
+        catch
+        {
+            storage.DeleteTemp(tenantId, partId);
+            throw;
+        }
+        return await VideoFromTempAsync(tenantId, userId, partId, fileName, storage, ct);
     }
 
-    /// <summary>Un file intero già su disco (<c>.part</c>) diventa un video, o si cancella se non lo è.</summary>
-    public static SocialMedia VideoFromPart(Guid tenantId, Guid userId, Guid partId, string fileName, SocialMediaStorage storage)
+    /// <summary>
+    /// Un video intero nel temporaneo diventa un video del post, nello storage
+    /// attivo; se non è un video, si rifiuta. Il temporaneo si cancella in
+    /// ogni caso.
+    /// </summary>
+    public static async Task<SocialMedia> VideoFromTempAsync(Guid tenantId, Guid userId, Guid partId, string fileName, SocialMediaStore storage, CancellationToken ct)
     {
-        var part = storage.PartPath(tenantId, partId);
+        var part = storage.TempPath(tenantId, partId);
         VideoInfo? info;
         long size;
-        using (var stream = File.OpenRead(part))
+        try
         {
-            size = stream.Length;
-            info = Mp4Info.TryRead(stream);
+            using (var stream = File.OpenRead(part))
+            {
+                size = stream.Length;
+                info = Mp4Info.TryRead(stream);
+            }
+        }
+        catch
+        {
+            storage.DeleteTemp(tenantId, partId);
+            throw;
         }
 
         if (info is null || size > MaxVideoBytes)
         {
-            storage.DeletePart(tenantId, partId);
+            storage.DeleteTemp(tenantId, partId);
             throw info is null
                 ? ApiProblem.BadRequest("file_type", $"'{fileName}' non è né un'immagine JPEG né un video MP4/MOV leggibile.")
                 : ApiProblem.BadRequest("file_size", "Il video supera i 4 GB.");
         }
 
         var video = SocialMedia.CreateVideo(tenantId, fileName, size, info, userId);
-        File.Move(part, storage.PathFor(video), overwrite: true);
+        await storage.SaveFromTempAsync(video, part, ct);
         return video;
     }
 
@@ -104,20 +126,22 @@ public static class SocialMediaFiles
     /// </summary>
     public static void MapChunkedUploads(this RouteGroupBuilder group, Func<HttpContext, (Guid TenantId, Guid UserId)> who)
     {
-        group.MapPost("/media/uploads", (StartUploadRequest req, HttpContext http, SocialMediaStorage storage) =>
+        group.MapPost("/media/uploads", (StartUploadRequest req, HttpContext http, SocialMediaStore storage) =>
         {
+            // Senza uno storage dove mettere il video, meglio dirlo prima di caricare gigabyte.
+            _ = storage.WritableLocation;
             if (req.Size is <= 0 or > MaxVideoBytes) throw ApiProblem.BadRequest("file_size", "Un video da 1 byte a 4 GB.");
             var uploadId = Guid.NewGuid();
-            File.Create(storage.PartPath(who(http).TenantId, uploadId)).Dispose();
+            File.Create(storage.TempPath(who(http).TenantId, uploadId)).Dispose();
             return Results.Ok(new StartUploadResponse(uploadId, MaxChunkBytes));
         }).Validating<StartUploadRequest>();
 
         // Il pezzo nel corpo, così com'è. Rimandare un pezzo già arrivato (dopo
         // un errore di rete) non lo aggiunge due volte: conta l'offset.
-        group.MapPut("/media/uploads/{uploadId:guid}", async (Guid uploadId, long offset, HttpContext http, SocialMediaStorage storage, CancellationToken ct) =>
+        group.MapPut("/media/uploads/{uploadId:guid}", async (Guid uploadId, long offset, HttpContext http, SocialMediaStore storage, CancellationToken ct) =>
         {
             if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = MaxChunkBytes + 1024;
-            var path = storage.PartPath(who(http).TenantId, uploadId);
+            var path = storage.TempPath(who(http).TenantId, uploadId);
             if (!File.Exists(path)) throw ApiProblem.NotFound("Caricamento");
 
             await using var file = new FileStream(path, FileMode.Open, FileAccess.Write);
@@ -131,12 +155,12 @@ public static class SocialMediaFiles
         });
 
         group.MapPost("/media/uploads/{uploadId:guid}/complete", async (Guid uploadId, CompleteUploadRequest req, HttpContext http,
-            FlarelyticsDbContext db, SocialMediaStorage storage, MediaUrlSigner signer, CancellationToken ct) =>
+            FlarelyticsDbContext db, SocialMediaStore storage, MediaUrlSigner signer, CancellationToken ct) =>
         {
             var (tenantId, userId) = who(http);
-            if (!File.Exists(storage.PartPath(tenantId, uploadId))) throw ApiProblem.NotFound("Caricamento");
+            if (!File.Exists(storage.TempPath(tenantId, uploadId))) throw ApiProblem.NotFound("Caricamento");
 
-            var video = VideoFromPart(tenantId, userId, uploadId, Path.GetFileName(req.FileName), storage);
+            var video = await VideoFromTempAsync(tenantId, userId, uploadId, Path.GetFileName(req.FileName), storage, ct);
             db.Add(video);
             try
             {
@@ -144,7 +168,7 @@ public static class SocialMediaFiles
             }
             catch
             {
-                storage.Delete(video);
+                await storage.DeleteAsync(video, CancellationToken.None);
                 throw;
             }
             return Results.Ok(SocialMediaResponse.From(video, signer));

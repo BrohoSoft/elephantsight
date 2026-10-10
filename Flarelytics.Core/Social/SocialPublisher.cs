@@ -3,6 +3,7 @@ using System.Text;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using Flarelytics.Core.Secrets;
+using Flarelytics.Core.Social.Media;
 using Flarelytics.Core.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,7 +15,7 @@ namespace Flarelytics.Core.Social;
 
 /// <summary>Pubblica un post su un account, e ne registra l'esito.</summary>
 public class SocialPublisher(
-    FlarelyticsDbContext db, FieldProtector protector, SocialMediaStorage storage, MediaUrlSigner signer,
+    FlarelyticsDbContext db, FieldProtector protector, SocialMediaStore storage, MediaUrlSigner signer,
     BlueskyClient bluesky, MastodonClient mastodon, MetaGraphClient meta, TikTokClient tiktok, ThreadsClient threads, IOptionsMonitor<SocialOptions> options, ILogger<SocialPublisher> log)
 {
     /// <summary>Ogni quanto si ricontrolla un video che la rete sta ancora elaborando.</summary>
@@ -90,7 +91,12 @@ public class SocialPublisher(
         }
         catch (Exception e) when (IsTransient(e, ct))
         {
-            var message = e is SocialApiException ? e.Message : $"Rete non raggiungibile: {e.Message}";
+            var message = e switch
+            {
+                SocialApiException => e.Message,
+                MediaStorageUnavailableException => $"Storage dei file non raggiungibile: {e.Message}",
+                _ => $"Rete non raggiungibile: {e.Message}"
+            };
             if (target.Attempts < MaxAttempts)
             {
                 target.RetryLater(message, DateTime.UtcNow.AddMinutes(Math.Pow(2, target.Attempts)));
@@ -134,6 +140,8 @@ public class SocialPublisher(
     {
         SocialApiException s => s.Transient,
         HttpRequestException => true,
+        // Bunny che non risponde adesso: il file c'è, si riprova più tardi.
+        MediaStorageUnavailableException => true,
         TaskCanceledException => !ct.IsCancellationRequested, // il timeout del client, non lo spegnimento
         _ => false
     };
@@ -152,7 +160,7 @@ public class SocialPublisher(
         var images = new List<(System.Text.Json.Nodes.JsonNode, string?, int, int)>();
         foreach (var m in media)
         {
-            var blob = await bluesky.UploadImageAsync(session, await storage.ReadAsync(m, ct), ct);
+            var blob = await bluesky.UploadImageAsync(session, await storage.ReadAllAsync(m, ct), ct);
             images.Add((blob, m.AltText, m.Width, m.Height));
         }
 
@@ -165,7 +173,7 @@ public class SocialPublisher(
         var ids = new List<string>();
         foreach (var m in media)
         {
-            ids.Add(await mastodon.UploadImageAsync(account.ServerUrl!, token, await storage.ReadAsync(m, ct), m.FileName, m.AltText, ct));
+            ids.Add(await mastodon.UploadImageAsync(account.ServerUrl!, token, await storage.ReadAllAsync(m, ct), m.FileName, m.AltText, ct));
         }
 
         var (id, url) = await mastodon.PostAsync(account.ServerUrl!, token, text, ids, target.Id.ToString("N"), ct);
@@ -393,14 +401,15 @@ public class SocialPublisher(
                 ["brand_content_toggle"] = choices.TikTokBrandedContent
             };
 
-            await using var file = storage.OpenRead(video);
-            var (publishId, uploadUrl) = await tiktok.InitVideoAsync(accessToken, postInfo, file.Length, ct);
+            // Letto in streaming, dallo storage dove sta (decifrato al volo se è su Bunny): un pezzo alla volta.
+            await using var file = await storage.OpenReadAsync(video, ct);
+            var (publishId, uploadUrl) = await tiktok.InitVideoAsync(accessToken, postInfo, video.SizeBytes, ct);
             target.SetProgress(publishId);
             await db.SaveChangesAsync(ct);
 
             try
             {
-                await tiktok.UploadAsync(uploadUrl, file, video.ContentType, ct);
+                await tiktok.UploadAsync(uploadUrl, file, video.SizeBytes, video.ContentType, ct);
             }
             catch
             {
@@ -555,23 +564,68 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
 
             if (cleanup)
             {
-                await DeleteOrphanMediaAsync(db, scope.ServiceProvider.GetRequiredService<SocialMediaStorage>(), ct);
+                var store = scope.ServiceProvider.GetRequiredService<SocialMediaStore>();
+                await DeleteOrphanMediaAsync(db, store, ct);
+                await CleanupPublishedMediaAsync(db, store, scope.ServiceProvider.GetRequiredService<IOptionsMonitor<MediaStorageOptions>>().CurrentValue, ct);
                 await RenewTokensAsync(db, scope.ServiceProvider, ct);
             }
         }
     }
 
-    /// <summary>Le immagini caricate nell'editor e mai salvate in un post (né in un post ricorrente).</summary>
-    private static async Task DeleteOrphanMediaAsync(FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    /// <summary>Le immagini caricate nell'editor e mai salvate in un post (né in un post ricorrente), e i temporanei abbandonati.</summary>
+    private static async Task DeleteOrphanMediaAsync(FlarelyticsDbContext db, SocialMediaStore storage, CancellationToken ct)
     {
+        storage.DeleteStaleTemp(OrphanMediaAge);
+
         var before = DateTime.UtcNow - OrphanMediaAge;
         var orphans = await db.Set<SocialMedia>().Where(m => m.PostId == null && m.RecurringPostId == null && m.CreatedAtUtc < before).ToListAsync(ct);
         if (orphans.Count == 0) return;
 
         db.RemoveRange(orphans);
         await db.SaveChangesAsync(ct);
-        foreach (var m in orphans) storage.Delete(m);
-        storage.DeleteStaleParts(OrphanMediaAge);
+        foreach (var m in orphans) await storage.DeleteAsync(m, ct);
+    }
+
+    /// <summary>
+    /// Gli originali dei post usciti su tutti gli account da almeno
+    /// <see cref="MediaStorageOptions.CleanupAfterDays"/> giorni: restano la
+    /// miniatura e il link al post. Prima no: Meta scarica il file quando
+    /// pubblica (un Reel anche minuti dopo), e "Riprova i non riusciti" ne ha
+    /// bisogno; un post con un account fallito li tiene finché non si risolve o
+    /// si cancella. I post importati non si toccano (l'anteprima è tutto quello che hanno).
+    /// Si cancellano solo gli originali che hanno la miniatura: senza, il
+    /// pannello resterebbe con un segnaposto (i file caricati prima delle
+    /// miniature, o arrivati dall'API pubblica e mai aperti nel pannello).
+    /// </summary>
+    public async Task CleanupPublishedMediaAsync(FlarelyticsDbContext db, SocialMediaStore storage, MediaStorageOptions options, CancellationToken ct)
+    {
+        var limit = DateTime.UtcNow.AddDays(-Math.Max(0, options.CleanupAfterDays));
+        var posts = await db.Set<SocialPost>().Include(p => p.Media).Include(p => p.Targets)
+            .Where(p => !p.IsImported && p.Targets.Any()
+                        && p.Targets.All(t => t.Status == SocialTargetStatus.Published && t.PublishedAtUtc != null && t.PublishedAtUtc <= limit)
+                        && p.Media.Any(m => m.OriginalDeletedAtUtc == null && m.HasThumbnail))
+            .ToListAsync(ct);
+
+        long freed = 0;
+        var files = 0;
+        foreach (var media in posts.SelectMany(p => p.Media).Where(m => m.HasOriginal && m.HasThumbnail))
+        {
+            try
+            {
+                await storage.DeleteOriginalAsync(media, ct);
+                media.MarkOriginalDeleted(DateTime.UtcNow);
+                freed += media.SizeBytes;
+                files++;
+            }
+            catch (MediaStorageUnavailableException e)
+            {
+                log.LogWarning("Originale del media {Media} non cancellato, si riprova fra un'ora: {Message}", media.Id, e.Message);
+            }
+        }
+        if (files == 0) return;
+
+        await db.SaveChangesAsync(ct);
+        log.LogInformation("Pulizia dei post pubblicati: cancellati {Files} originali, liberati {Megabytes:0.0} MB (restano le miniature)", files, freed / 1024d / 1024d);
     }
 
     /// <summary>

@@ -4,6 +4,7 @@ using Flarelytics.Api.Features.Orgs;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using Flarelytics.Core.Social;
+using Flarelytics.Core.Social.Media;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
@@ -37,13 +38,15 @@ public static class SocialPostEndpoints
         admin.MapPost("/posts/{postId:guid}/retry", Retry);
         admin.MapPost("/media", UploadMedia).DisableAntiforgery().WithFormOptions(multipartBodyLengthLimit: SocialMediaFiles.MaxSingleRequestBytes);
         admin.MapPost("/media/copies", CopyMedia).Validating<CopyMediaRequest>();
+        admin.MapPost("/media/{mediaId:guid}/thumbnail", UploadThumbnail);
         admin.MapChunkedUploads(http => (http.RequestServices.GetRequiredService<CurrentOrg>().TenantId, http.User.UserId()));
         admin.MapPost("/inbox/assign", Assign).Validating<AssignInboxRequest>();
         admin.MapPost("/posts/accounts", ChangeAccounts).Validating<ChangeAccountsRequest>();
 
         // Anonima: la usa Instagram, che scarica l'immagine da sé, e i tag
         // <img> del pannello, che non possono mandare l'access token. La firma
-        // nell'indirizzo è il permesso.
+        // nell'indirizzo è il permesso. Con lo storage remoto il file passa da
+        // qui decifrato: Bunny non ha mai il chiaro e il suo indirizzo non esce.
         api.MapGet("/social/media/{file}", ServeMedia).AllowAnonymous();
     }
 
@@ -78,7 +81,7 @@ public static class SocialPostEndpoints
     }
 
     private static async Task<IResult> Create(SavePostRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
+        MediaUrlSigner signer, SocialMediaStore storage, CancellationToken ct)
     {
         var post = SocialPost.Create(org.TenantId, principal.UserId());
         db.Add(post);
@@ -87,7 +90,7 @@ public static class SocialPostEndpoints
         return Results.Created($"/api/v1/orgs/{org.TenantId}/social/posts/{post.Id}", SocialPostResponse.From(post, signer));
     }
 
-    private static async Task<IResult> Update(Guid postId, SavePostRequest req, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task<IResult> Update(Guid postId, SavePostRequest req, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer, SocialMediaStore storage, CancellationToken ct)
     {
         var post = await LoadAsync(db, org, postId, ct);
         if (post.IsImported)
@@ -104,7 +107,7 @@ public static class SocialPostEndpoints
     /// Toglie il post dal calendario. Se è già uscito su qualche rete lì resta:
     /// si cancella solo da qui.
     /// </summary>
-    private static async Task<IResult> Delete(Guid postId, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task<IResult> Delete(Guid postId, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStore storage, CancellationToken ct)
     {
         var post = await LoadAsync(db, org, postId, ct);
         // Un post importato tornerebbe al giro dopo: è una copia di quello sulla rete.
@@ -116,7 +119,7 @@ public static class SocialPostEndpoints
         var media = post.Media.ToList();
         db.Remove(post);
         await db.SaveChangesAsync(ct);
-        foreach (var m in media) storage.Delete(m);
+        foreach (var m in media) await storage.DeleteAsync(m, CancellationToken.None);
         return Results.NoContent();
     }
 
@@ -138,7 +141,7 @@ public static class SocialPostEndpoints
     /// davvero un JPEG e se ne leggono le dimensioni.
     /// </summary>
     private static async Task<IResult> UploadMedia(HttpRequest request, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        SocialMediaStorage storage, MediaUrlSigner signer, CancellationToken ct) =>
+        SocialMediaStore storage, MediaUrlSigner signer, CancellationToken ct) =>
         Results.Ok(SocialMediaResponse.From(await SaveMediaAsync(request, org.TenantId, principal.UserId(), db, storage, ct), signer));
 
     /// <summary>
@@ -147,8 +150,10 @@ public static class SocialPostEndpoints
     /// post. Lo usa anche l'API pubblica.
     /// </summary>
     public static async Task<SocialMedia> SaveMediaAsync(HttpRequest request, Guid tenantId, Guid userId, FlarelyticsDbContext db,
-        SocialMediaStorage storage, CancellationToken ct)
+        SocialMediaStore storage, CancellationToken ct)
     {
+        // Senza storage utilizzabile si rifiuta prima di leggere il corpo.
+        _ = storage.WritableLocation;
         if (request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
             limit.MaxRequestBodySize = SocialMediaFiles.MaxSingleRequestBytes;
         if (!request.HasFormContentType) throw ApiProblem.BadRequest("file_missing", "Manda il file come multipart/form-data, nel campo file.");
@@ -163,10 +168,52 @@ public static class SocialPostEndpoints
         }
         catch
         {
-            storage.Delete(media);
+            await storage.DeleteAsync(media, CancellationToken.None);
             throw;
         }
         return media;
+    }
+
+    public const int MaxThumbnailBytes = 512 * 1024;
+
+    /// <summary>
+    /// La miniatura (~400 px, JPEG) di un'immagine o di un video, fatta dal
+    /// pannello: resta quando l'originale si cancella dopo la pubblicazione.
+    /// Il corpo è il JPEG, senza multipart.
+    /// </summary>
+    /// <remarks>
+    /// Si manda per un file appena caricato, oppure, per uno già nei post che
+    /// il membro vede e che ancora non ce l'ha (quelli arrivati con l'API
+    /// pubblica, che non manda miniature), quando il pannello lo mostra.
+    /// </remarks>
+    private static async Task<IResult> UploadThumbnail(Guid mediaId, HttpRequest request, CurrentOrg org, FlarelyticsDbContext db,
+        SocialMediaStore storage, MediaUrlSigner signer, CancellationToken ct)
+    {
+        var media = await db.Set<SocialMedia>().SingleOrDefaultAsync(m => m.Id == mediaId, ct) ?? throw ApiProblem.NotFound("Immagine");
+        var attached = media.PostId is not null || media.RecurringPostId is not null;
+        if (attached)
+        {
+            var visible = media.PostId is { } postId
+                ? await Visible(db, org).AnyAsync(p => p.Id == postId, ct)
+                : await SocialRecurringEndpoints.Visible(db, org).AnyAsync(r => r.Id == media.RecurringPostId, ct);
+            if (!visible) throw ApiProblem.NotFound("Immagine");
+            if (media.HasThumbnail) return Results.Ok(SocialMediaResponse.From(media, signer));
+        }
+
+        var limited = new byte[MaxThumbnailBytes + 1];
+        int read, total = 0;
+        while ((read = await request.Body.ReadAsync(limited.AsMemory(total, limited.Length - total), ct)) > 0)
+        {
+            total += read;
+            if (total > MaxThumbnailBytes) throw ApiProblem.BadRequest("file_size", "La miniatura supera i 512 KB.");
+        }
+        var jpeg = limited[..total];
+        if (!JpegInfo.TryReadSize(jpeg, out var width, out var height) || width > 1024 || height > 1024)
+            throw ApiProblem.BadRequest("file_type", "La miniatura dev'essere un JPEG fino a 1024 px per lato.");
+
+        await storage.SaveThumbnailAsync(media, jpeg, ct);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(SocialMediaResponse.From(media, signer));
     }
 
     /// <summary>
@@ -175,7 +222,7 @@ public static class SocialPostEndpoints
     /// attaccano al salvataggio come quelli appena caricati. Quelle mai usate le
     /// cancella il worker dopo un giorno. Nell'ordine della richiesta.
     /// </summary>
-    private static async Task<IResult> CopyMedia(CopyMediaRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, MediaUrlSigner signer,
+    private static async Task<IResult> CopyMedia(CopyMediaRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStore storage, MediaUrlSigner signer,
         CancellationToken ct)
     {
         var sources = await db.Set<SocialMedia>().Where(m => req.Ids.Contains(m.Id)).ToListAsync(ct);
@@ -191,21 +238,29 @@ public static class SocialPostEndpoints
             if (visiblePosts != postIds.Distinct().Count() || visibleRecurring != recurringIds.Distinct().Count()) throw ApiProblem.NotFound("Immagine");
         }
 
-        var copies = new List<SocialMedia>();
-        foreach (var (id, position) in req.Ids.Select((id, i) => (id, i)))
-        {
-            var source = sources.Single(m => m.Id == id);
-            var copy = source.CopyFor(null, position);
-            if (!storage.Copy(source, copy))
-            {
-                foreach (var c in copies) storage.Delete(c);
-                throw ApiProblem.NotFound("Il file dell'immagine");
-            }
-            copies.Add(copy);
-        }
+        if (sources.Any(m => !m.HasOriginal))
+            throw ApiProblem.Conflict("media_original_deleted",
+                "Il file originale di un'immagine o di un video è stato cancellato dopo la pubblicazione (ne resta l'anteprima): caricalo di nuovo.");
 
-        db.AddRange(copies);
-        await db.SaveChangesAsync(ct);
+        var copies = new List<SocialMedia>();
+        try
+        {
+            foreach (var (id, position) in req.Ids.Select((id, i) => (id, i)))
+            {
+                var source = sources.Single(m => m.Id == id);
+                var copy = source.CopyFor(null, position);
+                copies.Add(copy);
+                await storage.CopyAsync(source, copy, ct);
+            }
+            db.AddRange(copies);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception e)
+        {
+            foreach (var c in copies) await storage.DeleteAsync(c, CancellationToken.None);
+            if (e is FileNotFoundException) throw ApiProblem.NotFound("Il file dell'immagine");
+            throw;
+        }
         return Results.Ok(copies.Select(m => SocialMediaResponse.From(m, signer)));
     }
 
@@ -306,17 +361,21 @@ public static class SocialPostEndpoints
         return Results.Ok(results);
     }
 
-    private static IResult ServeMedia(string file, long? e, string? s, MediaUrlSigner signer, SocialMediaStorage storage)
+    private static async Task<IResult> ServeMedia(string file, long? e, string? s, HttpContext http, MediaUrlSigner signer, SocialMediaStore storage,
+        CancellationToken ct)
     {
-        var extension = Path.GetExtension(file);
+        var thumbnail = file.EndsWith(MediaUrlSigner.ThumbnailSuffix, StringComparison.Ordinal);
+        var extension = thumbnail ? ".jpg" : Path.GetExtension(file);
         var contentType = extension switch { ".jpg" => "image/jpeg", ".mp4" => "video/mp4", ".mov" => "video/quicktime", _ => null };
-        if (contentType is null || e is null || !signer.TryVerify(file[..^extension.Length], e.Value, s, DateTime.UtcNow, out var tenantId, out var mediaId))
+        var id = file[..^(thumbnail ? MediaUrlSigner.ThumbnailSuffix.Length : extension.Length)];
+        if (contentType is null || e is null || !signer.TryVerify(id, e.Value, s, DateTime.UtcNow, out var tenantId, out var mediaId, thumbnail))
             return Results.NotFound();
 
-        var path = storage.PathFor(tenantId, mediaId, extension);
-        if (!File.Exists(path)) return Results.NotFound();
-        // I video si leggono a pezzi (il player del pannello, e chi scarica per la rete).
-        return Results.File(path, contentType, enableRangeProcessing: contentType != "image/jpeg");
+        // I video si leggono a pezzi (il player del pannello, e chi scarica per
+        // la rete): da Bunny si scaricano e si decifrano solo i blocchi chiesti.
+        var range = MediaStreamResult.ParseRange(http.Request.Headers.Range);
+        var read = await storage.OpenForServingAsync(tenantId, mediaId, extension, thumbnail ? MediaVariant.Thumbnail : MediaVariant.Original, range, ct);
+        return read is null ? Results.NotFound() : new MediaStreamResult(read, contentType, partial: range is not null);
     }
 
     /// <summary>
@@ -407,7 +466,7 @@ public static class SocialPostEndpoints
     }
 
     /// <summary>Scrive sul post testo, data, account e immagini della richiesta, e lo controlla contro i limiti delle reti.</summary>
-    private static async Task ApplyAsync(SocialPost post, SavePostRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task ApplyAsync(SocialPost post, SavePostRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStore storage, CancellationToken ct)
     {
         // Chi vede solo alcuni progetti scrive solo nei suoi: un post senza progetto è dell'organizzazione.
         if (req.ProjectId is null && !org.CanSee(null))
@@ -457,7 +516,7 @@ public static class SocialPostEndpoints
         {
             post.RemoveMedia(m);
             db.Remove(m);
-            storage.Delete(m);
+            await storage.DeleteAsync(m, CancellationToken.None);
         }
         foreach (var (item, position) in req.Media.Select((m, i) => (m, i)))
         {
@@ -567,13 +626,22 @@ public record SocialTargetResponse(Guid Id, Guid? AccountId, SocialNetwork Netwo
         new(t.Id, t.AccountId, t.Network, t.AccountName, t.TextOverride, t.Status, t.ExternalUrl, t.Error, t.NextAttemptAtUtc, t.PublishedAtUtc);
 }
 
-/// <param name="Url">Firmato: vale per le anteprime del pannello finché la pagina resta aperta un pomeriggio.</param>
-public record SocialMediaResponse(Guid Id, MediaKind Kind, int Width, int Height, long SizeBytes, int? DurationMs, bool FastStart, string? AltText, string Url)
+/// <param name="Url">L'originale, firmato: vale per le anteprime del pannello finché la pagina resta aperta un pomeriggio. Null se è stato cancellato dopo la pubblicazione.</param>
+/// <param name="ThumbnailUrl">La miniatura (~400 px), se c'è: resta anche senza l'originale.</param>
+/// <param name="OriginalDeleted">L'originale è stato cancellato dopo la pubblicazione: resta la miniatura (se c'è) e il link del post sulla rete.</param>
+public record SocialMediaResponse(Guid Id, MediaKind Kind, int Width, int Height, long SizeBytes, int? DurationMs, bool FastStart, string? AltText, string? Url,
+    string? ThumbnailUrl, bool OriginalDeleted)
 {
     public static readonly TimeSpan PreviewValidity = TimeSpan.FromHours(12);
 
-    public static SocialMediaResponse From(SocialMedia m, MediaUrlSigner signer) =>
-        new(m.Id, m.Kind, m.Width, m.Height, m.SizeBytes, m.DurationMs, m.FastStart, m.AltText, signer.PathFor(m, DateTime.UtcNow.Add(PreviewValidity)));
+    public static SocialMediaResponse From(SocialMedia m, MediaUrlSigner signer)
+    {
+        var expires = DateTime.UtcNow.Add(PreviewValidity);
+        return new(m.Id, m.Kind, m.Width, m.Height, m.SizeBytes, m.DurationMs, m.FastStart, m.AltText,
+            m.HasOriginal ? signer.PathFor(m, expires) : null,
+            m.HasThumbnail ? signer.ThumbnailPathFor(m, expires) : null,
+            !m.HasOriginal);
+    }
 }
 
 public record SavePostMedia(Guid Id, string? AltText);

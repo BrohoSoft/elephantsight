@@ -1,12 +1,14 @@
 import clsx from "clsx";
-import { ArrowLeft, ArrowRight, ImagePlus, Video, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ImageOff, ImagePlus, Video, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
+import { useInstance, useMe } from "../api/hooks";
 import type { Project, SocialAccount, SocialMediaItem } from "../api/types";
 import { canManageOrg, useOrg } from "../components/org";
 import { NetworkGlyph } from "../components/SocialIcons";
 import { Button, Field, Input, Select, Spinner } from "../components/ui";
 import { accountLabel } from "./rules";
+import { MediaPreview } from "./MediaPreview";
 import { formatDuration, uploadMedia } from "./upload";
 
 /*
@@ -106,6 +108,9 @@ export function MediaField({ media, onChange, readOnly, onUploading, onError }: 
   onError: (error: unknown) => void;
 }) {
   const org = useOrg();
+  const instance = useInstance();
+  const me = useMe();
+  const storageUnavailable = instance.data?.mediaStorage === "unavailable";
   const [uploading, setUploading] = useState(0);
   const [progress, setProgress] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -141,9 +146,7 @@ export function MediaField({ media, onChange, readOnly, onUploading, onError }: 
     <div className="space-y-2">
       {media.map((m, i) => (
         <div key={m.id} className="flex items-start gap-3 rounded-md border border-line bg-panel-2/50 p-2">
-          {m.kind === "Video"
-            ? <video src={m.url} controls preload="metadata" className="h-28 w-16 shrink-0 rounded bg-black object-cover" />
-            : <img src={m.url} alt={m.altText ?? ""} className="size-16 shrink-0 rounded object-cover" />}
+          <MediaPreview item={m} player className={clsx("shrink-0 rounded", m.kind === "Video" && m.url ? "h-28 w-16" : "size-16")} />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Input readOnly={readOnly} value={m.altText ?? ""} placeholder="Testo alternativo" aria-label={`Testo alternativo dell'immagine ${i + 1}`}
               onChange={(e) => onChange((list) => list.map((x) => (x.id === m.id ? { ...x, altText: e.target.value } : x)))} />
@@ -151,6 +154,12 @@ export function MediaField({ media, onChange, readOnly, onUploading, onError }: 
               {m.kind === "Video" ? <><Video className="mr-1 inline size-3" />{formatDuration(m.durationMs ?? 0)} · </> : null}
               {m.width}×{m.height} · {m.sizeBytes > 1024 * 1024 ? `${(m.sizeBytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(m.sizeBytes / 1024)} KB`}
             </p>
+            {m.originalDeleted && (
+              <p className="flex items-start gap-1 text-[0.6875rem] text-faint">
+                <ImageOff className="mt-px size-3 shrink-0" />
+                Il file originale è stato cancellato qualche giorno dopo la pubblicazione: qui resta {m.thumbnailUrl ? "la miniatura" : "solo il nome"}, il post si vede dal suo link sulla rete.
+              </p>
+            )}
           </div>
           {!readOnly && (
             <div className="flex shrink-0 gap-0.5">
@@ -161,7 +170,18 @@ export function MediaField({ media, onChange, readOnly, onUploading, onError }: 
           )}
         </div>
       ))}
-      {!readOnly && (
+      {!readOnly && storageUnavailable && (
+        <div className="flex items-start gap-3 rounded-md border border-dashed border-line-strong bg-field px-3 py-3 text-[0.8125rem] text-muted">
+          <ImageOff className="size-5 shrink-0 text-faint" />
+          <span>
+            Il caricamento di immagini e video non è disponibile: lo storage dei file non è configurato. I post di solo testo si programmano lo stesso.
+            {me.data?.isInstanceAdmin
+              ? <> Configuralo in <Link to="/instance" className="text-brand hover:underline">Impostazioni dell'istanza → Storage dei file</Link>.</>
+              : " Avvisa un amministratore dell'istanza."}
+          </span>
+        </div>
+      )}
+      {!readOnly && !storageUnavailable && (
         <button type="button" onClick={() => fileInput.current?.click()} disabled={uploading > 0}
           onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
           className="flex w-full items-center gap-3 rounded-md border border-dashed border-line-strong bg-field px-3 py-3 text-left hover:border-brand/50">

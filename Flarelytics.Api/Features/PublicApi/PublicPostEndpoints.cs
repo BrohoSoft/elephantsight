@@ -3,6 +3,7 @@ using Flarelytics.Api.Features.Social;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using Flarelytics.Core.Social;
+using Flarelytics.Core.Social.Media;
 using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.Features;
@@ -47,7 +48,7 @@ public static class PublicPostEndpoints
     }
 
     /// <summary>Un'immagine JPEG (al massimo 10 MB) o un video MP4/MOV (fino a 100 MB; più grandi a pezzi) nel campo <c>file</c>, da citare poi in un post con il suo id.</summary>
-    private static async Task<IResult> UploadMedia(HttpRequest request, CurrentApiKey key, FlarelyticsDbContext db, SocialMediaStorage storage,
+    private static async Task<IResult> UploadMedia(HttpRequest request, CurrentApiKey key, FlarelyticsDbContext db, SocialMediaStore storage,
         MediaUrlSigner signer, CancellationToken ct) =>
         Results.Ok(SocialMediaResponse.From(await SocialPostEndpoints.SaveMediaAsync(request, key.TenantId, key.CreatedByUserId, db, storage, ct), signer));
 
@@ -56,7 +57,7 @@ public static class PublicPostEndpoints
     /// Con un <c>externalRef</c> già visto risponde 200 con il post che c'è
     /// invece di crearne un altro: si può riprovare senza paura.
     /// </summary>
-    private static async Task<IResult> Create(PublicPostRequest req, CurrentApiKey key, FlarelyticsDbContext db, SocialMediaStorage storage,
+    private static async Task<IResult> Create(PublicPostRequest req, CurrentApiKey key, FlarelyticsDbContext db, SocialMediaStore storage,
         MediaUrlSigner signer, CancellationToken ct)
     {
         var (post, existing) = await CreateOneAsync(req, files: null, key, db, storage, ct);
@@ -76,7 +77,7 @@ public static class PublicPostEndpoints
     /// post né le sue immagini). Si può rimandare tutto il blocco: con
     /// <c>externalRef</c> i post già entrati risultano <c>existing</c>.
     /// </remarks>
-    private static async Task<IResult> CreateBatch(HttpRequest request, CurrentApiKey key, FlarelyticsDbContext db, SocialMediaStorage storage,
+    private static async Task<IResult> CreateBatch(HttpRequest request, CurrentApiKey key, FlarelyticsDbContext db, SocialMediaStore storage,
         MediaUrlSigner signer, CancellationToken ct)
     {
         if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = MaxBatchBytes;
@@ -111,6 +112,11 @@ public static class PublicPostEndpoints
             {
                 results.Add(new BatchPostResult(index, item.ExternalRef, "rejected", null, problem.Message));
             }
+            catch (MediaStorageUnavailableException e)
+            {
+                // Senza storage si rifiutano i post con file; quelli di solo testo passano lo stesso.
+                results.Add(new BatchPostResult(index, item.ExternalRef, "rejected", null, e.Message));
+            }
             catch (DbUpdateException)
             {
                 // Lo stesso externalRef mandato in contemporanea da un'altra richiesta.
@@ -128,7 +134,7 @@ public static class PublicPostEndpoints
     /// scritti si cancellano e il contesto si svuota, così il post dopo parte pulito.
     /// </summary>
     private static async Task<(SocialPost Post, bool Existing)> CreateOneAsync(PublicPostRequest req, IFormFileCollection? files, CurrentApiKey key,
-        FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+        FlarelyticsDbContext db, SocialMediaStore storage, CancellationToken ct)
     {
         if (req.ExternalRef is { Length: > 0 } reference
             && await Load(db).SingleOrDefaultAsync(p => p.ExternalRef == reference.Trim(), ct) is { } found)
@@ -155,7 +161,7 @@ public static class PublicPostEndpoints
                 throw ApiProblem.BadRequest("media_file_missing", $"Nella richiesta non c'è il file '{item.File}' citato dal media {position + 1}.");
         }
 
-        // I file della richiesta diventano media sul disco; se il post poi non
+        // I file della richiesta diventano media nello storage; se il post poi non
         // va, si cancellano e il contesto si svuota, così il post dopo parte pulito.
         var written = new List<SocialMedia>();
         try
@@ -192,7 +198,7 @@ public static class PublicPostEndpoints
         }
         catch
         {
-            foreach (var m in written) storage.Delete(m);
+            foreach (var m in written) await storage.DeleteAsync(m, CancellationToken.None);
             db.ChangeTracker.Clear();
             throw;
         }
@@ -221,7 +227,7 @@ public static class PublicPostEndpoints
         Results.Ok(SocialPostResponse.From(await Load(db).SingleOrDefaultAsync(p => p.Id == postId, ct) ?? throw ApiProblem.NotFound("Post"), signer));
 
     /// <summary>Si ritira solo finché è in coda: quando qualcuno l'ha programmato, decide il pannello.</summary>
-    private static async Task<IResult> Delete(Guid postId, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task<IResult> Delete(Guid postId, FlarelyticsDbContext db, SocialMediaStore storage, CancellationToken ct)
     {
         var post = await Load(db).SingleOrDefaultAsync(p => p.Id == postId, ct) ?? throw ApiProblem.NotFound("Post");
         if (!post.IsInbox) throw ApiProblem.Conflict("post_scheduled", "Il post è già stato programmato dal pannello: non si ritira più dall'API.");
@@ -229,7 +235,7 @@ public static class PublicPostEndpoints
         var media = post.Media.ToList();
         db.Remove(post);
         await db.SaveChangesAsync(ct);
-        foreach (var m in media) storage.Delete(m);
+        foreach (var m in media) await storage.DeleteAsync(m, CancellationToken.None);
         return Results.NoContent();
     }
 

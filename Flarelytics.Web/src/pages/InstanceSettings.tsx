@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Mail, ServerCog, Trash2, UserPlus } from "lucide-react";
+import { HardDrive, Mail, ServerCog, Trash2, UserPlus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Navigate } from "react-router";
 import { errorMessage, request } from "../api/client";
@@ -14,7 +14,16 @@ const adminsKey = ["instance", "admins"] as const;
 const labels: Record<string, string> = {
   host: "Server", port: "Porta", username: "Utente", password: "Password", fromAddress: "Indirizzo del mittente", fromName: "Nome del mittente",
   appId: "App ID", appSecret: "App secret", clientKey: "Client key", clientSecret: "Client secret",
+  storageZone: "Storage zone", region: "Regione", accessKey: "Password della storage zone",
 };
+
+const placeholders: Record<string, string> = { port: "587", region: "vuoto = Falkenstein (de)" };
+
+const storageText = {
+  local: "Ora i file nuovi vanno sul disco del server.",
+  remote: "Ora i file nuovi vanno su Bunny Storage, cifrati.",
+  unavailable: "Il caricamento di immagini e video è spento: la modalità remota è imposta (MEDIA_STORAGE=remote) e Bunny non è configurato.",
+} as const;
 
 const sourceBadge = (f: SettingValue) =>
   f.source === "panel" ? <Badge tone="brand">Dal pannello</Badge> : f.source === "env" ? <Badge>Dal file .env</Badge> : <Badge tone="warn">Non impostato</Badge>;
@@ -44,7 +53,15 @@ export function InstanceSettingsPage() {
 
       <SettingsForm group={group("smtp")} title="Email (SMTP)" icon={<Mail className="size-4" />}
         description="Per mandare inviti e recupero password. Senza, gli inviti si mandano copiando il link."
-        extra={<SmtpTest />} />
+        extra={<TestButton path="/instance/settings/smtp/test" label="Manda una prova" done={(r: { sentTo: string }) => `Mandata a ${r.sentTo}`} />} />
+      <SettingsForm group={group("bunny")} title="Storage dei file (Bunny)" icon={<HardDrive className="size-4" />}
+        description={<>
+          Immagini e video dei post su una storage zone di Bunny invece che sul disco, sempre cifrati: Bunny non vede il contenuto e i file li serve
+          l'API. Serve la password della zone (FTP &amp; API Access), non la chiave dell'account. I file già caricati restano dove sono.{" "}
+          <span className={i.mediaStorage === "unavailable" ? "text-bad" : "text-fg"}>{storageText[i.mediaStorage]}</span>
+          {i.mediaStorageForced && i.mediaStorage !== "unavailable" && " Il disco non si usa (MEDIA_STORAGE=remote)."}
+        </>}
+        extra={<TestButton path="/instance/settings/bunny/test" label="Prova la zone" done={(r: { host: string }) => `Funziona (${r.host})`} />} />
       <SettingsForm group={group("meta")} title="Facebook e Instagram (app Meta)" icon={<NetworkGlyph network="FacebookPage" />}
         description="Per collegare le Pagine Facebook e gli account Instagram collegati a una Pagina." redirectUri={i.metaRedirectUri} />
       <SettingsForm group={group("instagram")} title="Instagram senza Pagina" icon={<NetworkGlyph network="Instagram" />}
@@ -63,7 +80,7 @@ function SettingsForm({ group, title, icon, description, redirectUri, extra }: {
   group: SettingsGroup;
   title: string;
   icon: ReactNode;
-  description: string;
+  description: ReactNode;
   redirectUri?: string;
   extra?: ReactNode;
 }) {
@@ -110,7 +127,7 @@ function SettingsForm({ group, title, icon, description, redirectUri, extra }: {
               autoComplete="off"
               className={f.secret ? "font-mono" : undefined}
               value={changes[f.name] ?? (f.secret ? "" : f.value ?? "")}
-              placeholder={f.secret ? (f.set ? "•••••••• (scrivi per sostituirlo)" : "Non impostato") : f.name === "port" ? "587" : undefined}
+              placeholder={f.secret ? (f.set ? "•••••••• (scrivi per sostituirlo)" : "Non impostato") : placeholders[f.name]}
               onChange={(e) => setChanges((c) => ({ ...c, [f.name]: e.target.value }))}
             />
           </Field>
@@ -128,8 +145,8 @@ function SettingsForm({ group, title, icon, description, redirectUri, extra }: {
   );
 }
 
-/** Un'email di prova all'amministratore, con l'SMTP salvato: l'errore del server si vede così com'è. */
-function SmtpTest() {
+/** Una prova con le impostazioni salvate (un'email all'amministratore, un file su Bunny): l'errore del server si vede così com'è. */
+function TestButton<T>({ path, label, done }: { path: string; label: string; done: (result: T) => string }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -137,8 +154,7 @@ function SmtpTest() {
     setBusy(true);
     setResult(null);
     try {
-      const r = await request<{ sentTo: string }>("/instance/settings/smtp/test", { method: "POST" });
-      setResult({ ok: true, text: `Mandata a ${r.sentTo}` });
+      setResult({ ok: true, text: done(await request<T>(path, { method: "POST" })) });
     } catch (e) {
       setResult({ ok: false, text: errorMessage(e) });
     } finally {
@@ -149,7 +165,7 @@ function SmtpTest() {
   return (
     <span className="flex items-center gap-2">
       {result && <span className={result.ok ? "text-xs text-ok" : "max-w-xs truncate text-xs text-bad"} title={result.text}>{result.text}</span>}
-      <Button loading={busy} onClick={test}>Manda una prova</Button>
+      <Button loading={busy} onClick={test}>{label}</Button>
     </span>
   );
 }

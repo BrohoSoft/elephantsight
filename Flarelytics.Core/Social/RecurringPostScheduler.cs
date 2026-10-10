@@ -10,7 +10,7 @@ namespace Flarelytics.Core.Social;
 /// diventa un <see cref="SocialPost"/> normale, con i suoi account e una copia
 /// dei suoi file, che il worker pubblica subito dopo.
 /// </summary>
-public class RecurringPostScheduler(FlarelyticsDbContext db, SocialMediaStorage storage, ILogger<RecurringPostScheduler> log)
+public class RecurringPostScheduler(FlarelyticsDbContext db, Media.SocialMediaStore storage, ILogger<RecurringPostScheduler> log)
 {
     /// <summary>
     /// Un'uscita in ritardo di più di così (il server era spento) si salta:
@@ -53,6 +53,29 @@ public class RecurringPostScheduler(FlarelyticsDbContext db, SocialMediaStorage 
         }
 
         var post = SocialPost.FromRecurring(recurring, at);
+
+        // Una copia per uscita: il post resta com'era anche se poi la serie
+        // cambia immagini o viene cancellata, e le copie si cancellano dopo la
+        // pubblicazione come quelle di ogni post (vedi CleanupPublishedMediaAsync).
+        // Se la copia non riesce (file perso, storage che non risponde),
+        // l'uscita si salta invece di partire senza le sue immagini.
+        var copies = new List<SocialMedia>();
+        try
+        {
+            foreach (var source in recurring.Media.OrderBy(m => m.Position))
+            {
+                var copy = source.CopyFor(post.Id, source.Position);
+                await storage.CopyAsync(source, copy, ct);
+                copies.Add(copy);
+            }
+        }
+        catch (Exception e) when (e is Media.MediaStorageUnavailableException or FileNotFoundException)
+        {
+            foreach (var c in copies) await storage.DeleteAsync(c, ct);
+            log.LogError("Uscita del {At:u} del post ricorrente {Id} saltata: non si riescono a copiare le immagini ({Message})", at, recurring.Id, e.Message);
+            return false;
+        }
+
         db.Add(post);
         foreach (var account in accounts)
         {
@@ -60,14 +83,8 @@ public class RecurringPostScheduler(FlarelyticsDbContext db, SocialMediaStorage 
             post.AddTarget(target);
             db.Add(target);
         }
-
-        // Una copia per uscita: il post resta com'era anche se poi la serie
-        // cambia immagini o viene cancellata. Se il file non c'è più la riga si
-        // crea lo stesso, e la pubblicazione dirà che manca.
-        foreach (var source in recurring.Media.OrderBy(m => m.Position))
+        foreach (var copy in copies)
         {
-            var copy = source.CopyFor(post.Id, source.Position);
-            storage.Copy(source, copy);
             post.AddMedia(copy);
             db.Add(copy);
         }

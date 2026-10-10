@@ -74,6 +74,11 @@ public static class InstanceSettingCatalog
         new("tiktok", "clientSecret", "Social:TikTok:ClientSecret", true),
         new("threads", "appId", "Social:Threads:AppId", false),
         new("threads", "appSecret", "Social:Threads:AppSecret", true),
+        // Lo storage remoto dei file dei post. La modalità (MEDIA_STORAGE) no:
+        // si impone dall'ambiente, così chi installa decide se il disco si può usare.
+        new("bunny", "storageZone", "Media:Bunny:StorageZone", false),
+        new("bunny", "region", "Media:Bunny:Region", false),
+        new("bunny", "accessKey", "Media:Bunny:AccessKey", true),
     ];
 
     public static IEnumerable<InstanceSettingField> Group(string group) => Fields.Where(f => f.Group == group);

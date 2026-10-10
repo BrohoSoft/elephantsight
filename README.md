@@ -43,7 +43,14 @@ Per TikTok serve un'app su developers.tiktok.com (Login Kit e Content Posting AP
 
 Per Threads serve un'app Meta con il caso d'uso "Access the Threads API": metti in `.env` `THREADS_APP_ID` e `THREADS_APP_SECRET`, cioè il Threads App ID e il suo secret (nelle impostazioni del caso d'uso), non quelli dell'app. Come Instagram, Threads scarica immagini e video da `PUBLIC_URL`.
 
-I **post ricorrenti** (Social → Post ricorrenti) escono da soli secondo una regola: ogni N giorni, certi giorni della settimana ogni N settimane, o un giorno del mese ogni N mesi, a un'ora del fuso di chi li crea. Ogni uscita diventa un post del calendario, con una copia di immagini e video (un video quotidiano occupa spazio ogni giorno). Un'uscita mancata di più di un'ora perché il server era spento si salta.
+I **post ricorrenti** (Social → Post ricorrenti) escono da soli secondo una regola: ogni N giorni, certi giorni della settimana ogni N settimane, o un giorno del mese ogni N mesi, a un'ora del fuso di chi li crea. Ogni uscita diventa un post del calendario, con una copia di immagini e video, che la pulizia toglie qualche giorno dopo la pubblicazione come per ogni post. Un'uscita mancata di più di un'ora perché il server era spento si salta.
+
+### Immagini e video dei post: disco o Bunny Storage
+Di base stanno sul disco (volume `flarelytics-reports`). Per liberarlo si possono mettere su una storage zone di [Bunny](https://bunny.net) da *Impostazioni dell'istanza → Storage dei file* (storage zone, regione, password della zone in *FTP & API Access*, con un pulsante di prova) oppure in `.env` con `BUNNY_STORAGE_ZONE`, `BUNNY_STORAGE_REGION`, `BUNNY_STORAGE_ACCESS_KEY`. Su Bunny i file sono **sempre cifrati** (AES-256-GCM con le chiavi master dell'installazione): Bunny non vede il contenuto, non serve una pull zone e il suo indirizzo non esce mai; le reti e il pannello li scaricano da `PUBLIC_URL` come prima, e l'API li decifra al volo. I file già caricati restano dove sono e si leggono lo stesso: cambiare storage non richiede di spostarli.
+
+`MEDIA_STORAGE` decide la modalità: `auto` (predefinito: Bunny se configurato, altrimenti disco), `local` (sempre disco) o `remote` (il disco non si usa mai per i file dei post; senza Bunny configurato il pannello non lascia caricare immagini e video, i post di solo testo funzionano). Sul disco restano solo i temporanei dei video in caricamento, cancellati appena usati.
+
+Gli **originali** si cancellano `MEDIA_CLEANUP_AFTER_DAYS` giorni (7 di base) dopo che il post è uscito su tutti gli account; resta una miniatura di circa 400 px e il link al post sulla rete. Si cancellano solo gli originali che hanno la miniatura (la crea il pannello: i file caricati prima di questa versione restano finché qualcuno non apre il post); un post con un account non riuscito tiene i suoi file.
 
 ### Progetti, membri e permessi
 Ogni membro ha un ruolo (lettore, admin, owner) e vede tutti i progetti o solo alcuni, con le sezioni Store e/o Social: un cliente può vedere solo il suo progetto, e solo il calendario. Si sceglie quando lo inviti e si cambia da Membri. Gli account social sono dell'organizzazione e si collegano a uno o più progetti (Account social → Cambia progetti): lo stesso account può pubblicare per un'app e per te, con post diversi. Il calendario generale mostra tutto quello che vedi, quello del progetto solo i suoi post.
@@ -59,6 +66,7 @@ Da Organizzazione → Chiavi API crei una chiave per ogni programma (un CMS, uno
 | **Chiavi** | volume `flarelytics-keys` | senza la chiave master le credenziali degli store non si decifrano più |
 | Credenziali cifrate | volume `flarelytics-data` | |
 | Report scaricati e immagini dei post | volume `flarelytics-reports` | gli store non tengono lo storico per sempre: sono l'unica copia del passato |
+| Immagini dei post su Bunny | la storage zone | cifrate con la chiave master: senza il volume delle chiavi non si leggono più |
 
 Salva le **chiavi in un posto diverso** dal resto: se finiscono nello stesso backup, chi lo ruba ha anche la chiave per aprirlo.
 

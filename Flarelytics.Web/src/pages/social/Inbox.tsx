@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Inbox as InboxIcon, Plus, Trash2, Video } from "lucide-react";
+import { Inbox as InboxIcon, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { errorMessage, request } from "../../api/client";
@@ -12,7 +12,7 @@ import { Alert, Badge, Button, EmptyState, Field, Input, Mono, PageHeader, PageL
 import { commercialIncomplete, NetworkOptions } from "../../social/NetworkOptions";
 import { PostEditor } from "../../social/PostEditor";
 import { accountLabel } from "../../social/rules";
-import { formatDuration } from "../../social/upload";
+import { MediaPreview, VideoBadge } from "../../social/MediaPreview";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -26,16 +26,14 @@ export function MediaThumb({ media }: { media: SocialPost["media"] }) {
   if (first.kind === "Video") {
     return (
       <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-black">
-        <video src={`${first.url}#t=0.1`} muted preload="metadata" className="size-full object-cover" />
-        <span className="absolute inset-x-0 bottom-0 flex items-center gap-0.5 bg-black/60 px-1 text-[0.625rem] text-white">
-          <Video className="size-2.5" />{formatDuration(first.durationMs ?? 0)}
-        </span>
+        <MediaPreview item={first} className="size-full" />
+        <VideoBadge item={first} />
       </div>
     );
   }
   return (
     <div className="relative size-16 shrink-0">
-      <img src={first.url} alt={first.altText ?? ""} className="size-full rounded object-cover" />
+      <MediaPreview item={first} className="size-full rounded" />
       {media.length > 1 && <span className="absolute right-0.5 bottom-0.5 rounded bg-black/60 px-1 text-[0.625rem] text-white">+{media.length - 1}</span>}
     </div>
   );

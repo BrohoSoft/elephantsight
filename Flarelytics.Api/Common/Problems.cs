@@ -48,6 +48,10 @@ public class ProblemExceptionHandler(IProblemDetailsService problems, ILogger<Pr
             InvalidStoreKeyException e => (StatusCodes.Status400BadRequest, "invalid_store_key", e.Message),
             StoreAccessException e => (StatusCodes.Status502BadGateway, "store_error", e.Message),
 
+            // Storage dei file non configurato (modalità remota imposta) o Bunny
+            // che non risponde. Il messaggio non contiene mai la password della zone.
+            Flarelytics.Core.Social.Media.MediaStorageUnavailableException e => (StatusCodes.Status503ServiceUnavailable, "media_storage_unavailable", e.Message),
+
             // Due richieste che creano la stessa cosa nello stesso istante
             // superano entrambe il controllo applicativo: l'indice unico è
             // l'ultima parola, e la risposta giusta è un 409, non un 500.

@@ -114,11 +114,10 @@ public class TikTokClient(HttpClient http, IOptionsMonitor<SocialOptions> option
     }
 
     /// <summary>Manda il file a pezzi, in ordine, con Content-Range. 206 = avanti, 201 = finito.</summary>
-    public async Task UploadAsync(string uploadUrl, Stream video, string contentType, CancellationToken ct)
+    /// <remarks>Il flusso si legge una volta sola, dall'inizio: può essere un video decifrato al volo da Bunny, che non torna indietro.</remarks>
+    public async Task UploadAsync(string uploadUrl, Stream video, long size, string contentType, CancellationToken ct)
     {
-        var size = video.Length;
         var (chunkSize, count) = Chunks(size);
-        video.Seek(0, SeekOrigin.Begin);
 
         for (var i = 0; i < count; i++)
         {
