@@ -37,10 +37,14 @@ public static class InstanceEndpoints
         instance.MapDelete("/admins/{userId:guid}", RemoveAdmin);
     }
 
+    /// <summary>I gruppi che questa installazione mostra: senza la funzione dei backup (BACKUPS_ENABLED=false) il loro gruppo non c'è.</summary>
+    private static bool Visible(string group, IConfiguration configuration) =>
+        group != "backup" || configuration.GetValue("Backups:Enabled", true);
+
     private static async Task<IResult> GetSettings(InstanceSettingsStore store, IConfiguration configuration, CancellationToken ct)
     {
         var panel = await store.ReadAsync(ct);
-        var groups = InstanceSettingCatalog.Fields.GroupBy(f => f.Group).Select(g => new SettingsGroup(g.Key, g.Select(f =>
+        var groups = InstanceSettingCatalog.Fields.Where(f => Visible(f.Group, configuration)).GroupBy(f => f.Group).Select(g => new SettingsGroup(g.Key, g.Select(f =>
         {
             var effective = configuration[f.ConfigPath];
             var set = !string.IsNullOrWhiteSpace(effective);
@@ -54,12 +58,13 @@ public static class InstanceEndpoints
     private static async Task<IResult> SaveSettings(string group, Dictionary<string, string?> values, ClaimsPrincipal principal, InstanceSettingsStore store,
         IConfiguration configuration, CancellationToken ct)
     {
-        if (!InstanceSettingCatalog.IsGroup(group)) throw ApiProblem.NotFound("Gruppo di impostazioni");
+        if (!InstanceSettingCatalog.IsGroup(group) || !Visible(group, configuration)) throw ApiProblem.NotFound("Gruppo di impostazioni");
         var unknown = values.Keys.Where(k => InstanceSettingCatalog.Group(group).All(f => f.Name != k)).ToList();
         if (unknown.Count > 0) throw ApiProblem.BadRequest("unknown_setting", $"Campi sconosciuti: {string.Join(", ", unknown)}.");
         if (values.Values.Any(v => v is { Length: > 2000 })) throw ApiProblem.BadRequest("setting_too_long", "Un valore è troppo lungo.");
         if (group == "smtp" && values.GetValueOrDefault("port") is { Length: > 0 } port && (!int.TryParse(port, out var p) || p is < 1 or > 65535))
             throw ApiProblem.BadRequest("smtp_port", "La porta SMTP è un numero fra 1 e 65535 (di solito 587, o 465).");
+        if (group == "backup") ValidateBackup(values, configuration);
         if (group == "bunny" && values.GetValueOrDefault("region") is { Length: > 0 } region && !BunnyStorageOptions.Regions.ContainsKey(region.Trim()))
             throw ApiProblem.BadRequest("bunny_region",
                 $"Regione sconosciuta: usa {string.Join(", ", BunnyStorageOptions.Regions.Keys.Where(k => k.Length > 0))}, o lascia vuoto per Falkenstein.");
@@ -68,9 +73,37 @@ public static class InstanceEndpoints
         return await GetSettings(store, configuration, ct);
     }
 
+    /// <summary>
+    /// La programmazione dei backup: un'ora vera, un fuso che il server conosce,
+    /// numeri sensati, una password lunga. Accenderli senza password non si può:
+    /// il backup non saprebbe come cifrarsi.
+    /// </summary>
+    private static void ValidateBackup(Dictionary<string, string?> values, IConfiguration configuration)
+    {
+        string? Value(string name) => values.GetValueOrDefault(name) is { } v ? v.Trim() : null;
+
+        if (Value("active") is { Length: > 0 } active && active is not ("true" or "false"))
+            throw ApiProblem.BadRequest("backup_active", "Attivi: true o false.");
+        if (Value("time") is { Length: > 0 } time && !TimeOnly.TryParseExact(time, "HH:mm", out _))
+            throw ApiProblem.BadRequest("backup_time", "L'ora è nel formato HH:mm, per esempio 03:00.");
+        if (Value("timeZone") is { Length: > 0 } zone && new Flarelytics.Core.Backups.BackupOptions { TimeZone = zone }.FindTimeZone() is null)
+            throw ApiProblem.BadRequest("backup_timezone", $"Fuso orario sconosciuto: {zone}.");
+        if (Value("everyDays") is { Length: > 0 } every && (!int.TryParse(every, out var d) || d is < 1 or > 30))
+            throw ApiProblem.BadRequest("backup_every", "Ogni quanti giorni: da 1 a 30.");
+        if (Value("keep") is { Length: > 0 } keep && (!int.TryParse(keep, out var k) || k is < 1 or > 365))
+            throw ApiProblem.BadRequest("backup_keep", "Quanti backup tenere: da 1 a 365.");
+        if (Value("password") is { Length: > 0 } password && password.Length < 12)
+            throw ApiProblem.BadRequest("backup_password", "La password dei backup è lunga almeno 12 caratteri.");
+
+        var passwordAfter = values.ContainsKey("password") ? Value("password") : configuration["Backups:Password"];
+        var activeAfter = values.ContainsKey("active") ? Value("active") == "true" : configuration.GetValue("Backups:Active", false);
+        if (activeAfter && string.IsNullOrEmpty(passwordAfter))
+            throw ApiProblem.BadRequest("backup_password_missing", "Per attivare i backup serve una password: è quella che li cifra.");
+    }
+
     private static async Task<IResult> ClearSettings(string group, InstanceSettingsStore store, IConfiguration configuration, CancellationToken ct)
     {
-        if (!InstanceSettingCatalog.IsGroup(group)) throw ApiProblem.NotFound("Gruppo di impostazioni");
+        if (!InstanceSettingCatalog.IsGroup(group) || !Visible(group, configuration)) throw ApiProblem.NotFound("Gruppo di impostazioni");
         await store.ClearAsync(group, ct);
         return await GetSettings(store, configuration, ct);
     }

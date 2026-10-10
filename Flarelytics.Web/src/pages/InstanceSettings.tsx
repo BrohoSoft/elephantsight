@@ -6,6 +6,7 @@ import { errorMessage, request } from "../api/client";
 import { keys, useInstance, useMe } from "../api/hooks";
 import type { InstanceAdminItem, SettingsGroup, SettingValue } from "../api/types";
 import { NetworkGlyph } from "../components/SocialIcons";
+import { BackupSettings } from "./BackupSettings";
 import { Alert, Badge, Button, CopyButton, Field, Input, Mono, PageHeader, PageLoader, Panel } from "../components/ui";
 
 const settingsKey = ["instance", "settings"] as const;
@@ -37,6 +38,7 @@ export function InstanceSettingsPage() {
   const me = useMe();
   const settings = useQuery({ queryKey: settingsKey, queryFn: () => request<SettingsGroup[]>("/instance/settings"), enabled: !!me.data?.isInstanceAdmin });
   const instance = useInstance();
+  const queryClient = useQueryClient();
 
   if (me.isPending) return <PageLoader />;
   if (!me.data?.isInstanceAdmin) return <Navigate to="/" replace />;
@@ -70,6 +72,8 @@ export function InstanceSettingsPage() {
         description="Dall'app su developers.tiktok.com (Login Kit e Content Posting API)." redirectUri={i.tikTokRedirectUri} />
       <SettingsForm group={group("threads")} title="Threads" icon={<NetworkGlyph network="Threads" />}
         description="Il Threads App ID e il suo secret, dalle impostazioni del caso d'uso Threads dell'app Meta." redirectUri={i.threadsRedirectUri} />
+
+      {i.backupsEnabled && <BackupSettings onSaved={(groups) => queryClient.setQueryData(settingsKey, groups)} />}
 
       <Admins />
     </div>

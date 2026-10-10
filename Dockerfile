@@ -26,14 +26,24 @@ WORKDIR /app
 
 # libgssapi: Npgsql la cerca a ogni connessione e, senza, riempie il log di
 # errori innocui. tzdata: i report di Apple seguono il giorno del Pacifico.
+# pg_dump e pg_restore per i backup: dal repository di PostgreSQL (PGDG),
+# perché devono essere almeno della versione del server (17) e Ubuntu ha la 16.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgssapi-krb5-2 tzdata \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 tzdata ca-certificates curl \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && apt-get purge -y curl && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Non come root. /data esiste già con il proprietario giusto: un volume
 # montato lì sopra la prima volta ne eredita i permessi.
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin flarelytics \
-    && mkdir -p /data/keys /data/secrets /data/reports \
+    && mkdir -p /data/keys /data/secrets /data/reports /data/backups \
     && chown -R 10001 /data && chmod 700 /data/keys /data/secrets
 USER 10001
 

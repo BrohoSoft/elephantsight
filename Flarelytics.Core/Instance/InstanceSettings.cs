@@ -79,6 +79,13 @@ public static class InstanceSettingCatalog
         new("bunny", "storageZone", "Media:Bunny:StorageZone", false),
         new("bunny", "region", "Media:Bunny:Region", false),
         new("bunny", "accessKey", "Media:Bunny:AccessKey", true),
+        // I backup: ci sono solo se la funzione è accesa (Backups:Enabled, dall'ambiente).
+        new("backup", "active", "Backups:Active", false),
+        new("backup", "time", "Backups:Time", false),
+        new("backup", "timeZone", "Backups:TimeZone", false),
+        new("backup", "everyDays", "Backups:EveryDays", false),
+        new("backup", "keep", "Backups:Keep", false),
+        new("backup", "password", "Backups:Password", true),
     ];
 
     public static IEnumerable<InstanceSettingField> Group(string group) => Fields.Where(f => f.Group == group);

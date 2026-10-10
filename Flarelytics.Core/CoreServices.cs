@@ -137,6 +137,21 @@ public static class CoreServices
     }
 
     /// <summary>La sincronizzazione con gli store, con il ciclo in background che la fa girare.</summary>
+    /// <summary>
+    /// I backup dell'istanza. Si registrano sempre (il ripristino da riga di
+    /// comando li usa anche a backup spenti); con <c>Backups:Enabled</c> falso
+    /// non ci sono rotte né worker.
+    /// </summary>
+    public static IServiceCollection AddFlarelyticsBackups(this IServiceCollection services)
+    {
+        services.AddOptions<Backups.BackupOptions>().BindConfiguration(Backups.BackupOptions.Section);
+        services.AddSingleton<Backups.PgTools>();
+        services.AddScoped<Backups.BackupService>();
+        services.AddScoped<Backups.BackupRestorer>();
+        services.AddSingleton<Backups.BackupRunner>();
+        return services;
+    }
+
     public static IServiceCollection AddFlarelyticsSync(this IServiceCollection services)
     {
         services.AddOptions<SyncOptions>().BindConfiguration(SyncOptions.Section);
