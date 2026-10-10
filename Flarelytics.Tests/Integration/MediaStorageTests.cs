@@ -251,12 +251,39 @@ public class MediaStorageTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task La_pulizia_lascia_gli_originali_senza_miniatura()
+    {
+        Start(WithBunny());
+        var a = await _app.SignUpAsync();
+        var mastodon = await ConnectMastodonAsync(a);
+        var withThumb = (await UploadAsync(a, Jpeg())).GetProperty("id").GetGuid();
+        await a.Client.PostAsync($"/api/v1/orgs/{a.OrgId}/social/media/{withThumb}/thumbnail", new ByteArrayContent(TestJpeg.Create(400, 400)));
+        // Come un file caricato prima delle miniature, o arrivato dall'API pubblica e mai aperto nel pannello.
+        var without = (await UploadAsync(a, Jpeg())).GetProperty("id").GetGuid();
+        var postId = await ScheduleAsync(a, mastodon, withThumb, without);
+        await Worker.RunOnceAsync(CancellationToken.None);
+
+        await CleanupAsync(a, postId, daysAgo: 30);
+        Assert.False(Bunny.Files.ContainsKey(BunnyPath(a, withThumb)));
+        Assert.True(Bunny.Files.ContainsKey(BunnyPath(a, without)));
+        var media = (await GetPostAsync(a, postId)).GetProperty("media");
+        Assert.True(media[0].GetProperty("originalDeleted").GetBoolean());
+        Assert.False(media[1].GetProperty("originalDeleted").GetBoolean());
+
+        // Quando il pannello gli fa la miniatura, al giro dopo va anche lui.
+        await a.Client.PostAsync($"/api/v1/orgs/{a.OrgId}/social/media/{without}/thumbnail", new ByteArrayContent(TestJpeg.Create(400, 400)));
+        await CleanupAsync(a, postId, daysAgo: 30);
+        Assert.False(Bunny.Files.ContainsKey(BunnyPath(a, without)));
+    }
+
+    [Fact]
     public async Task La_pulizia_lascia_i_file_dei_post_con_un_account_non_riuscito()
     {
         Start(WithBunny());
         var a = await _app.SignUpAsync();
         var mastodon = await ConnectMastodonAsync(a);
         var id = (await UploadAsync(a, Jpeg())).GetProperty("id").GetGuid();
+        await a.Client.PostAsync($"/api/v1/orgs/{a.OrgId}/social/media/{id}/thumbnail", new ByteArrayContent(TestJpeg.Create(400, 400)));
         var postId = await ScheduleAsync(a, mastodon, id);
         await Worker.RunOnceAsync(CancellationToken.None);
 

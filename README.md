@@ -50,7 +50,7 @@ Di base stanno sul disco (volume `flarelytics-reports`). Per liberarlo si posson
 
 `MEDIA_STORAGE` decide la modalità: `auto` (predefinito: Bunny se configurato, altrimenti disco), `local` (sempre disco) o `remote` (il disco non si usa mai per i file dei post; senza Bunny configurato il pannello non lascia caricare immagini e video, i post di solo testo funzionano). Sul disco restano solo i temporanei dei video in caricamento, cancellati appena usati.
 
-Gli **originali** si cancellano `MEDIA_CLEANUP_AFTER_DAYS` giorni (7 di base) dopo che il post è uscito su tutti gli account; resta una miniatura di circa 400 px e il link al post sulla rete. Un post con un account non riuscito tiene i suoi file.
+Gli **originali** si cancellano `MEDIA_CLEANUP_AFTER_DAYS` giorni (7 di base) dopo che il post è uscito su tutti gli account; resta una miniatura di circa 400 px e il link al post sulla rete. Si cancellano solo gli originali che hanno la miniatura (la crea il pannello: i file caricati prima di questa versione restano finché qualcuno non apre il post); un post con un account non riuscito tiene i suoi file.
 
 ### Progetti, membri e permessi
 Ogni membro ha un ruolo (lettore, admin, owner) e vede tutti i progetti o solo alcuni, con le sezioni Store e/o Social: un cliente può vedere solo il suo progetto, e solo il calendario. Si sceglie quando lo inviti e si cambia da Membri. Gli account social sono dell'organizzazione e si collegano a uno o più progetti (Account social → Cambia progetti): lo stesso account può pubblicare per un'app e per te, con post diversi. Il calendario generale mostra tutto quello che vedi, quello del progetto solo i suoi post.

@@ -593,6 +593,9 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
     /// pubblica (un Reel anche minuti dopo), e "Riprova i non riusciti" ne ha
     /// bisogno; un post con un account fallito li tiene finché non si risolve o
     /// si cancella. I post importati non si toccano (l'anteprima è tutto quello che hanno).
+    /// Si cancellano solo gli originali che hanno la miniatura: senza, il
+    /// pannello resterebbe con un segnaposto (i file caricati prima delle
+    /// miniature, o arrivati dall'API pubblica e mai aperti nel pannello).
     /// </summary>
     public async Task CleanupPublishedMediaAsync(FlarelyticsDbContext db, SocialMediaStore storage, MediaStorageOptions options, CancellationToken ct)
     {
@@ -600,12 +603,12 @@ public class SocialPublishWorker(IServiceScopeFactory scopes, ILogger<SocialPubl
         var posts = await db.Set<SocialPost>().Include(p => p.Media).Include(p => p.Targets)
             .Where(p => !p.IsImported && p.Targets.Any()
                         && p.Targets.All(t => t.Status == SocialTargetStatus.Published && t.PublishedAtUtc != null && t.PublishedAtUtc <= limit)
-                        && p.Media.Any(m => m.OriginalDeletedAtUtc == null))
+                        && p.Media.Any(m => m.OriginalDeletedAtUtc == null && m.HasThumbnail))
             .ToListAsync(ct);
 
         long freed = 0;
         var files = 0;
-        foreach (var media in posts.SelectMany(p => p.Media).Where(m => m.HasOriginal))
+        foreach (var media in posts.SelectMany(p => p.Media).Where(m => m.HasOriginal && m.HasThumbnail))
         {
             try
             {
