@@ -88,7 +88,7 @@ public class PgTools
         var user = new NpgsqlConnectionStringBuilder(connectionString).Username;
         if (stderr.Contains("password authentication failed") || stderr.Contains("role \"" + user + "\" does not exist"))
             return $"Il database non accetta l'utente {user}. Nelle installazioni fatte prima dei backup il ruolo va creato una volta: " +
-                   "docker compose exec postgres bash /docker-entrypoint-initdb.d/20-backup-role.sh";
+                   "docker compose exec -T postgres bash -s < deploy/postgres/20-backup-role.sh";
         if (stderr.Contains("server version") && stderr.Contains("aborting because of server version mismatch"))
             return $"{tool} è più vecchio del server PostgreSQL: {stderr}";
         return $"{tool} non è riuscito: {(stderr.Length > 1500 ? stderr[..1500] : stderr)}";

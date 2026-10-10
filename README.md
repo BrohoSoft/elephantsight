@@ -67,10 +67,11 @@ Da *Impostazioni dell'istanza → Backup* l'amministratore dell'istanza sceglie 
 
 - **La password va scritta da un'altra parte**: senza, i backup non si aprono e nessuno può recuperarla. Cambiandola, i backup vecchi restano con quella di prima.
 - I backup stanno sullo stesso server: **scaricali** dal pannello (o copia il volume) per averne una copia se si perde la macchina.
-- Il dump usa un ruolo PostgreSQL a parte, `flarelytics_backup` (solo lettura, vede tutte le organizzazioni), creato da `deploy/postgres/20-backup-role.sh`. Nelle installazioni fatte prima dei backup va creato una volta:
+- Il dump usa un ruolo PostgreSQL a parte, `flarelytics_backup` (solo lettura, vede tutte le organizzazioni), creato da `deploy/postgres/20-backup-role.sh`. Nelle installazioni nuove lo crea PostgreSQL al primo avvio; in quelle fatte prima dei backup va creato una volta, dalla cartella di `compose.yaml` (lo script si può rilanciare senza danni):
   ```bash
-  docker compose exec postgres bash /docker-entrypoint-initdb.d/20-backup-role.sh
+  docker compose exec -T postgres bash -s < deploy/postgres/20-backup-role.sh
   ```
+  Lo script arriva dallo standard input perché il contenitore di PostgreSQL, se è partito prima dell'aggiornamento, non vede i file nuovi della cartella `deploy/postgres`. Usa la password del database già presente nel contenitore, la stessa di `DB_PASSWORD`.
 - Con `BACKUPS_ENABLED=false` nel `.env` la funzione non c'è: niente pagina, niente rotte, niente backup. Serve quando i backup li fa chi ospita l'istanza.
 
 ### Ripristino

@@ -7,7 +7,7 @@
 #
 # Gira da solo alla prima inizializzazione del volume. Nelle installazioni
 # fatte prima dei backup si lancia una volta a mano (è idempotente):
-#   docker compose exec postgres bash /docker-entrypoint-initdb.d/20-backup-role.sh
+#   docker compose exec -T postgres bash -s < deploy/postgres/20-backup-role.sh
 set -euo pipefail
 
 psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname postgres \
