@@ -79,11 +79,32 @@ public static class InstanceSettingCatalog
         new("bunny", "storageZone", "Media:Bunny:StorageZone", false),
         new("bunny", "region", "Media:Bunny:Region", false),
         new("bunny", "accessKey", "Media:Bunny:AccessKey", true),
+        // I backup: ci sono solo se la funzione è accesa (Backups:Enabled, dall'ambiente).
+        new("backup", "active", "Backups:Active", false),
+        new("backup", "time", "Backups:Time", false),
+        new("backup", "timeZone", "Backups:TimeZone", false),
+        new("backup", "everyDays", "Backups:EveryDays", false),
+        new("backup", "keep", "Backups:Keep", false),
+        new("backup", "password", "Backups:Password", true),
     ];
 
     public static IEnumerable<InstanceSettingField> Group(string group) => Fields.Where(f => f.Group == group);
 
     public static bool IsGroup(string group) => Fields.Any(f => f.Group == group);
+
+    /// <summary>
+    /// I gruppi che chi installa può togliere dal pannello con una variabile
+    /// d'ambiente: i backup (<c>BACKUPS_ENABLED=false</c>) e lo storage Bunny
+    /// (<c>MEDIA_STORAGE_LOCKED=true</c>, vale solo il .env). Un gruppo non
+    /// disponibile non si vede, non si salva, e i valori già salvati dal
+    /// pannello non contano più.
+    /// </summary>
+    public static bool IsAvailable(string group, IConfiguration configuration) => group switch
+    {
+        "backup" => configuration.GetValue("Backups:Enabled", true),
+        "bunny" => !configuration.GetValue("Media:Locked", false),
+        _ => true
+    };
 }
 
 /// <summary>
@@ -109,7 +130,7 @@ public sealed class InstanceSettingsConfigurationProvider : ConfigurationProvide
 }
 
 /// <summary>Legge e scrive le impostazioni dell'istanza, cifrate, e le porta nella configurazione.</summary>
-public class InstanceSettingsStore(FlarelyticsDbContext db, FieldProtector protector, InstanceSettingsConfigurationProvider provider)
+public class InstanceSettingsStore(FlarelyticsDbContext db, FieldProtector protector, InstanceSettingsConfigurationProvider provider, IConfiguration configuration)
 {
     /// <summary>I valori in chiaro che il pannello ha impostato, per chiave (<c>smtp.host</c>).</summary>
     public async Task<Dictionary<string, string>> ReadAsync(CancellationToken ct)
@@ -136,8 +157,10 @@ public class InstanceSettingsStore(FlarelyticsDbContext db, FieldProtector prote
     public async Task LoadAsync(CancellationToken ct)
     {
         var values = await ReadAsync(ct);
+        // Le chiavi dei gruppi non disponibili non vengono mai da qui (Backups:Enabled
+        // e Media:Locked non sono nel catalogo): leggerle ora non vede il pannello.
         provider.Apply(InstanceSettingCatalog.Fields
-            .Where(f => values.ContainsKey(f.Key))
+            .Where(f => values.ContainsKey(f.Key) && InstanceSettingCatalog.IsAvailable(f.Group, configuration))
             .ToDictionary(f => f.ConfigPath, f => (string?)values[f.Key]));
     }
 

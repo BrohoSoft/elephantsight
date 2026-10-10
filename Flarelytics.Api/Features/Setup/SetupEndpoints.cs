@@ -54,7 +54,9 @@ public static class SetupEndpoints
             LegalContactEmail: NullIfEmpty(configuration["Legal:ContactEmail"]),
             Version: typeof(SetupEndpoints).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
             MediaStorage: media.Status.ToString().ToLowerInvariant(),
-            MediaStorageForced: media.RemoteForced));
+            MediaStorageForced: media.RemoteForced,
+            MediaStorageLocked: media.Locked,
+            BackupsEnabled: configuration.GetValue("Backups:Enabled", true)));
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -103,10 +105,12 @@ public static class SetupEndpoints
 /// <param name="LegalOwner">Chi gestisce l'installazione, per le pagine /privacy e /terms (<c>Legal:Owner</c>).</param>
 /// <param name="LegalContactEmail">L'email per le richieste sui dati (<c>Legal:ContactEmail</c>).</param>
 /// <param name="MediaStorage">Dove vanno immagini e video dei post: <c>local</c>, <c>remote</c> (Bunny) o <c>unavailable</c> (niente caricamenti).</param>
+/// <param name="MediaStorageLocked">Bunny si configura solo dall'ambiente (<c>MEDIA_STORAGE_LOCKED</c>): la sezione non c'è nel pannello.</param>
+/// <param name="BackupsEnabled">La funzione dei backup c'è (<c>BACKUPS_ENABLED</c>): senza, il pannello non mostra niente dei backup.</param>
 /// <param name="MediaStorageForced">La modalità remota è imposta dall'ambiente (<c>MEDIA_STORAGE=remote</c>): il disco non si usa.</param>
 public record InstanceInfo(bool SetupRequired, bool EmailEnabled, bool MetaEnabled, string MetaRedirectUri, bool InstagramEnabled, string InstagramRedirectUri,
     bool TikTokEnabled, string TikTokRedirectUri, bool ThreadsEnabled, string ThreadsRedirectUri, string? LegalOwner, string? LegalContactEmail, string Version,
-    string MediaStorage, bool MediaStorageForced);
+    string MediaStorage, bool MediaStorageForced, bool MediaStorageLocked, bool BackupsEnabled);
 
 public record SetupRequest(string Email, string Password, string FullName, string OrganizationName);
 

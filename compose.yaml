@@ -22,6 +22,9 @@ services:
       - "${BIND_ADDRESS:-0.0.0.0}:${PORT:-8080}:8080"
     environment:
       ConnectionStrings__Database: Host=postgres;Database=flarelytics;Username=flarelytics;Password=${DB_PASSWORD:?manca DB_PASSWORD}
+      # Il ruolo dei backup (solo lettura, vede tutte le organizzazioni): lo
+      # crea deploy/postgres/20-backup-role.sh.
+      ConnectionStrings__Backup: Host=postgres;Database=flarelytics;Username=flarelytics_backup;Password=${DB_PASSWORD}
       Auth__PublicAppUrl: ${PUBLIC_URL:-http://localhost:8080}
       Auth__SecureCookies: ${SECURE_COOKIES:-true}
       # Facoltativo: senza, gli inviti si mandano copiando il link.
@@ -56,6 +59,10 @@ services:
       # MEDIA_STORAGE: auto (Bunny se configurato, altrimenti disco), local
       # (sempre disco) o remote (mai disco: senza Bunny niente caricamenti).
       Media__Storage: ${MEDIA_STORAGE:-auto}
+      # true = Bunny si configura solo da qui: la sezione sparisce dal pannello
+      # e quello che vi era salvato non conta (istanze ospitate: lo storage è
+      # di chi le ospita, non del cliente).
+      Media__Locked: ${MEDIA_STORAGE_LOCKED:-false}
       Media__Bunny__StorageZone: ${BUNNY_STORAGE_ZONE:-}
       # Vuoto = Falkenstein; altrimenti uk, ny, la, sg, se, br, jh, syd.
       Media__Bunny__Region: ${BUNNY_STORAGE_REGION:-}
@@ -64,6 +71,12 @@ services:
       # Giorni dopo la pubblicazione (riuscita ovunque) in cui si cancellano
       # gli originali: restano la miniatura e il link al post.
       Media__CleanupAfterDays: ${MEDIA_CLEANUP_AFTER_DAYS:-7}
+      # Backup dell'istanza (database, chiavi, credenziali, report), cifrati con
+      # una password e programmati dal pannello (Impostazioni dell'istanza).
+      # false = la funzione non c'è: niente pagina né backup (per un'istanza
+      # ospitata, dove i backup li fa chi la ospita).
+      Backups__Enabled: ${BACKUPS_ENABLED:-true}
+      Backups__Directory: /data/backups
       # Chi gestisce questa installazione e un'email di contatto: compaiono
       # nelle pagine /privacy e /terms, che TikTok e Meta chiedono per le app.
       Legal__Owner: ${LEGAL_OWNER:-}
@@ -76,6 +89,9 @@ services:
       # Credenziali cifrate e report scaricati dagli store.
       - flarelytics-data:/data/secrets
       - flarelytics-reports:/data/reports
+      # I backup: stanno sullo stesso server, quindi scaricali dal pannello (o
+      # copiali altrove) per averne una copia se si perde la macchina.
+      - flarelytics-backups:/data/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,4 +121,5 @@ volumes:
   flarelytics-keys:
   flarelytics-data:
   flarelytics-reports:
+  flarelytics-backups:
   postgres-data:

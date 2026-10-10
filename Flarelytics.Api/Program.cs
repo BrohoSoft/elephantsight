@@ -1,6 +1,7 @@
 using Flarelytics.Api.Common;
 using Flarelytics.Api.Features.Account;
 using Flarelytics.Api.Features.Auth;
+using Flarelytics.Api.Features.Backups;
 using Flarelytics.Api.Features.Credentials;
 using Flarelytics.Api.Features.Icons;
 using Flarelytics.Api.Features.Instance;
@@ -18,7 +19,10 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Scalar.AspNetCore;
 
-var builder = WebApplication.CreateBuilder(args);
+// `restore <file>`: il ripristino di un backup, a istanza ferma (vedi BackupCommand).
+// Gli argomenti del comando non vanno nella configurazione.
+var restore = args.FirstOrDefault() == Flarelytics.Api.Features.Backups.BackupCommand.Name ? args[1..] : null;
+var builder = WebApplication.CreateBuilder(restore is null ? args : []);
 
 // I log anche a database, per leggerli dal pannello (pagina Log).
 Flarelytics.Core.Logging.StoredLogsExtensions.AddStoredLogs(builder.Logging);
@@ -29,6 +33,7 @@ builder.ConfigureAuthentication();
 builder.ConfigureRateLimiting();
 builder.ConfigureEmail();
 builder.ConfigureSecrets();
+builder.Services.AddFlarelyticsBackups();
 
 // Le impostazioni dell'istanza inserite dal pannello (SMTP, app social):
 // aggiunte per ultime, vincono sul .env, e cambiano senza riavviare.
@@ -43,6 +48,12 @@ builder.Services.AddScoped<Flarelytics.Core.Instance.InstanceSettingsStore>();
 if (builder.Configuration.GetValue("Worker:Enabled", true))
 {
     builder.Services.AddFlarelyticsSync();
+    // I backup programmati: solo se la funzione c'è (BACKUPS_ENABLED), e qui
+    // dentro perché il worker gira in un'istanza sola, come la sincronizzazione.
+    if (builder.Configuration.GetValue("Backups:Enabled", true))
+    {
+        builder.Services.AddHostedService<Flarelytics.Core.Backups.BackupWorker>();
+    }
 }
 
 // ASP.NET usa le sue chiavi interne (DataProtection) per alcuni cookie
@@ -64,6 +75,12 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 });
 
 var app = builder.Build();
+
+// Prima delle migration: il ripristino rimette il database com'era nel backup.
+if (restore is not null)
+{
+    return await Flarelytics.Api.Features.Backups.BackupCommand.RunAsync(restore, app.Services, app.Configuration);
+}
 
 await app.MigrateDatabaseAsync();
 await using (var scope = app.Services.CreateAsyncScope())
@@ -110,12 +127,15 @@ api.MapInstance();
 api.MapOverview();
 api.MapApiKeys();
 api.MapPublicApi();
+// Con BACKUPS_ENABLED=false le rotte non esistono: rispondono 404 come qualsiasi rotta sconosciuta.
+if (app.Configuration.GetValue("Backups:Enabled", true)) api.MapBackups();
 
 // Il pannello, se l'immagine lo contiene (wwwroot): ogni percorso che non è
 // un file e non è l'API riceve index.html, e la rotta la gestisce React.
 app.MapFrontend();
 
 app.Run();
+return 0;
 
 /// <summary>Pubblica solo perché <c>WebApplicationFactory&lt;Program&gt;</c> dei test ci si possa agganciare.</summary>
 public partial class Program;

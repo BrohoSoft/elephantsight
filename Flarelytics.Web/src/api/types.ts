@@ -177,6 +177,10 @@ export interface InstanceInfo {
   mediaStorage: "local" | "remote" | "unavailable";
   /** La modalità remota è imposta dall'ambiente (MEDIA_STORAGE=remote). */
   mediaStorageForced: boolean;
+  /** Bunny si configura solo dall'ambiente (MEDIA_STORAGE_LOCKED): la sezione non c'è nel pannello. */
+  mediaStorageLocked: boolean;
+  /** La funzione dei backup c'è (BACKUPS_ENABLED): senza, il pannello non ne mostra niente. */
+  backupsEnabled: boolean;
 }
 
 export interface CreatedInvitation {
@@ -570,7 +574,7 @@ export interface SettingValue {
 }
 
 export interface SettingsGroup {
-  group: "smtp" | "meta" | "instagram" | "tiktok" | "threads" | "bunny";
+  group: "smtp" | "meta" | "instagram" | "tiktok" | "threads" | "bunny" | "backup";
   fields: SettingValue[];
 }
 
@@ -603,4 +607,35 @@ export interface Overview {
   projects: number;
   social: SocialOverview | null;
   logs: LogItem[] | null;
+}
+
+export interface BackupFileItem {
+  name: string;
+  sizeBytes: number;
+  createdAtUtc: string;
+}
+
+export interface BackupRunItem {
+  id: string;
+  startedAtUtc: string;
+  finishedAtUtc: string | null;
+  manual: boolean;
+  fileName: string | null;
+  sizeBytes: number | null;
+  error: string | null;
+}
+
+export interface BackupStatus {
+  active: boolean;
+  time: string;
+  timeZone: string;
+  everyDays: number;
+  keep: number;
+  passwordSet: boolean;
+  directory: string;
+  running: boolean;
+  /** Il prossimo backup programmato; null se spenti o senza password. */
+  nextRunUtc: string | null;
+  files: BackupFileItem[];
+  runs: BackupRunItem[];
 }

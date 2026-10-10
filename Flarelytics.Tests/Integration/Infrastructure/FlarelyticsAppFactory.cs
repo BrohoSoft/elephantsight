@@ -36,6 +36,9 @@ public class FlarelyticsAppFactory(string connectionString, IReadOnlyDictionary<
     /// <summary>La storage zone di Bunny, per i file dei post (si usa se nelle <see cref="Settings"/> c'è Bunny).</summary>
     public FakeBunny Bunny { get; } = new();
 
+    /// <summary>Servizi da sostituire per un test (prima di toccare <c>Services</c>).</summary>
+    public Action<IServiceCollection>? TestServices { get; init; }
+
     /// <summary>I client che parlano con le reti social, da attaccare a <see cref="SocialApis"/>.</summary>
     public static readonly string[] SocialClients =
         [nameof(Flarelytics.Core.Social.BlueskyClient), nameof(Flarelytics.Core.Social.MastodonClient), nameof(Flarelytics.Core.Social.MetaGraphClient),
@@ -97,6 +100,7 @@ public class FlarelyticsAppFactory(string connectionString, IReadOnlyDictionary<
             services.RemoveAll<IStoreGateway>();
             services.AddSingleton<IStoreGateway>(AppStore);
             services.AddSingleton<IStoreGateway>(GooglePlay);
+            TestServices?.Invoke(services);
         });
     }
 

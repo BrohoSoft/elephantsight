@@ -50,6 +50,8 @@ Di base stanno sul disco (volume `flarelytics-reports`). Per liberarlo si posson
 
 `MEDIA_STORAGE` decide la modalità: `auto` (predefinito: Bunny se configurato, altrimenti disco), `local` (sempre disco) o `remote` (il disco non si usa mai per i file dei post; senza Bunny configurato il pannello non lascia caricare immagini e video, i post di solo testo funzionano). Sul disco restano solo i temporanei dei video in caricamento, cancellati appena usati.
 
+Con `MEDIA_STORAGE_LOCKED=true` Bunny si configura **solo** dal `.env`: la sezione sparisce dalle impostazioni dell'istanza e quello che vi era stato salvato non conta più. Serve quando l'istanza la ospiti tu per un cliente: lo storage è tuo, e il cliente, anche se amministra la sua istanza, non può cambiarlo. Insieme a `MEDIA_STORAGE=remote`, il disco del server non si usa per i file dei post.
+
 Gli **originali** si cancellano `MEDIA_CLEANUP_AFTER_DAYS` giorni (7 di base) dopo che il post è uscito su tutti gli account; resta una miniatura di circa 400 px e il link al post sulla rete. Si cancellano solo gli originali che hanno la miniatura (la crea il pannello: i file caricati prima di questa versione restano finché qualcuno non apre il post); un post con un account non riuscito tiene i suoi file.
 
 ### Progetti, membri e permessi
@@ -59,6 +61,28 @@ Ogni membro ha un ruolo (lettore, admin, owner) e vede tutti i progetti o solo a
 Da Organizzazione → Chiavi API crei una chiave per ogni programma (un CMS, uno script, un'automazione). Con quella il programma manda post (testo, immagine o carosello in JPEG, data di pubblicazione), anche molti in una chiamata, su `/api/v1/public`: finiscono nella coda **Da programmare**, dove scegli account e ora. La chiave da sola non pubblica niente. La pagina delle chiavi ha gli esempi con `curl`.
 
 ## Backup
+
+### Dal pannello
+Da *Impostazioni dell'istanza → Backup* l'amministratore dell'istanza sceglie se fare i backup, ogni quanti giorni, a che ora (nel suo fuso), quanti tenerne, e la **password** che li cifra; c'è anche "Fai un backup ora". Ogni backup è un file solo (`elephantsight-AAAAMMGG-HHMMSSmmm.esbk`, nel volume `flarelytics-backups`) con database, chiavi, credenziali cifrate e report degli store, cifrato con AES-256-GCM a partire dalla password (non dalla chiave master: il backup la contiene). I file dei post non ci sono (su Bunny restano lì).
+
+- **La password va scritta da un'altra parte**: senza, i backup non si aprono e nessuno può recuperarla. Cambiandola, i backup vecchi restano con quella di prima.
+- I backup stanno sullo stesso server: **scaricali** dal pannello (o copia il volume) per averne una copia se si perde la macchina.
+- Il dump usa un ruolo PostgreSQL a parte, `flarelytics_backup` (solo lettura, vede tutte le organizzazioni), creato da `deploy/postgres/20-backup-role.sh`. Nelle installazioni fatte prima dei backup va creato una volta:
+  ```bash
+  docker compose exec postgres bash /docker-entrypoint-initdb.d/20-backup-role.sh
+  ```
+- Con `BACKUPS_ENABLED=false` nel `.env` la funzione non c'è: niente pagina, niente rotte, niente backup. Serve quando i backup li fa chi ospita l'istanza.
+
+### Ripristino
+A istanza ferma, con il comando dell'immagine (chiede la password; `--check` verifica il file senza scrivere niente). Sostituisce database, chiavi, credenziali e report con quelli del backup:
+```bash
+docker compose stop app
+docker compose run --rm -v /percorso/elephantsight-AAAAMMGG-HHMMSSmmm.esbk:/ripristino.esbk:ro app restore /ripristino.esbk
+docker compose up -d
+```
+Su un server nuovo: copia `compose.yaml` e `.env` (con lo stesso `DB_PASSWORD` o uno nuovo), `docker compose up -d postgres`, poi il ripristino come sopra e `docker compose up -d`. Il file si legge tutto prima di scrivere: con la password sbagliata o un file danneggiato non tocca niente.
+
+### A mano
 
 | Cosa | Dove | Perché |
 |---|---|---|
