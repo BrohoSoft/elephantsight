@@ -385,6 +385,53 @@ public class MediaStorageTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Con_MEDIA_STORAGE_LOCKED_Bunny_si_configura_solo_dall_ambiente()
+    {
+        Start(new(FakeBunny.Settings()) { ["Media:Storage"] = "remote", ["Media:Locked"] = "true" });
+        var admin = await InstanceAdminAsync();
+        var a = await _app.SignUpAsync();
+
+        var instance = await (await _app.CreateClient().GetAsync("/api/v1/instance")).ReadJsonAsync();
+        Assert.True(instance.GetProperty("mediaStorageLocked").GetBoolean());
+        Assert.Equal("remote", instance.GetProperty("mediaStorage").GetString());
+
+        // La sezione non c'è: né da leggere, né da salvare, né da provare.
+        var groups = await (await admin.Client.GetAsync("/api/v1/instance/settings")).ReadJsonAsync();
+        Assert.DoesNotContain(groups.EnumerateArray(), g => g.GetProperty("group").GetString() == "bunny");
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.PutAsJsonAsync("/api/v1/instance/settings/bunny", new { storageZone = "altra-zone" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.DeleteAsync("/api/v1/instance/settings/bunny")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.Client.PostAsync("/api/v1/instance/settings/bunny/test", null)).StatusCode);
+
+        // Valori rimasti nel database da prima del blocco (salvati quando la sezione c'era): non contano.
+        using (var scope = _app.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<Flarelytics.Core.Instance.InstanceSettingsStore>()
+                .SaveAsync("bunny", new Dictionary<string, string?> { ["storageZone"] = "zona-del-cliente", ["accessKey"] = "password-del-cliente" }, Guid.NewGuid(), CancellationToken.None);
+        }
+        var bunny = _app.Services.GetRequiredService<IOptionsMonitor<MediaStorageOptions>>().CurrentValue.Bunny;
+        Assert.Equal(FakeBunny.Zone, bunny.StorageZone);
+        Assert.Equal(FakeBunny.Password, bunny.AccessKey);
+
+        // E i file vanno nella zone del .env.
+        await UploadAsync(a, Jpeg());
+        Assert.Single(Bunny.Files);
+    }
+
+    [Fact]
+    public async Task Con_MEDIA_STORAGE_LOCKED_e_senza_Bunny_il_messaggio_non_rimanda_al_pannello()
+    {
+        Start(new Dictionary<string, string?> { ["Media:Storage"] = "remote", ["Media:Locked"] = "true" });
+        var a = await _app.SignUpAsync();
+        var content = new ByteArrayContent(Jpeg());
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        var refused = await a.Client.PostAsync($"/api/v1/orgs/{a.OrgId}/social/media", new MultipartFormDataContent { { content, "file", "foto.jpg" } });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+        var body = await refused.Content.ReadAsStringAsync();
+        Assert.Contains("chi gestisce l'installazione", body);
+        Assert.DoesNotContain("Impostazioni dell'istanza", body);
+    }
+
+    [Fact]
     public async Task Una_copia_su_Bunny_ha_una_cifratura_sua_e_un_file_spostato_non_si_decifra()
     {
         Start(WithBunny());

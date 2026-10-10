@@ -177,6 +177,8 @@ export interface InstanceInfo {
   mediaStorage: "local" | "remote" | "unavailable";
   /** La modalità remota è imposta dall'ambiente (MEDIA_STORAGE=remote). */
   mediaStorageForced: boolean;
+  /** Bunny si configura solo dall'ambiente (MEDIA_STORAGE_LOCKED): la sezione non c'è nel pannello. */
+  mediaStorageLocked: boolean;
   /** La funzione dei backup c'è (BACKUPS_ENABLED): senza, il pannello non ne mostra niente. */
   backupsEnabled: boolean;
 }

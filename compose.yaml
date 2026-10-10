@@ -59,6 +59,10 @@ services:
       # MEDIA_STORAGE: auto (Bunny se configurato, altrimenti disco), local
       # (sempre disco) o remote (mai disco: senza Bunny niente caricamenti).
       Media__Storage: ${MEDIA_STORAGE:-auto}
+      # true = Bunny si configura solo da qui: la sezione sparisce dal pannello
+      # e quello che vi era salvato non conta (istanze ospitate: lo storage è
+      # di chi le ospita, non del cliente).
+      Media__Locked: ${MEDIA_STORAGE_LOCKED:-false}
       Media__Bunny__StorageZone: ${BUNNY_STORAGE_ZONE:-}
       # Vuoto = Falkenstein; altrimenti uk, ny, la, sg, se, br, jh, syd.
       Media__Bunny__Region: ${BUNNY_STORAGE_REGION:-}

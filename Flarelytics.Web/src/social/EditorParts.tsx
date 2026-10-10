@@ -175,9 +175,9 @@ export function MediaField({ media, onChange, readOnly, onUploading, onError }: 
           <ImageOff className="size-5 shrink-0 text-faint" />
           <span>
             Il caricamento di immagini e video non è disponibile: lo storage dei file non è configurato. I post di solo testo si programmano lo stesso.
-            {me.data?.isInstanceAdmin
+            {me.data?.isInstanceAdmin && !instance.data?.mediaStorageLocked
               ? <> Configuralo in <Link to="/instance" className="text-brand hover:underline">Impostazioni dell'istanza → Storage dei file</Link>.</>
-              : " Avvisa un amministratore dell'istanza."}
+              : instance.data?.mediaStorageLocked ? " Lo configura chi gestisce l'installazione." : " Avvisa un amministratore dell'istanza."}
           </span>
         </div>
       )}

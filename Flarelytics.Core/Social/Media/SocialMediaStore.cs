@@ -39,6 +39,9 @@ public class SocialMediaStore(
         "Il caricamento di immagini e video non è disponibile: questa installazione usa solo lo storage remoto (MEDIA_STORAGE=remote) " +
         "e Bunny Storage non è configurato. Un amministratore dell'istanza lo configura in Impostazioni dell'istanza → Storage dei file.";
 
+    public const string UnavailableLockedMessage =
+        "Il caricamento di immagini e video non è disponibile: lo storage dei file non è configurato. Lo configura chi gestisce l'installazione.";
+
     public MediaStorageStatus Status
     {
         get
@@ -61,8 +64,11 @@ public class SocialMediaStore(
     {
         MediaStorageStatus.Local => MediaLocation.Local,
         MediaStorageStatus.Remote => MediaLocation.Remote,
-        _ => throw new MediaStorageUnavailableException(UnavailableMessage)
+        _ => throw new MediaStorageUnavailableException(options.CurrentValue.Locked ? UnavailableLockedMessage : UnavailableMessage)
     };
+
+    /// <summary>Bunny si configura solo dall'ambiente: il pannello non ne mostra la sezione.</summary>
+    public bool Locked => options.CurrentValue.Locked;
 
     private IMediaBackend For(MediaLocation location) => location == MediaLocation.Remote ? remote : local;
 
@@ -108,7 +114,7 @@ public class SocialMediaStore(
     public async Task SaveThumbnailAsync(SocialMedia media, byte[] jpeg, CancellationToken ct)
     {
         // Sul disco no, se la modalità remota è imposta: la miniatura segue l'originale solo dove si può scrivere.
-        if (media.Location == MediaLocation.Local && RemoteForced) throw new MediaStorageUnavailableException(UnavailableMessage);
+        if (media.Location == MediaLocation.Local && RemoteForced) throw new MediaStorageUnavailableException(Locked ? UnavailableLockedMessage : UnavailableMessage);
         await For(media.Location).PutAsync(Thumbnail(media), ".jpg", new MemoryStream(jpeg, writable: false), jpeg.Length, ct);
         media.MarkThumbnail();
     }

@@ -50,6 +50,8 @@ Di base stanno sul disco (volume `flarelytics-reports`). Per liberarlo si posson
 
 `MEDIA_STORAGE` decide la modalità: `auto` (predefinito: Bunny se configurato, altrimenti disco), `local` (sempre disco) o `remote` (il disco non si usa mai per i file dei post; senza Bunny configurato il pannello non lascia caricare immagini e video, i post di solo testo funzionano). Sul disco restano solo i temporanei dei video in caricamento, cancellati appena usati.
 
+Con `MEDIA_STORAGE_LOCKED=true` Bunny si configura **solo** dal `.env`: la sezione sparisce dalle impostazioni dell'istanza e quello che vi era stato salvato non conta più. Serve quando l'istanza la ospiti tu per un cliente: lo storage è tuo, e il cliente, anche se amministra la sua istanza, non può cambiarlo. Insieme a `MEDIA_STORAGE=remote`, il disco del server non si usa per i file dei post.
+
 Gli **originali** si cancellano `MEDIA_CLEANUP_AFTER_DAYS` giorni (7 di base) dopo che il post è uscito su tutti gli account; resta una miniatura di circa 400 px e il link al post sulla rete. Si cancellano solo gli originali che hanno la miniatura (la crea il pannello: i file caricati prima di questa versione restano finché qualcuno non apre il post); un post con un account non riuscito tiene i suoi file.
 
 ### Progetti, membri e permessi

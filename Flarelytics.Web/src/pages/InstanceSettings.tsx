@@ -56,14 +56,14 @@ export function InstanceSettingsPage() {
       <SettingsForm group={group("smtp")} title="Email (SMTP)" icon={<Mail className="size-4" />}
         description="Per mandare inviti e recupero password. Senza, gli inviti si mandano copiando il link."
         extra={<TestButton path="/instance/settings/smtp/test" label="Manda una prova" done={(r: { sentTo: string }) => `Mandata a ${r.sentTo}`} />} />
-      <SettingsForm group={group("bunny")} title="Storage dei file (Bunny)" icon={<HardDrive className="size-4" />}
+      {!i.mediaStorageLocked && <SettingsForm group={group("bunny")} title="Storage dei file (Bunny)" icon={<HardDrive className="size-4" />}
         description={<>
           Immagini e video dei post su una storage zone di Bunny invece che sul disco, sempre cifrati: Bunny non vede il contenuto e i file li serve
           l'API. Serve la password della zone (FTP &amp; API Access), non la chiave dell'account. I file già caricati restano dove sono.{" "}
           <span className={i.mediaStorage === "unavailable" ? "text-bad" : "text-fg"}>{storageText[i.mediaStorage]}</span>
           {i.mediaStorageForced && i.mediaStorage !== "unavailable" && " Il disco non si usa (MEDIA_STORAGE=remote)."}
         </>}
-        extra={<TestButton path="/instance/settings/bunny/test" label="Prova la zone" done={(r: { host: string }) => `Funziona (${r.host})`} />} />
+        extra={<TestButton path="/instance/settings/bunny/test" label="Prova la zone" done={(r: { host: string }) => `Funziona (${r.host})`} />} />}
       <SettingsForm group={group("meta")} title="Facebook e Instagram (app Meta)" icon={<NetworkGlyph network="FacebookPage" />}
         description="Per collegare le Pagine Facebook e gli account Instagram collegati a una Pagina." redirectUri={i.metaRedirectUri} />
       <SettingsForm group={group("instagram")} title="Instagram senza Pagina" icon={<NetworkGlyph network="Instagram" />}

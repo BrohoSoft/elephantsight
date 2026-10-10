@@ -27,6 +27,14 @@ public class MediaStorageOptions
 
     public MediaStorageMode Storage { get; set; } = MediaStorageMode.Auto;
 
+    /// <summary>
+    /// Bunny si configura solo dall'ambiente (<c>MEDIA_STORAGE_LOCKED</c>): la
+    /// sezione sparisce dal pannello e i valori salvati lì non contano. Per
+    /// un'istanza ospitata, dove lo storage è di chi la ospita e l'amministratore
+    /// dell'istanza (il cliente) non deve poterlo cambiare.
+    /// </summary>
+    public bool Locked { get; set; }
+
     public BunnyStorageOptions Bunny { get; set; } = new();
 
     /// <summary>

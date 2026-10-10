@@ -37,9 +37,8 @@ public static class InstanceEndpoints
         instance.MapDelete("/admins/{userId:guid}", RemoveAdmin);
     }
 
-    /// <summary>I gruppi che questa installazione mostra: senza la funzione dei backup (BACKUPS_ENABLED=false) il loro gruppo non c'è.</summary>
-    private static bool Visible(string group, IConfiguration configuration) =>
-        group != "backup" || configuration.GetValue("Backups:Enabled", true);
+    /// <summary>I gruppi che questa installazione mostra (vedi <see cref="InstanceSettingCatalog.IsAvailable"/>).</summary>
+    private static bool Visible(string group, IConfiguration configuration) => InstanceSettingCatalog.IsAvailable(group, configuration);
 
     private static async Task<IResult> GetSettings(InstanceSettingsStore store, IConfiguration configuration, CancellationToken ct)
     {
@@ -135,8 +134,10 @@ public static class InstanceEndpoints
     /// prova, lo rilegge e lo cancella. L'errore dice cosa non va senza mai
     /// riportare la password.
     /// </summary>
-    private static async Task<IResult> TestBunny(BunnyStorageClient bunny, IOptionsMonitor<MediaStorageOptions> media, CancellationToken ct)
+    private static async Task<IResult> TestBunny(BunnyStorageClient bunny, IOptionsMonitor<MediaStorageOptions> media, IConfiguration configuration, CancellationToken ct)
     {
+        // Bloccato dall'ambiente: lo storage è di chi gestisce l'installazione, nemmeno la prova si vede.
+        if (!Visible("bunny", configuration)) throw ApiProblem.NotFound("Gruppo di impostazioni");
         if (!media.CurrentValue.Bunny.Configured)
             throw ApiProblem.BadRequest("bunny_not_configured", "Mancano la storage zone o la sua password (o la regione non è valida).");
 
