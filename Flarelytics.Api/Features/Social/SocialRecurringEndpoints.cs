@@ -5,6 +5,7 @@ using Flarelytics.Api.Features.Orgs;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using Flarelytics.Core.Social;
+using Flarelytics.Core.Social.Media;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
@@ -82,7 +83,7 @@ public static class SocialRecurringEndpoints
     }
 
     private static async Task<IResult> Create(SaveRecurringPostRequest req, ClaimsPrincipal principal, CurrentOrg org, FlarelyticsDbContext db,
-        MediaUrlSigner signer, SocialMediaStorage storage, CancellationToken ct)
+        MediaUrlSigner signer, SocialMediaStore storage, CancellationToken ct)
     {
         var recurring = SocialRecurringPost.Create(org.TenantId, principal.UserId());
         db.Add(recurring);
@@ -93,7 +94,7 @@ public static class SocialRecurringEndpoints
     }
 
     private static async Task<IResult> Update(Guid recurringId, SaveRecurringPostRequest req, CurrentOrg org, FlarelyticsDbContext db, MediaUrlSigner signer,
-        SocialMediaStorage storage, CancellationToken ct)
+        SocialMediaStore storage, CancellationToken ct)
     {
         var recurring = await LoadAsync(db, org, recurringId, ct);
         await ApplyAsync(recurring, req, org, db, storage, ct);
@@ -110,18 +111,18 @@ public static class SocialRecurringEndpoints
     }
 
     /// <summary>Le uscite già fatte restano sul calendario, come post normali; i file della serie si cancellano.</summary>
-    private static async Task<IResult> Delete(Guid recurringId, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage, CancellationToken ct)
+    private static async Task<IResult> Delete(Guid recurringId, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStore storage, CancellationToken ct)
     {
         var recurring = await LoadAsync(db, org, recurringId, ct);
         var media = recurring.Media.ToList();
         db.Remove(recurring);
         await db.SaveChangesAsync(ct);
-        foreach (var m in media) storage.Delete(m);
+        foreach (var m in media) await storage.DeleteAsync(m, CancellationToken.None);
         return Results.NoContent();
     }
 
     /// <summary>Scrive contenuto, account, file e regola della richiesta, e controlla tutto contro i limiti delle reti.</summary>
-    private static async Task ApplyAsync(SocialRecurringPost recurring, SaveRecurringPostRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStorage storage,
+    private static async Task ApplyAsync(SocialRecurringPost recurring, SaveRecurringPostRequest req, CurrentOrg org, FlarelyticsDbContext db, SocialMediaStore storage,
         CancellationToken ct)
     {
         if (req.ProjectId is null && (!org.CanSee(null) || await SocialPostEndpoints.HasProjectsAsync(db, ct)))
@@ -150,7 +151,7 @@ public static class SocialRecurringEndpoints
         {
             recurring.RemoveMedia(m);
             db.Remove(m);
-            storage.Delete(m);
+            await storage.DeleteAsync(m, CancellationToken.None);
         }
         foreach (var (item, position) in req.Media.Select((m, i) => (m, i)))
         {

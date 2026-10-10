@@ -4,6 +4,7 @@ using Flarelytics.Api.Email;
 using Flarelytics.Core.Database;
 using Flarelytics.Core.Database.Entities;
 using Flarelytics.Core.Instance;
+using Flarelytics.Core.Social.Media;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -29,6 +30,7 @@ public static class InstanceEndpoints
         instance.MapPut("/settings/{group}", SaveSettings);
         instance.MapDelete("/settings/{group}", ClearSettings);
         instance.MapPost("/settings/smtp/test", TestSmtp);
+        instance.MapPost("/settings/bunny/test", TestBunny);
 
         instance.MapGet("/admins", ListAdmins);
         instance.MapPost("/admins", AddAdmin).Validating<AddAdminRequest>();
@@ -58,6 +60,9 @@ public static class InstanceEndpoints
         if (values.Values.Any(v => v is { Length: > 2000 })) throw ApiProblem.BadRequest("setting_too_long", "Un valore è troppo lungo.");
         if (group == "smtp" && values.GetValueOrDefault("port") is { Length: > 0 } port && (!int.TryParse(port, out var p) || p is < 1 or > 65535))
             throw ApiProblem.BadRequest("smtp_port", "La porta SMTP è un numero fra 1 e 65535 (di solito 587, o 465).");
+        if (group == "bunny" && values.GetValueOrDefault("region") is { Length: > 0 } region && !BunnyStorageOptions.Regions.ContainsKey(region.Trim()))
+            throw ApiProblem.BadRequest("bunny_region",
+                $"Regione sconosciuta: usa {string.Join(", ", BunnyStorageOptions.Regions.Keys.Where(k => k.Length > 0))}, o lascia vuoto per Falkenstein.");
 
         await store.SaveAsync(group, values, principal.UserId(), ct);
         return await GetSettings(store, configuration, ct);
@@ -90,6 +95,38 @@ public static class InstanceEndpoints
             throw ApiProblem.BadRequest("smtp_failed", $"Il server SMTP non ha accettato l'invio: {e.Message}");
         }
         return Results.Ok(new { sentTo = email });
+    }
+
+    /// <summary>
+    /// Prova la storage zone con la configurazione attuale: scrive un file di
+    /// prova, lo rilegge e lo cancella. L'errore dice cosa non va senza mai
+    /// riportare la password.
+    /// </summary>
+    private static async Task<IResult> TestBunny(BunnyStorageClient bunny, IOptionsMonitor<MediaStorageOptions> media, CancellationToken ct)
+    {
+        if (!media.CurrentValue.Bunny.Configured)
+            throw ApiProblem.BadRequest("bunny_not_configured", "Mancano la storage zone o la sua password (o la regione non è valida).");
+
+        var probe = System.Security.Cryptography.RandomNumberGenerator.GetBytes(64);
+        var path = $"_prova/{Guid.NewGuid():N}.bin";
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            await bunny.PutAsync(path, new MemoryStream(probe), probe.Length, timeout.Token);
+            using (var response = await bunny.GetAsync(path, null, null, timeout.Token))
+            {
+                var back = response is null ? null : await response.Content.ReadAsByteArrayAsync(timeout.Token);
+                if (back is null || !back.AsSpan().SequenceEqual(probe))
+                    throw ApiProblem.BadRequest("bunny_failed", "Il file di prova è stato caricato ma non si rilegge uguale: controlla la storage zone.");
+            }
+            await bunny.DeleteAsync(path, timeout.Token);
+        }
+        catch (MediaStorageUnavailableException e)
+        {
+            throw ApiProblem.BadRequest("bunny_failed", e.Message);
+        }
+        return Results.Ok(new { host = media.CurrentValue.Bunny.Host });
     }
 
     private static async Task<IResult> ListAdmins(FlarelyticsDbContext db, CancellationToken ct) =>

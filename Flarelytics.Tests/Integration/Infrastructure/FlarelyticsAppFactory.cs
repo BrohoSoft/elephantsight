@@ -14,8 +14,11 @@ namespace Flarelytics.Tests.Integration.Infrastructure;
 /// L'API vera su un database suo, con email e store finti e una cartella di
 /// segreti temporanea.
 /// </summary>
-public class FlarelyticsAppFactory(string connectionString) : WebApplicationFactory<Program>
+/// <param name="settings">Configurazione in più (Bunny, la modalità dello storage), uguale per l'API e per il <see cref="SyncHost"/>.</param>
+public class FlarelyticsAppFactory(string connectionString, IReadOnlyDictionary<string, string?>? settings = null) : WebApplicationFactory<Program>
 {
+    public IReadOnlyDictionary<string, string?> Settings { get; } = settings ?? new Dictionary<string, string?>();
+
     public string Root { get; } = Path.Combine(Path.GetTempPath(), "flarelytics-tests", Guid.NewGuid().ToString("N"));
     public string KeysDirectory => Path.Combine(Root, "keys");
     public string SecretsDirectory => Path.Combine(Root, "secrets");
@@ -29,6 +32,9 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
 
     /// <summary>Le reti social: Bluesky, Mastodon, Graph API di Meta.</summary>
     public FakeStoreServer SocialApis { get; } = new();
+
+    /// <summary>La storage zone di Bunny, per i file dei post (si usa se nelle <see cref="Settings"/> c'è Bunny).</summary>
+    public FakeBunny Bunny { get; } = new();
 
     /// <summary>I client che parlano con le reti social, da attaccare a <see cref="SocialApis"/>.</summary>
     public static readonly string[] SocialClients =
@@ -64,6 +70,7 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
         builder.UseSetting("Social:TikTok:ClientSecret", "segreto-tiktok");
         builder.UseSetting("Social:Threads:AppId", "app-threads");
         builder.UseSetting("Social:Threads:AppSecret", "segreto-threads");
+        foreach (var (key, value) in Settings) builder.UseSetting(key, value);
 
         builder.ConfigureTestServices(services =>
         {
@@ -83,6 +90,9 @@ public class FlarelyticsAppFactory(string connectionString) : WebApplicationFact
                 services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
                     o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = SocialApis));
             }
+
+            services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(nameof(Flarelytics.Core.Social.Media.BunnyStorageClient),
+                o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = Bunny));
 
             services.RemoveAll<IStoreGateway>();
             services.AddSingleton<IStoreGateway>(AppStore);

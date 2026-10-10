@@ -21,11 +21,12 @@ public sealed class SyncHost : IAsyncDisposable
     public FakeAppIconSource Icons { get; } = new();
     public string ReportsDirectory { get; }
 
-    public SyncHost(FlarelyticsAppFactory app, string connectionString, int backfillDays = 10)
+    /// <param name="settings">Configurazione in più, oltre a quella dell'API: per esempio quella che nell'API arriva dalle impostazioni dell'istanza (lì worker e API sono lo stesso processo).</param>
+    public SyncHost(FlarelyticsAppFactory app, string connectionString, int backfillDays = 10, IReadOnlyDictionary<string, string?>? settings = null)
     {
         ReportsDirectory = Path.Combine(app.Root, "reports");
 
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>(app.Settings)
         {
             ["ConnectionStrings:Database"] = connectionString,
             ["Secrets:KeysDirectory"] = app.KeysDirectory,
@@ -38,7 +39,7 @@ public sealed class SyncHost : IAsyncDisposable
             // Come in sviluppo con un tunnel: le immagini da un indirizzo, il pannello da un altro.
             ["Social:PublicUrl"] = "https://tunnel.example/",
             ["Social:PollDelay"] = "00:00:00"
-        }).Build();
+        }).AddInMemoryCollection(settings ?? new Dictionary<string, string?>()).Build();
 
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
@@ -61,6 +62,8 @@ public sealed class SyncHost : IAsyncDisposable
             services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(client,
                 o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = app.SocialApis));
         }
+        services.Configure<Microsoft.Extensions.Http.HttpClientFactoryOptions>(nameof(Flarelytics.Core.Social.Media.BunnyStorageClient),
+            o => o.HttpMessageHandlerBuilderActions.Add(b => b.PrimaryHandler = app.Bunny));
         services.RemoveAll<IAppIconSource>();
         services.AddSingleton<IAppIconSource>(Icons);
 

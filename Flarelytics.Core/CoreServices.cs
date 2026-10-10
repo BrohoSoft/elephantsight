@@ -113,7 +113,14 @@ public static class CoreServices
                 o.AppUrl = (c["Auth:PublicAppUrl"] ?? "").TrimEnd('/');
                 o.PublicUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? o.AppUrl : o.PublicUrl.TrimEnd('/');
             });
-        services.AddSingleton<Social.SocialMediaStorage>();
+        // I file dei post: sul disco o su Bunny (cifrati), vedi SocialMediaStore.
+        services.AddOptions<Social.Media.MediaStorageOptions>().BindConfiguration(Social.Media.MediaStorageOptions.Section);
+        services.AddSingleton<Social.Media.MediaCipher>();
+        services.AddSingleton<Social.Media.LocalMediaBackend>();
+        // Mezz'ora: un video da qualche GB si carica e si scarica in una richiesta sola.
+        services.AddHttpClient<Social.Media.BunnyStorageClient>(c => c.Timeout = TimeSpan.FromMinutes(30));
+        services.AddScoped<Social.Media.BunnyMediaBackend>();
+        services.AddScoped<Social.Media.SocialMediaStore>();
         services.AddSingleton<Social.MediaUrlSigner>();
         services.AddHttpClient<Social.BlueskyClient>(c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddHttpClient<Social.MastodonClient>(c => c.Timeout = TimeSpan.FromSeconds(60));

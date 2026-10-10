@@ -256,7 +256,7 @@ public class ApiKeyTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(3, (await InboxAsync(a)).GetArrayLength());
 
         // Sul disco solo le immagini dei post entrati: quelli rifiutati non lasciano file.
-        var stored = Directory.GetFiles(_app.Services.GetRequiredService<SocialMediaStorage>().Root, "*.jpg", SearchOption.AllDirectories);
+        var stored = Directory.GetFiles(_app.Services.GetRequiredService<Flarelytics.Core.Social.Media.LocalMediaBackend>().Root, "*.jpg", SearchOption.AllDirectories);
         Assert.Equal(3, stored.Length);
 
         // Rimandare il blocco non crea doppioni.

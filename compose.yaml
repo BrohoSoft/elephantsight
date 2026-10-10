@@ -49,6 +49,21 @@ services:
       # Sono il Threads App ID e il suo secret, non quelli dell'app Meta.
       Social__Threads__AppId: ${THREADS_APP_ID:-}
       Social__Threads__AppSecret: ${THREADS_APP_SECRET:-}
+      # Facoltativo: immagini e video dei post su Bunny Storage invece che sul
+      # disco, sempre cifrati (Bunny non vede mai il contenuto; i file li legge
+      # e li serve l'API). Si configura anche dal pannello (Impostazioni
+      # dell'istanza → Storage dei file), che vince su questi valori.
+      # MEDIA_STORAGE: auto (Bunny se configurato, altrimenti disco), local
+      # (sempre disco) o remote (mai disco: senza Bunny niente caricamenti).
+      Media__Storage: ${MEDIA_STORAGE:-auto}
+      Media__Bunny__StorageZone: ${BUNNY_STORAGE_ZONE:-}
+      # Vuoto = Falkenstein; altrimenti uk, ny, la, sg, se, br, jh, syd.
+      Media__Bunny__Region: ${BUNNY_STORAGE_REGION:-}
+      # La password della storage zone (FTP & API Access), non la chiave dell'account.
+      Media__Bunny__AccessKey: ${BUNNY_STORAGE_ACCESS_KEY:-}
+      # Giorni dopo la pubblicazione (riuscita ovunque) in cui si cancellano
+      # gli originali: restano la miniatura e il link al post.
+      Media__CleanupAfterDays: ${MEDIA_CLEANUP_AFTER_DAYS:-7}
       # Chi gestisce questa installazione e un'email di contatto: compaiono
       # nelle pagine /privacy e /terms, che TikTok e Meta chiedono per le app.
       Legal__Owner: ${LEGAL_OWNER:-}

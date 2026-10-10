@@ -364,6 +364,16 @@ public enum MediaKind
     Video = 1
 }
 
+/// <summary>Dove sta il file di un media: si legge e si cancella sempre lì, anche se nel frattempo lo storage attivo è cambiato.</summary>
+public enum MediaLocation
+{
+    /// <summary>Il disco del server (<c>{Reports}/_social</c>), in chiaro.</summary>
+    Local = 0,
+
+    /// <summary>Bunny Storage, cifrato.</summary>
+    Remote = 1
+}
+
 /// <summary>
 /// Un'immagine o un video di un post, su disco.
 /// </summary>
@@ -407,6 +417,21 @@ public class SocialMedia : BaseEntity, ITenantOwned
     public string? AltText { get; private set; }
     public Guid CreatedByUserId { get; private set; }
 
+    /// <summary>Dove sta (originale e miniatura): lo decide lo storage attivo quando il file si scrive.</summary>
+    public MediaLocation Location { get; private set; }
+
+    /// <summary>C'è la miniatura (~400 px) per il calendario: la genera il browser al caricamento.</summary>
+    public bool HasThumbnail { get; private set; }
+
+    /// <summary>
+    /// L'originale è stato cancellato dopo la pubblicazione (vedi
+    /// <see cref="Social.Media.MediaStorageOptions.CleanupAfterDays"/>): resta la
+    /// miniatura, se c'è, e il link al post uscito.
+    /// </summary>
+    public DateTime? OriginalDeletedAtUtc { get; private set; }
+
+    public bool HasOriginal => OriginalDeletedAtUtc is null;
+
     private SocialMedia() { }
 
     public static SocialMedia Create(Guid tenantId, string fileName, long size, int width, int height, Guid createdBy) => new()
@@ -428,6 +453,13 @@ public class SocialMedia : BaseEntity, ITenantOwned
     /// <paramref name="postId"/> null la copia resta libera, come appena
     /// caricata (per duplicare un post ricorrente nell'editor).
     /// </summary>
+    public void SetLocation(MediaLocation location) => Location = location;
+
+    public void MarkThumbnail() => HasThumbnail = true;
+
+    public void MarkOriginalDeleted(DateTime nowUtc) => OriginalDeletedAtUtc ??= nowUtc;
+
+    /// <remarks>Posizione e miniatura le decide lo store quando copia il file (vedi <see cref="Social.Media.SocialMediaStore.CopyAsync"/>).</remarks>
     public SocialMedia CopyFor(Guid? postId, int position) => new()
     {
         TenantId = TenantId, FileName = FileName, SizeBytes = SizeBytes, Width = Width, Height = Height, CreatedByUserId = CreatedByUserId,

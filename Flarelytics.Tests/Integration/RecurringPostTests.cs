@@ -230,15 +230,15 @@ public class RecurringPostTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, (await a.Client.DeleteAsync($"/api/v1/orgs/{a.OrgId}/social/accounts/{mastodon}")).StatusCode);
         Assert.Equal(0, (await ListAsync(a))[0].GetProperty("accountIds").GetArrayLength());
 
-        var storage = _app.Services.GetRequiredService<SocialMediaStorage>();
-        Assert.True(File.Exists(storage.PathFor(a.OrgId, image, ".jpg")));
+        var storage = _app.Services.GetRequiredService<Flarelytics.Core.Social.Media.LocalMediaBackend>();
+        Assert.True(File.Exists(storage.PathFor(new Flarelytics.Core.Social.Media.MediaKey(a.OrgId, image, Flarelytics.Core.Social.Media.MediaVariant.Original), ".jpg")));
         Assert.Equal(HttpStatusCode.NoContent, (await a.Client.DeleteAsync($"/api/v1/orgs/{a.OrgId}/social/recurring/{id}")).StatusCode);
-        Assert.False(File.Exists(storage.PathFor(a.OrgId, image, ".jpg")));
+        Assert.False(File.Exists(storage.PathFor(new Flarelytics.Core.Social.Media.MediaKey(a.OrgId, image, Flarelytics.Core.Social.Media.MediaVariant.Original), ".jpg")));
 
         var post = Assert.Single(await CalendarAsync(a));
         Assert.Equal(JsonValueKind.Null, post.GetProperty("recurringPostId").ValueKind);
         var copy = post.GetProperty("media")[0].GetProperty("id").GetGuid();
-        Assert.True(File.Exists(storage.PathFor(a.OrgId, copy, ".jpg"))); // la copia dell'uscita resta
+        Assert.True(File.Exists(storage.PathFor(new Flarelytics.Core.Social.Media.MediaKey(a.OrgId, copy, Flarelytics.Core.Social.Media.MediaVariant.Original), ".jpg"))); // la copia dell'uscita resta
     }
 
     [Fact]
@@ -266,9 +266,9 @@ public class RecurringPostTests(PostgresFixture postgres) : IAsyncLifetime
 
         // Cancellare la copia non tocca il file dell'originale.
         Assert.Equal(HttpStatusCode.NoContent, (await a.Client.DeleteAsync($"/api/v1/orgs/{a.OrgId}/social/recurring/{duplicate.GetProperty("id").GetGuid()}")).StatusCode);
-        var storage = _app.Services.GetRequiredService<SocialMediaStorage>();
-        Assert.True(File.Exists(storage.PathFor(a.OrgId, image, ".jpg")));
-        Assert.False(File.Exists(storage.PathFor(a.OrgId, copyId, ".jpg")));
+        var storage = _app.Services.GetRequiredService<Flarelytics.Core.Social.Media.LocalMediaBackend>();
+        Assert.True(File.Exists(storage.PathFor(new Flarelytics.Core.Social.Media.MediaKey(a.OrgId, image, Flarelytics.Core.Social.Media.MediaVariant.Original), ".jpg")));
+        Assert.False(File.Exists(storage.PathFor(new Flarelytics.Core.Social.Media.MediaKey(a.OrgId, copyId, Flarelytics.Core.Social.Media.MediaVariant.Original), ".jpg")));
     }
 
     [Fact]

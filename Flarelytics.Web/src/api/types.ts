@@ -173,6 +173,10 @@ export interface InstanceInfo {
   legalOwner: string | null;
   legalContactEmail: string | null;
   version: string;
+  /** Dove vanno immagini e video dei post: "unavailable" = modalità remota imposta e Bunny non configurato, niente caricamenti. */
+  mediaStorage: "local" | "remote" | "unavailable";
+  /** La modalità remota è imposta dall'ambiente (MEDIA_STORAGE=remote). */
+  mediaStorageForced: boolean;
 }
 
 export interface CreatedInvitation {
@@ -381,8 +385,12 @@ export interface SocialMediaItem {
   height: number;
   sizeBytes: number;
   altText: string | null;
-  /** Firmato e a scadenza: si usa così com'è in un <img>. */
-  url: string;
+  /** L'originale, firmato e a scadenza: si usa così com'è in un <img>. Null se è stato cancellato dopo la pubblicazione. */
+  url: string | null;
+  /** La miniatura (~400 px), firmata: resta anche quando l'originale non c'è più. */
+  thumbnailUrl: string | null;
+  /** L'originale è stato cancellato qualche giorno dopo la pubblicazione: restano la miniatura e il link del post. */
+  originalDeleted: boolean;
 }
 
 export type SocialTargetStatus = "Pending" | "Publishing" | "Published" | "Failed";
@@ -562,7 +570,7 @@ export interface SettingValue {
 }
 
 export interface SettingsGroup {
-  group: "smtp" | "meta" | "instagram" | "tiktok" | "threads";
+  group: "smtp" | "meta" | "instagram" | "tiktok" | "threads" | "bunny";
   fields: SettingValue[];
 }
 
