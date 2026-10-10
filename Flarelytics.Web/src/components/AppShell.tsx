@@ -38,8 +38,11 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-full">
+      {/* Alta quanto lo schermo: in cima l'organizzazione, in fondo l'utente, e
+          in mezzo le voci, che scorrono quando non ci stanno (schermi bassi,
+          dimensione "grande"). */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-panel md:flex">
-        <div className="flex h-16 items-center border-b border-line px-4">
+        <div className="flex h-16 shrink-0 items-center border-b border-line px-4">
           <Logo />
         </div>
         {/* Dentro un progetto tutta la barra diventa del progetto: chiavi,
@@ -48,11 +51,11 @@ export function AppShell() {
           <ProjectSidebarNav org={org} projectId={projectId} section={tab} />
         ) : (
         <>
-        <div className="border-b border-line p-2">
+        <div className="shrink-0 border-b border-line p-2">
           <OrgSwitcher me={me.data} currentId={navOrg?.id} />
         </div>
         {navOrg && (
-          <nav className="flex-1 space-y-0.5 p-2">
+          <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
             {/* Il menu segue l'accesso del membro (progetti e sezioni); il server ricontrolla comunque. */}
             <NavItem to={`/o/${navOrg.id}`} end icon={<LayoutDashboard className="size-4" />}>Panoramica</NavItem>
             <NavItem to={`/o/${navOrg.id}/projects`} icon={<FolderKanban className="size-4" />}>Progetti</NavItem>
@@ -83,7 +86,7 @@ export function AppShell() {
         )}
         </>
         )}
-        <div className="mt-auto border-t border-line p-2">
+        <div className="mt-auto shrink-0 border-t border-line p-2">
           <UserMenu me={me.data} />
         </div>
       </aside>

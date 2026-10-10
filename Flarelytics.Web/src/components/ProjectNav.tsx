@@ -95,14 +95,14 @@ export function ProjectSidebarNav({ org, projectId, section }: { org: OrgSummary
   const base = `/o/${orgId}/projects/${projectId}`;
   return (
     <>
-      <div className="space-y-2 border-b border-line p-2">
+      <div className="shrink-0 space-y-2 border-b border-line p-2">
         <NavLink to={homePath(org)} className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover hover:text-fg">
           <ArrowLeft className="size-3.5" />
           <span className="truncate">Vista globale · {orgName}</span>
         </NavLink>
         <ProjectSwitcher orgId={orgId} projectId={projectId} section={section} />
       </div>
-      <nav className="flex-1 space-y-0.5 p-2">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
         {projectSections(base, org).map((s, i, all) => (
           <div key={s.to}>
             {s.group && s.group !== all[i - 1]?.group && (
