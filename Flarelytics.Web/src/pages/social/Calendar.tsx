@@ -6,7 +6,7 @@ import { canAdmin, useProjects, useRecurringOccurrences, useSocialAccounts, useS
 import type { Project, RecurringPost, SocialAccount, SocialPost } from "../../api/types";
 import { canManageOrg, useOrg } from "../../components/org";
 import { NetworkGlyph } from "../../components/SocialIcons";
-import { Badge, Button, EmptyState, PageHeader, PageLoader, Select } from "../../components/ui";
+import { Badge, Button, EmptyState, Modal, PageHeader, PageLoader, Select } from "../../components/ui";
 import { BulkAccounts } from "../../social/BulkAccounts";
 import { PostEditor, postStatus } from "../../social/PostEditor";
 import { RecurringEditor } from "../../social/RecurringEditor";
@@ -15,6 +15,8 @@ const monthFormat = new Intl.DateTimeFormat("it-IT", { month: "long", year: "num
 const timeFormat = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
 const dayFormat = new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long" });
 const WEEKDAYS = ["lun", "mar", "mer", "gio", "ven", "sab", "dom"];
+/** Quanti post ci stanno in una casella; gli altri si vedono aprendo il giorno. */
+const PER_DAY = 3;
 
 const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -59,6 +61,8 @@ export function SocialCalendarPage({ project }: { project?: Project } = {}) {
   // Modalità selezione: i clic sui post li selezionano invece di aprirli.
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Il giorno aperto per intero, quando ha più post di quelli che stanno nella casella.
+  const [openDay, setOpenDay] = useState<Date | null>(null);
 
   const days = useMemo(() => monthGrid(month), [month]);
   const from = days[0];
@@ -176,12 +180,17 @@ export function SocialCalendarPage({ project }: { project?: Project } = {}) {
                   {admin && <Plus className="size-3.5 text-faint opacity-0 group-hover:opacity-100" />}
                 </div>
                 <div className="space-y-1">
-                  {(selecting ? list : list.slice(0, 3)).map((e) => e.kind === "post" ? (
+                  {(selecting ? list : list.slice(0, PER_DAY)).map((e) => e.kind === "post" ? (
                     <PostChip key={e.post.id} post={e.post} onOpen={() => onChip(e.post)} selecting={selecting} selected={selectedIds.includes(e.post.id)} disabled={selecting && !selectable(e.post)} />
                   ) : (
                     <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} disabled={selecting} onOpen={() => setEditingRecurring({ recurring: e.recurring })} />
                   ))}
-                  {!selecting && list.length > 3 && <p className="px-1 text-[0.6875rem] text-faint">+{list.length - 3} altri</p>}
+                  {!selecting && list.length > PER_DAY && (
+                    <button type="button" onClick={(ev) => { ev.stopPropagation(); setOpenDay(day); }}
+                      className="w-full rounded px-1 py-0.5 text-left text-[0.6875rem] font-medium text-brand-fg hover:bg-hover">
+                      +{list.length - PER_DAY} {list.length - PER_DAY === 1 ? "altro" : "altri"}: vedi tutti
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -204,6 +213,27 @@ export function SocialCalendarPage({ project }: { project?: Project } = {}) {
           </section>
         ))}
       </div>
+
+      {openDay && (
+        <Modal open onOpenChange={(o) => !o && setOpenDay(null)} title={<span className="first-letter:uppercase">{dayFormat.format(openDay)}</span>}
+          description={`${(byDay.get(dayKey(openDay)) ?? []).length} post, in ordine di ora.`}
+          footer={
+            <>
+              <Button onClick={() => setOpenDay(null)}>Chiudi</Button>
+              {admin && <Button variant="primary" icon={<Plus className="size-3.5" />}
+                onClick={() => { const day = openDay; setOpenDay(null); open(undefined, newPostAt(day)); }}>Nuovo post in questo giorno</Button>}
+            </>
+          }>
+          <div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
+            {(byDay.get(dayKey(openDay)) ?? []).map((e) => e.kind === "post" ? (
+              <PostChip key={e.post.id} post={e.post} large onOpen={() => { setOpenDay(null); open(e.post); }} />
+            ) : (
+              <NextChip key={`${e.recurring.id}-${e.at.getTime()}`} entry={e} accounts={accounts.data!} large
+                onOpen={() => { setOpenDay(null); setEditingRecurring({ recurring: e.recurring }); }} />
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {editing && (
         <PostEditor post={editing.post} initialDate={editing.date} defaultProjectId={projectId || undefined} accounts={accounts.data!} projects={projects.data ?? []} admin={admin} onClose={() => setEditing(null)} />
