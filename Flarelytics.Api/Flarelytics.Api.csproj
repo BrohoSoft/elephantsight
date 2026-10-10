@@ -12,7 +12,7 @@
     <!-- La versione di ElephantSight: la restituisce /api/v1/instance e il
          pannello la mostra. Va alzata a ogni rilascio, insieme a quella in
          Flarelytics.Web/package.json. -->
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
